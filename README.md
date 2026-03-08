@@ -142,7 +142,7 @@ Run
  ├─ Span: llm.answer
  └─ Span: validation.output
 ```
-See (docs/telemetry-spec.md)
+See [docs/telemetry-spec.md]
 
 ## Repository Structure
 
