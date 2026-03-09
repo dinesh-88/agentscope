@@ -1,0 +1,31 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# SQLx offline metadata (optional)
+.sqlx/
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# macOS
+.DS_Store
+
+# Coverage / test artifacts
+coverage/
+*.profraw
+*.profdata
+
+# Misc
+tmp/

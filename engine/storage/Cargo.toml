@@ -1,0 +1,11 @@
+[package]
+name = "agentscope-storage"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+agentscope-common = { path = "../common" }
+agentscope-trace = { path = "../trace" }
+serde_json = { workspace = true }
+sqlx = { workspace = true }
+tracing = { workspace = true }
