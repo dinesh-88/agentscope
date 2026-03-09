@@ -10,6 +10,13 @@ impl Storage {
             r#"
             INSERT INTO runs (id, project_id, workflow_name, agent_name, status, started_at, ended_at)
             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
+            ON CONFLICT (id) DO UPDATE
+            SET project_id = EXCLUDED.project_id,
+                workflow_name = EXCLUDED.workflow_name,
+                agent_name = EXCLUDED.agent_name,
+                status = EXCLUDED.status,
+                started_at = EXCLUDED.started_at,
+                ended_at = EXCLUDED.ended_at
             "#,
         )
         .bind(&run.id)

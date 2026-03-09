@@ -10,6 +10,14 @@ impl Storage {
             r#"
             INSERT INTO spans (id, run_id, parent_span_id, span_type, name, status, started_at, ended_at)
             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8)
+            ON CONFLICT (id) DO UPDATE
+            SET run_id = EXCLUDED.run_id,
+                parent_span_id = EXCLUDED.parent_span_id,
+                span_type = EXCLUDED.span_type,
+                name = EXCLUDED.name,
+                status = EXCLUDED.status,
+                started_at = EXCLUDED.started_at,
+                ended_at = EXCLUDED.ended_at
             "#,
         )
         .bind(&span.id)

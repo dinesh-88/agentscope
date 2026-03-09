@@ -10,6 +10,11 @@ impl Storage {
             r#"
             INSERT INTO artifacts (id, run_id, span_id, kind, payload)
             VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
+            ON CONFLICT (id) DO UPDATE
+            SET run_id = EXCLUDED.run_id,
+                span_id = EXCLUDED.span_id,
+                kind = EXCLUDED.kind,
+                payload = EXCLUDED.payload
             "#,
         )
         .bind(&artifact.id)
