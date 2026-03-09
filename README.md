@@ -24,7 +24,7 @@ agentscope/
 
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/agentscope \
-SERVER_PORT=3000 \
+SERVER_PORT=8080 \
 LOG_LEVEL=info \
 cargo run -p agentscope-api
 ```
@@ -35,7 +35,19 @@ cargo run -p agentscope-api
 docker compose up --build
 ```
 
-API will be available at `http://localhost:3000` and Postgres at `localhost:5432`.
+API will be available at `http://localhost:8080` and Postgres at `localhost:5432`.
+
+## Demo Harness
+
+```bash
+make demo
+```
+
+Or run directly:
+
+```bash
+./examples/demo/run_demo.sh
+```
 
 ## Endpoints
 

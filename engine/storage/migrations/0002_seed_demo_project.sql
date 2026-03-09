@@ -1,0 +1,11 @@
+INSERT INTO organizations (id, name)
+VALUES ('00000000-0000-4000-8000-000000000000', 'demo-org')
+ON CONFLICT (id) DO NOTHING;
+
+INSERT INTO projects (id, organization_id, name)
+VALUES (
+    '00000000-0000-4000-8000-000000000001',
+    '00000000-0000-4000-8000-000000000000',
+    'demo-project'
+)
+ON CONFLICT (id) DO NOTHING;
