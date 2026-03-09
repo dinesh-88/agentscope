@@ -10,6 +10,7 @@ from typing import Any, Callable
 
 from ..run import _current_run_state, observe_run
 from ..span import observe_span
+from .http_interceptor import instrument_requests
 from .registry import PROVIDER_REGISTRY, TargetSpec
 
 _ORIGINALS: dict[str, Callable[..., Any]] = {}
@@ -242,5 +243,6 @@ def _resolve_enabled_targets(providers: list[str] | None) -> list[TargetSpec]:
 def auto_instrument(providers: list[str] | None = None) -> None:
     global _ACTIVE_TARGETS
     _ACTIVE_TARGETS = _resolve_enabled_targets(providers)
+    instrument_requests()
     _install_import_hook()
     _try_patch_available_targets()
