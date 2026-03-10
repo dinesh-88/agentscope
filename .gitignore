@@ -33,3 +33,5 @@ __pycache__/
 
 # Misc
 tmp/
+node_modules/
+.next/

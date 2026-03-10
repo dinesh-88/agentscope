@@ -1,7 +1,8 @@
+name: agentscope
+
 services:
   postgres:
     image: postgres:16
-    container_name: agentscope-postgres
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -24,7 +25,6 @@ services:
     build:
       context: ..
       dockerfile: docker/api.Dockerfile
-    container_name: agentscope-api
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgres://postgres:postgres@postgres:5432/agentscope}
       SERVER_PORT: ${SERVER_PORT:-8080}

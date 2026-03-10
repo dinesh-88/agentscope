@@ -39,6 +39,16 @@ LOG_LEVEL=info \
 cargo run -p agentscope-api
 ```
 
+## Run Web
+
+```bash
+cd apps/web
+npm install
+npm run dev
+```
+
+Web UI will be available at `http://localhost:3000`.
+
 ## Run With Docker
 
 ```bash
