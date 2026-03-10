@@ -76,4 +76,29 @@ impl Storage {
 
         Ok(runs)
     }
+
+    pub async fn list_runs_by_status(&self, status: &str) -> Result<Vec<Run>, AgentScopeError> {
+        let runs = sqlx::query_as::<_, Run>(
+            r#"
+            SELECT id::text AS id,
+                   project_id::text AS project_id,
+                   workflow_name,
+                   agent_name,
+                   status,
+                   started_at,
+                   ended_at
+            FROM runs
+            WHERE status = $1
+            ORDER BY started_at DESC
+            "#,
+        )
+        .bind(status)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            AgentScopeError::Storage(format!("failed to list runs with status {status}: {e}"))
+        })?;
+
+        Ok(runs)
+    }
 }

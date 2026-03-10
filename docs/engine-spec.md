@@ -5,9 +5,9 @@ AgentScope engine is the Rust backend responsible for telemetry ingestion and qu
 ## Scope
 
 - Ingestion API: `POST /v1/ingest`
-- Query API: `GET /v1/runs`, `GET /v1/runs/{id}`, `GET /v1/runs/{id}/spans`
+- Query API: `GET /v1/runs`, `GET /v1/runs/{id}`, `GET /v1/runs/{id}/spans`, `GET /v1/runs/{id}/metrics`, `GET /v1/runs/{id}/insights`, `GET /v1/runs/{id}/root-cause`
 - Postgres storage with migrations
-- Worker operation: `finalize_run`
+- Worker operations: `finalize_run`, `prompt_analyzer`, `rca_analyzer`
 
 ## Environment Variables
 

@@ -6,6 +6,7 @@ from typing import Any, Callable
 
 from ..run import _current_run_state
 from ..span import observe_span
+from .token_usage import normalize_usage
 
 
 def _extract_response_text(body: Any) -> str | None:
@@ -48,13 +49,13 @@ def _extract_response_text(body: Any) -> str | None:
     return None
 
 
-def _extract_usage(body: Any) -> tuple[Any, Any]:
+def _extract_usage(body: Any) -> tuple[int | None, int | None, int | None]:
     if not isinstance(body, dict):
-        return None, None
+        return None, None, None
 
     usage = body.get("usage")
     if not isinstance(usage, dict):
-        return None, None
+        return None, None, None
 
     input_tokens = usage.get("prompt_tokens")
     if input_tokens is None:
@@ -64,7 +65,7 @@ def _extract_usage(body: Any) -> tuple[Any, Any]:
     if output_tokens is None:
         output_tokens = usage.get("output_tokens")
 
-    return input_tokens, output_tokens
+    return normalize_usage(input_tokens, output_tokens)
 
 
 def _append_artifact(*, span: dict[str, Any], kind: str, payload: dict[str, Any]) -> None:
@@ -131,11 +132,13 @@ def trace_http_llm_call(
             response_body = None
 
         response_text = _extract_response_text(response_body)
-        input_tokens, output_tokens = _extract_usage(response_body)
+        input_tokens, output_tokens, total_tokens = _extract_usage(response_body)
+        http_status = getattr(response, "status_code", None)
 
         span["latency_ms"] = latency_ms
         span["input_tokens"] = input_tokens
         span["output_tokens"] = output_tokens
+        span["total_tokens"] = total_tokens
 
         _append_artifact(
             span=span,
@@ -146,9 +149,11 @@ def trace_http_llm_call(
                 "model": span.get("model"),
                 "response": response_body,
                 "response_text": response_text,
+                "http_status": http_status,
                 "latency_ms": latency_ms,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
             },
         )
 

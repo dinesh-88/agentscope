@@ -55,6 +55,9 @@ Or run directly:
 - `GET /v1/runs`
 - `GET /v1/runs/{id}`
 - `GET /v1/runs/{id}/spans`
+- `GET /v1/runs/{id}/metrics`
+- `GET /v1/runs/{id}/insights`
+- `GET /v1/runs/{id}/root-cause`
 
 ## Migrations
 

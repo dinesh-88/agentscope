@@ -30,6 +30,40 @@ The ingestion payload for `POST /v1/ingest`:
 - `status`
 - `started_at`
 - `ended_at`
+- `provider` (optional)
+- `model` (optional)
+- `input_tokens` (optional)
+- `output_tokens` (optional)
+- `total_tokens` (optional)
+- `estimated_cost` (optional)
+
+## Run Metrics
+
+- `input_tokens`
+- `output_tokens`
+- `total_tokens`
+- `estimated_cost`
+
+## Run Insight
+
+- `id`
+- `run_id`
+- `insight_type`
+- `severity`
+- `message`
+- `recommendation`
+- `created_at`
+
+## Run Root Cause
+
+- `id`
+- `run_id`
+- `root_cause_type`
+- `confidence`
+- `message`
+- `evidence`
+- `suggested_fix`
+- `created_at`
 
 ## Artifact
 

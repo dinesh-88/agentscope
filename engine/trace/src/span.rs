@@ -12,4 +12,10 @@ pub struct Span {
     pub status: String,
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
+    pub provider: Option<String>,
+    pub model: Option<String>,
+    pub input_tokens: Option<i64>,
+    pub output_tokens: Option<i64>,
+    pub total_tokens: Option<i64>,
+    pub estimated_cost: Option<f64>,
 }

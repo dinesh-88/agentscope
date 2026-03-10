@@ -12,6 +12,7 @@ from ..run import _current_run_state, observe_run
 from ..span import observe_span
 from .http_interceptor import instrument_requests
 from .registry import PROVIDER_REGISTRY, TargetSpec
+from .token_usage import normalize_usage
 
 _ORIGINALS: dict[str, Callable[..., Any]] = {}
 _PATCHED_TARGETS: set[str] = set()
@@ -30,6 +31,7 @@ def _append_artifacts(
     response_text: Any,
     input_tokens: Any,
     output_tokens: Any,
+    total_tokens: Any,
     latency_ms: int,
 ) -> None:
     run_state = _current_run_state()
@@ -62,6 +64,7 @@ def _append_artifacts(
                 "response_text": response_text,
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
                 "latency_ms": latency_ms,
             },
         }
@@ -81,11 +84,16 @@ def _run_instrumented_sync(
         response = original(*args, **kwargs)
         res = target.response_extractor(response)
         latency_ms = int((time.time() - started) * 1000)
+        input_tokens, output_tokens, total_tokens = normalize_usage(
+            res.get("input_tokens"),
+            res.get("output_tokens"),
+        )
 
         span["provider"] = target.provider
         span["model"] = req.get("model")
-        span["input_tokens"] = res.get("input_tokens")
-        span["output_tokens"] = res.get("output_tokens")
+        span["input_tokens"] = input_tokens
+        span["output_tokens"] = output_tokens
+        span["total_tokens"] = total_tokens
         span["latency_ms"] = latency_ms
 
         _append_artifacts(
@@ -95,8 +103,9 @@ def _run_instrumented_sync(
             messages=req.get("messages"),
             prompt=req.get("prompt"),
             response_text=res.get("response_text"),
-            input_tokens=res.get("input_tokens"),
-            output_tokens=res.get("output_tokens"),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
             latency_ms=latency_ms,
         )
         return response
@@ -115,11 +124,16 @@ async def _run_instrumented_async(
         response = await original(*args, **kwargs)
         res = target.response_extractor(response)
         latency_ms = int((time.time() - started) * 1000)
+        input_tokens, output_tokens, total_tokens = normalize_usage(
+            res.get("input_tokens"),
+            res.get("output_tokens"),
+        )
 
         span["provider"] = target.provider
         span["model"] = req.get("model")
-        span["input_tokens"] = res.get("input_tokens")
-        span["output_tokens"] = res.get("output_tokens")
+        span["input_tokens"] = input_tokens
+        span["output_tokens"] = output_tokens
+        span["total_tokens"] = total_tokens
         span["latency_ms"] = latency_ms
 
         _append_artifacts(
@@ -129,8 +143,9 @@ async def _run_instrumented_async(
             messages=req.get("messages"),
             prompt=req.get("prompt"),
             response_text=res.get("response_text"),
-            input_tokens=res.get("input_tokens"),
-            output_tokens=res.get("output_tokens"),
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            total_tokens=total_tokens,
             latency_ms=latency_ms,
         )
         return response

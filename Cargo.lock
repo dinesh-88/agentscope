@@ -59,10 +59,13 @@ version = "0.1.0"
 dependencies = [
  "agentscope-common",
  "agentscope-storage",
+ "agentscope-trace",
  "chrono",
+ "serde_json",
  "sqlx",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]

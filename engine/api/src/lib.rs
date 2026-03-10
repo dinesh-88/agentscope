@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::Storage;
-use agentscope_trace::{Artifact, Run, Span};
+use agentscope_trace::{Artifact, Run, RunInsight, RunMetrics, RunRootCause, Span};
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -33,6 +33,9 @@ pub fn app(storage: Storage) -> Router {
         .route("/v1/runs", get(list_runs))
         .route("/v1/runs/:id", get(get_run))
         .route("/v1/runs/:id/spans", get(get_run_spans))
+        .route("/v1/runs/:id/metrics", get(get_run_metrics))
+        .route("/v1/runs/:id/insights", get(get_run_insights))
+        .route("/v1/runs/:id/root-cause", get(get_run_root_cause))
         .with_state(state)
 }
 
@@ -103,6 +106,49 @@ async fn get_run_spans(
 ) -> Result<Json<Vec<Span>>, ApiError> {
     let spans = state.storage.get_spans(&id).await?;
     Ok(Json(spans))
+}
+
+async fn get_run_metrics(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<RunMetrics>, ApiError> {
+    if state.storage.get_run(&id).await?.is_none() {
+        return Err(ApiError::NotFound(format!("run {id} not found")));
+    }
+
+    let metrics = state.storage.get_run_metrics(&id).await?;
+    Ok(Json(metrics))
+}
+
+async fn get_run_insights(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<RunInsight>>, ApiError> {
+    if state.storage.get_run(&id).await?.is_none() {
+        return Err(ApiError::NotFound(format!("run {id} not found")));
+    }
+
+    let insights = state.storage.get_run_insights(&id).await?;
+    Ok(Json(insights))
+}
+
+async fn get_run_root_cause(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<RunRootCause>, ApiError> {
+    if state.storage.get_run(&id).await?.is_none() {
+        return Err(ApiError::NotFound(format!("run {id} not found")));
+    }
+
+    let root_cause = state
+        .storage
+        .get_run_root_causes(&id)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| ApiError::NotFound(format!("root cause for run {id} not found")))?;
+
+    Ok(Json(root_cause))
 }
 
 pub enum ApiError {

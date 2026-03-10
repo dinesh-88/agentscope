@@ -4,6 +4,7 @@ import inspect
 from typing import Any, Callable
 
 from .registry import ProviderAdapter, TargetSpec
+from .token_usage import normalize_usage
 
 
 def _safe_getattr(value: Any, name: str, default: Any = None) -> Any:
@@ -89,10 +90,12 @@ def _response_extractor(response: Any) -> dict[str, Any]:
     output_tokens = _safe_get(usage, "completion_tokens")
     if output_tokens is None:
         output_tokens = _safe_get(usage, "output_tokens")
+    input_tokens, output_tokens, total_tokens = normalize_usage(input_tokens, output_tokens)
     return {
         "response_text": _extract_text(response),
         "input_tokens": input_tokens,
         "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
     }
 
 
