@@ -79,6 +79,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
 
     Router::new()
         .route("/v1/auth/login", post(auth::login))
+        .route("/v1/auth/register", post(auth::register))
         .nest("/v1", sdk_routes.merge(ui_routes))
         .layer(CorsLayer::permissive())
         .with_state(state)

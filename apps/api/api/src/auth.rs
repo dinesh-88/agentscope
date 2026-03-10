@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use agentscope_storage::auth::AuthUser;
+use agentscope_storage::auth::{AuthUser, RegisteredAccount};
 use axum::{
     extract::{Query, Request, State},
     http::header,
@@ -44,11 +44,42 @@ pub struct LoginRequest {
     pub password: String,
 }
 
+#[derive(Debug, Deserialize)]
+pub struct RegisterRequest {
+    pub email: String,
+    pub password: String,
+    pub display_name: Option<String>,
+    pub organization_name: String,
+    pub project_name: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct LoginResponse {
     pub token: String,
     pub expires_at: String,
     pub user: AuthUser,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisterResponse {
+    pub token: String,
+    pub expires_at: String,
+    pub user: AuthUser,
+    pub organization: RegisteredOrganization,
+    pub project: RegisteredProject,
+    pub api_key: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisteredOrganization {
+    pub id: String,
+    pub name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RegisteredProject {
+    pub id: String,
+    pub name: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,26 +98,59 @@ pub async fn login(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<LoginRequest>,
 ) -> Result<Json<LoginResponse>, ApiError> {
+    if payload.email.trim().is_empty() || payload.password.is_empty() {
+        return Err(ApiError::Validation(
+            "email and password are required".to_string(),
+        ));
+    }
+
     let user = state
         .storage
         .authenticate_user(&payload.email, &payload.password)
         .await?
         .ok_or_else(|| ApiError::Forbidden("invalid login credentials".to_string()))?;
 
-    let expires_at = Utc::now() + Duration::seconds(state.jwt.expiry_seconds);
-    let claims = JwtClaims {
-        sub: user.id.clone(),
-        email: user.email.clone(),
-        exp: expires_at.timestamp() as usize,
-    };
+    Ok(Json(login_response(&state.jwt, user)?))
+}
 
-    let token = encode_jwt(&claims, &state.jwt.secret)?;
+pub async fn register(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<RegisterRequest>,
+) -> Result<Json<RegisterResponse>, ApiError> {
+    let email = payload.email.trim();
+    let password = payload.password;
+    let display_name = payload
+        .display_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let organization_name = payload.organization_name.trim();
+    let project_name = payload
+        .project_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("Default Project");
 
-    Ok(Json(LoginResponse {
-        token,
-        expires_at: expires_at.to_rfc3339(),
-        user,
-    }))
+    if email.is_empty() || password.is_empty() || organization_name.is_empty() {
+        return Err(ApiError::Validation(
+            "email, password, and organization_name are required".to_string(),
+        ));
+    }
+
+    let account = state
+        .storage
+        .register_account(
+            email,
+            &password,
+            display_name,
+            organization_name,
+            project_name,
+        )
+        .await?;
+
+    let response = register_response(&state.jwt, account)?;
+    Ok(Json(response))
 }
 
 pub async fn require_api_key(
@@ -176,6 +240,44 @@ fn bearer_token(header_value: Option<&str>, query_value: Option<&str>) -> Option
     query_value
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
+}
+
+fn login_response(jwt: &JwtSettings, user: AuthUser) -> Result<LoginResponse, ApiError> {
+    let expires_at = Utc::now() + Duration::seconds(jwt.expiry_seconds);
+    let claims = JwtClaims {
+        sub: user.id.clone(),
+        email: user.email.clone(),
+        exp: expires_at.timestamp() as usize,
+    };
+
+    let token = encode_jwt(&claims, &jwt.secret)?;
+
+    Ok(LoginResponse {
+        token,
+        expires_at: expires_at.to_rfc3339(),
+        user,
+    })
+}
+
+fn register_response(
+    jwt: &JwtSettings,
+    account: RegisteredAccount,
+) -> Result<RegisterResponse, ApiError> {
+    let login = login_response(jwt, account.user)?;
+    Ok(RegisterResponse {
+        token: login.token,
+        expires_at: login.expires_at,
+        user: login.user,
+        organization: RegisteredOrganization {
+            id: account.organization_id,
+            name: account.organization_name,
+        },
+        project: RegisteredProject {
+            id: account.project_id,
+            name: account.project_name,
+        },
+        api_key: account.api_key,
+    })
 }
 
 fn encode_jwt(claims: &JwtClaims, secret: &str) -> Result<String, ApiError> {

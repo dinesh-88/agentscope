@@ -105,6 +105,26 @@ export type LoginResponse = {
   };
 };
 
+export type RegisterRequest = {
+  email: string;
+  password: string;
+  display_name?: string;
+  organization_name: string;
+  project_name?: string;
+};
+
+export type RegisterResponse = LoginResponse & {
+  organization: {
+    id: string;
+    name: string;
+  };
+  project: {
+    id: string;
+    name: string;
+  };
+  api_key: string;
+};
+
 function parseCookieValue(source: string, name: string): string | null {
   const match = source.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
   return match ? decodeURIComponent(match[1]) : null;
@@ -126,12 +146,13 @@ export function getClientJwtToken(): string | null {
   return parseCookieValue(document.cookie, UI_JWT_COOKIE_NAME);
 }
 
-export function storeUiJwt(token: string) {
+export function storeUiJwt(token: string, expiresAt?: string) {
   if (typeof document === "undefined") {
     return;
   }
 
-  document.cookie = `${UI_JWT_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
+  const expires = expiresAt ? `; Expires=${new Date(expiresAt).toUTCString()}` : "";
+  document.cookie = `${UI_JWT_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; SameSite=Lax${expires}`;
 }
 
 export function clearUiJwt() {
@@ -256,5 +277,10 @@ export async function login(email: string, password: string): Promise<LoginRespo
     email,
     password,
   });
+  return response.data;
+}
+
+export async function register(payload: RegisterRequest): Promise<RegisterResponse> {
+  const response = await api.post<RegisterResponse>("/v1/auth/register", payload);
   return response.data;
 }

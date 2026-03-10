@@ -1,6 +1,7 @@
 use agentscope_common::errors::AgentScopeError;
 use serde::Serialize;
 use sqlx::FromRow;
+use uuid::Uuid;
 
 use crate::Storage;
 
@@ -16,6 +17,16 @@ pub struct ProjectApiKey {
     pub id: String,
     pub project_id: String,
     pub label: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RegisteredAccount {
+    pub user: AuthUser,
+    pub organization_id: String,
+    pub organization_name: String,
+    pub project_id: String,
+    pub project_name: String,
+    pub api_key: String,
 }
 
 impl Storage {
@@ -86,6 +97,108 @@ impl Storage {
         })?;
 
         Ok(key)
+    }
+
+    pub async fn register_account(
+        &self,
+        email: &str,
+        password: &str,
+        display_name: Option<&str>,
+        organization_name: &str,
+        project_name: &str,
+    ) -> Result<RegisteredAccount, AgentScopeError> {
+        let mut tx = self.pool.begin().await.map_err(|error| {
+            AgentScopeError::Storage(format!("failed to start registration transaction: {error}"))
+        })?;
+
+        let user = sqlx::query_as::<_, AuthUser>(
+            r#"
+            INSERT INTO users (email, password_hash, display_name)
+            VALUES ($1, crypt($2, gen_salt('bf')), $3)
+            RETURNING id::text AS id,
+                      email,
+                      display_name
+            "#,
+        )
+        .bind(email)
+        .bind(password)
+        .bind(display_name)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| {
+            if is_unique_violation(&error) {
+                AgentScopeError::Validation(format!("user with email {email} already exists"))
+            } else {
+                AgentScopeError::Storage(format!("failed to create user {email}: {error}"))
+            }
+        })?;
+
+        let organization_id: String =
+            sqlx::query_scalar("INSERT INTO organizations (name) VALUES ($1) RETURNING id::text")
+                .bind(organization_name)
+                .fetch_one(&mut *tx)
+                .await
+                .map_err(|error| {
+                    AgentScopeError::Storage(format!(
+                        "failed to create organization {organization_name}: {error}"
+                    ))
+                })?;
+
+        let project_id: String = sqlx::query_scalar(
+            "INSERT INTO projects (organization_id, name) VALUES ($1::uuid, $2) RETURNING id::text",
+        )
+        .bind(&organization_id)
+        .bind(project_name)
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!("failed to create project {project_name}: {error}"))
+        })?;
+
+        sqlx::query(
+            "INSERT INTO memberships (user_id, organization_id, role) VALUES ($1::uuid, $2::uuid, 'owner')",
+        )
+        .bind(&user.id)
+        .bind(&organization_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to create owner membership for user {}: {error}",
+                user.id
+            ))
+        })?;
+
+        let raw_api_key = format!("ags_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple());
+
+        sqlx::query(
+            r#"
+            INSERT INTO project_api_keys (project_id, label, key_hash)
+            VALUES ($1::uuid, 'default-sdk-key', encode(digest($2, 'sha256'), 'hex'))
+            "#,
+        )
+        .bind(&project_id)
+        .bind(&raw_api_key)
+        .execute(&mut *tx)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to create default api key for project {project_id}: {error}"
+            ))
+        })?;
+
+        tx.commit().await.map_err(|error| {
+            AgentScopeError::Storage(format!("failed to commit registration transaction: {error}"))
+        })?;
+
+        Ok(RegisteredAccount {
+            user,
+            organization_id,
+            organization_name: organization_name.to_string(),
+            project_id,
+            project_name: project_name.to_string(),
+            api_key: raw_api_key,
+        })
     }
 
     pub async fn touch_project_api_key(&self, key_id: &str) -> Result<(), AgentScopeError> {
@@ -161,4 +274,11 @@ impl Storage {
 
         Ok(is_elevated)
     }
+}
+
+fn is_unique_violation(error: &sqlx::Error) -> bool {
+    matches!(
+        error,
+        sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("23505")
+    )
 }
