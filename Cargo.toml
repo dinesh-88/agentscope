@@ -1,10 +1,10 @@
 [workspace]
 members = [
-    "engine/api",
-    "engine/trace",
-    "engine/storage",
-    "engine/workers",
-    "engine/common"
+    "apps/api/api",
+    "apps/api/trace",
+    "apps/api/storage",
+    "apps/api/workers",
+    "apps/api/common"
 ]
 resolver = "2"
 

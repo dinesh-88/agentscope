@@ -4,7 +4,7 @@ FROM rust:1.85-bookworm AS builder
 WORKDIR /app
 
 COPY Cargo.toml Cargo.lock ./
-COPY engine ./engine
+COPY apps ./apps
 
 RUN cargo build --release -p agentscope-api
 

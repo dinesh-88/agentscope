@@ -1,7 +1,7 @@
 .PHONY: docker-up demo
 
 docker-up:
-	docker compose up -d --build
+	docker compose -f docker/docker-compose.yml up -d --build
 
 demo: docker-up
-	./examples/demo/run_demo.sh
+	./examples/demo-agent/run_demo.sh

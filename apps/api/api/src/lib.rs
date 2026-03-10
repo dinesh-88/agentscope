@@ -33,6 +33,7 @@ pub fn app(storage: Storage) -> Router {
         .route("/v1/runs", get(list_runs))
         .route("/v1/runs/:id", get(get_run))
         .route("/v1/runs/:id/spans", get(get_run_spans))
+        .route("/v1/runs/:id/artifacts", get(get_run_artifacts))
         .route("/v1/runs/:id/metrics", get(get_run_metrics))
         .route("/v1/runs/:id/insights", get(get_run_insights))
         .route("/v1/runs/:id/root-cause", get(get_run_root_cause))
@@ -106,6 +107,18 @@ async fn get_run_spans(
 ) -> Result<Json<Vec<Span>>, ApiError> {
     let spans = state.storage.get_spans(&id).await?;
     Ok(Json(spans))
+}
+
+async fn get_run_artifacts(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<Vec<Artifact>>, ApiError> {
+    if state.storage.get_run(&id).await?.is_none() {
+        return Err(ApiError::NotFound(format!("run {id} not found")));
+    }
+
+    let artifacts = state.storage.get_artifacts(&id).await?;
+    Ok(Json(artifacts))
 }
 
 async fn get_run_metrics(

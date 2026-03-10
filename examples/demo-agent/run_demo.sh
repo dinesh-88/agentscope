@@ -22,7 +22,7 @@ cleanup() {
 trap cleanup EXIT
 
 echo "Starting dockerized Postgres..."
-(cd "${REPO_ROOT}" && docker compose up -d "${POSTGRES_SERVICE}")
+(cd "${REPO_ROOT}" && docker compose -f docker/docker-compose.yml up -d "${POSTGRES_SERVICE}")
 
 echo "Waiting for Postgres healthcheck..."
 for _ in {1..30}; do

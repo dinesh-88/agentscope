@@ -7,16 +7,26 @@ Rust implementation of AgentScope telemetry ingestion and query engine.
 ```text
 agentscope/
 ├─ Cargo.toml
-├─ engine/
+├─ apps/
 │  ├─ api/
-│  ├─ trace/
-│  ├─ storage/
-│  ├─ workers/
-│  └─ common/
+│  │  ├─ api/
+│  │  ├─ common/
+│  │  ├─ storage/
+│  │  ├─ trace/
+│  │  └─ workers/
+│  └─ web/
+├─ packages/
+│  └─ python-sdk/
+├─ examples/
+│  ├─ demo-agent/
+│  ├─ rag-agent/
+│  └─ tool-agent/
+├─ docker/
 ├─ docs/
 │  ├─ architecture.md
 │  ├─ telemetry-spec.md
 │  └─ engine-spec.md
+├─ scripts/
 └─ README.md
 ```
 
@@ -32,7 +42,7 @@ cargo run -p agentscope-api
 ## Run With Docker
 
 ```bash
-docker compose up --build
+docker compose -f docker/docker-compose.yml up --build
 ```
 
 API will be available at `http://localhost:8080` and Postgres at `localhost:5432`.
@@ -46,7 +56,7 @@ make demo
 Or run directly:
 
 ```bash
-./examples/demo/run_demo.sh
+./examples/demo-agent/run_demo.sh
 ```
 
 ## Endpoints
@@ -61,7 +71,7 @@ Or run directly:
 
 ## Migrations
 
-Migrations are in `engine/storage/migrations` and are executed on server startup.
+Migrations are in `apps/api/storage/migrations` and are executed on server startup.
 
 ## Tests
 
