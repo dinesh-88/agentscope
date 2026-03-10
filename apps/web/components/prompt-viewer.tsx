@@ -28,7 +28,9 @@ function toPrettyText(value: unknown) {
 export function PromptViewer({ artifacts }: PromptViewerProps) {
   const selectedSpanId = useRunDetailStore((state) => state.selectedSpanId);
   const promptArtifact = useMemo(() => {
-    const promptArtifacts = artifacts.filter((artifact) => artifact.kind === "llm.prompt");
+    const promptArtifacts = artifacts.filter(
+      (artifact) => artifact.kind === "llm.prompt" || artifact.kind === "llm_prompt"
+    );
     return (
       promptArtifacts.find((artifact) => artifact.span_id === selectedSpanId) ??
       promptArtifacts[0] ??

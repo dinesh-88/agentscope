@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sqlx::FromRow;
 
 #[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
@@ -18,4 +19,5 @@ pub struct Span {
     pub output_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
     pub estimated_cost: Option<f64>,
+    pub metadata: Option<Value>,
 }

@@ -32,7 +32,8 @@ impl Storage {
                 input_tokens,
                 output_tokens,
                 total_tokens,
-                estimated_cost
+                estimated_cost,
+                metadata
             )
             VALUES (
                 $1::uuid,
@@ -57,6 +58,12 @@ impl Storage {
                         END
                     FROM model_pricing mp
                     WHERE mp.provider = $9 AND mp.model = $10
+                ),
+                (
+                    CASE
+                        WHEN $14::jsonb = 'null'::jsonb THEN NULL
+                        ELSE $14::jsonb
+                    END
                 )
             )
             ON CONFLICT (id) DO UPDATE
@@ -72,7 +79,8 @@ impl Storage {
                 input_tokens = EXCLUDED.input_tokens,
                 output_tokens = EXCLUDED.output_tokens,
                 total_tokens = EXCLUDED.total_tokens,
-                estimated_cost = EXCLUDED.estimated_cost
+                estimated_cost = EXCLUDED.estimated_cost,
+                metadata = EXCLUDED.metadata
             "#,
         )
         .bind(&span.id)
@@ -88,6 +96,7 @@ impl Storage {
         .bind(span.input_tokens)
         .bind(span.output_tokens)
         .bind(total_tokens)
+        .bind(&span.metadata)
         .execute(&self.pool)
         .await
         .map_err(|e| AgentScopeError::Storage(format!("failed to insert span {}: {e}", span.id)))?;
@@ -112,7 +121,8 @@ impl Storage {
                    input_tokens,
                    output_tokens,
                    total_tokens,
-                   estimated_cost
+                   estimated_cost,
+                   metadata
             FROM spans
             WHERE run_id = $1::uuid
             ORDER BY started_at ASC

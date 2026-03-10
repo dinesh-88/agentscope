@@ -46,6 +46,7 @@ async fn ingest_and_query_runs(pool: PgPool) {
             output_tokens: Some(50),
             total_tokens: Some(150),
             estimated_cost: None,
+            metadata: Some(json!({"file_path": "/tmp/demo.txt"})),
         }],
         artifacts: vec![Artifact {
             id: uuid::Uuid::new_v4().to_string(),
@@ -103,6 +104,14 @@ async fn ingest_and_query_runs(pool: PgPool) {
             .await
             .unwrap();
     assert_eq!(span_count, 1);
+
+    let stored_metadata: serde_json::Value =
+        sqlx::query_scalar("SELECT metadata FROM spans WHERE run_id = $1::uuid LIMIT 1")
+            .bind(&run_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(stored_metadata["file_path"], "/tmp/demo.txt");
 
     sqlx::query(
         r#"

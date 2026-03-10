@@ -1,11 +1,13 @@
 import type { ComponentType } from "react";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ArrowLeft, Bot, Coins, FileSearch2, Timer } from "lucide-react";
 
 import { InsightsPanel } from "@/components/insights-panel";
 import { PromptViewer } from "@/components/prompt-viewer";
 import { RcaPanel } from "@/components/rca-panel";
 import { Sidebar } from "@/components/sidebar";
+import { SpanDetailsPanel } from "@/components/span-details-panel";
 import { SpanTree } from "@/components/span-tree";
 import { Button } from "@/components/ui/button";
 import { getRun, getRunArtifacts, getRunInsights, getRunMetrics, getRunRootCause, getRunSpans } from "@/lib/api";
@@ -36,6 +38,10 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
     getRunMetrics(runId),
     getRunArtifacts(runId),
   ]);
+
+  if (!run) {
+    notFound();
+  }
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(20,184,166,0.12),_transparent_26%),linear-gradient(180deg,#f6fbfb_0%,#ecf1f6_100%)] px-4 py-6 text-slate-950 sm:px-6 lg:px-8">
@@ -84,6 +90,7 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
               <SpanTree spans={spans} />
               <div className="space-y-6">
+                <SpanDetailsPanel spans={spans} artifacts={artifacts} />
                 <PromptViewer artifacts={artifacts} />
                 <InsightsPanel insights={insights} />
                 <RcaPanel rootCause={rootCause} />

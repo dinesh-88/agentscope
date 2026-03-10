@@ -1,3 +1,5 @@
+mod engine;
+
 use std::sync::Arc;
 
 use agentscope_common::errors::AgentScopeError;
@@ -12,6 +14,10 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tracing::{error, info};
+
+use crate::engine::replay::replay_engine::{
+    ModifyReplayRequest, ReplayEngine, ReplayResponse, StartReplayRequest,
+};
 
 #[derive(Clone)]
 pub struct AppState {
@@ -37,6 +43,10 @@ pub fn app(storage: Storage) -> Router {
         .route("/v1/runs/:id/metrics", get(get_run_metrics))
         .route("/v1/runs/:id/insights", get(get_run_insights))
         .route("/v1/runs/:id/root-cause", get(get_run_root_cause))
+        .route("/v1/replay/start", post(start_replay))
+        .route("/v1/replay/:id/step", post(step_replay))
+        .route("/v1/replay/:id/modify", post(modify_replay))
+        .route("/v1/replay/:id/resume", post(resume_replay))
         .with_state(state)
 }
 
@@ -162,6 +172,41 @@ async fn get_run_root_cause(
         .ok_or_else(|| ApiError::NotFound(format!("root cause for run {id} not found")))?;
 
     Ok(Json(root_cause))
+}
+
+async fn start_replay(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<StartReplayRequest>,
+) -> Result<Json<ReplayResponse>, ApiError> {
+    let replay = ReplayEngine::new(&state.storage).start(payload).await?;
+    Ok(Json(replay))
+}
+
+async fn step_replay(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ReplayResponse>, ApiError> {
+    let replay = ReplayEngine::new(&state.storage).step(&id).await?;
+    Ok(Json(replay))
+}
+
+async fn modify_replay(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<ModifyReplayRequest>,
+) -> Result<Json<ReplayResponse>, ApiError> {
+    let replay = ReplayEngine::new(&state.storage)
+        .modify(&id, payload)
+        .await?;
+    Ok(Json(replay))
+}
+
+async fn resume_replay(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> Result<Json<ReplayResponse>, ApiError> {
+    let replay = ReplayEngine::new(&state.storage).resume(&id).await?;
+    Ok(Json(replay))
 }
 
 pub enum ApiError {
