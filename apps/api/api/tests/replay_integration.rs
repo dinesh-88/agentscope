@@ -1,3 +1,5 @@
+mod support;
+
 use agentscope_api::{app, IngestPayload};
 use agentscope_storage::Storage;
 use agentscope_trace::{Artifact, Run, Span};
@@ -9,13 +11,26 @@ use chrono::Utc;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use sqlx::PgPool;
+use support::{
+    jwt_settings, login_token, seed_project, seed_project_api_key, seed_user_with_role,
+    with_bearer, TEST_API_KEY,
+};
 use tower::ServiceExt;
 
 #[sqlx::test(migrations = "../storage/migrations")]
 async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
-    let project_id = seed_project(&pool).await;
+    let project_id = seed_project(&pool, "replay-org", "replay-project").await;
+    let org_id: String =
+        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
+            .bind(&project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    seed_user_with_role(&pool, &org_id, "replay@example.com", "member").await;
+    seed_project_api_key(&pool, &project_id, TEST_API_KEY).await;
     let storage = Storage { pool: pool.clone() };
-    let router = app(storage);
+    let router = app(storage, jwt_settings());
+    let token = login_token(&router, "replay@example.com").await;
 
     let run_id = uuid::Uuid::new_v4().to_string();
     let llm_span_id = uuid::Uuid::new_v4().to_string();
@@ -98,6 +113,7 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
                 .method("POST")
                 .uri("/v1/ingest")
                 .header("content-type", "application/json")
+                .header("x-agentscope-api-key", TEST_API_KEY)
                 .body(Body::from(serde_json::to_vec(&payload).unwrap()))
                 .unwrap(),
         )
@@ -107,7 +123,7 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
 
     let start_response = router
         .clone()
-        .oneshot(
+        .oneshot(with_bearer(
             Request::builder()
                 .method("POST")
                 .uri("/v1/replay/start")
@@ -116,7 +132,8 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
                     serde_json::to_vec(&json!({ "original_run_id": run_id })).unwrap(),
                 ))
                 .unwrap(),
-        )
+            &token,
+        ))
         .await
         .unwrap();
     assert_eq!(start_response.status(), StatusCode::OK);
@@ -128,13 +145,14 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
 
     let step_response = router
         .clone()
-        .oneshot(
+        .oneshot(with_bearer(
             Request::builder()
                 .method("POST")
                 .uri(format!("/v1/replay/{replay_id}/step"))
                 .body(Body::empty())
                 .unwrap(),
-        )
+            &token,
+        ))
         .await
         .unwrap();
     assert_eq!(step_response.status(), StatusCode::OK);
@@ -151,7 +169,7 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
 
     let modify_response = router
         .clone()
-        .oneshot(
+        .oneshot(with_bearer(
             Request::builder()
                 .method("POST")
                 .uri(format!("/v1/replay/{replay_id}/modify"))
@@ -165,7 +183,8 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
                     .unwrap(),
                 ))
                 .unwrap(),
-        )
+            &token,
+        ))
         .await
         .unwrap();
     assert_eq!(modify_response.status(), StatusCode::OK);
@@ -200,13 +219,14 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
     assert_eq!(forked_prompt, modified_prompt);
 
     let resume_response = router
-        .oneshot(
+        .oneshot(with_bearer(
             Request::builder()
                 .method("POST")
                 .uri(format!("/v1/replay/{replay_id}/resume"))
                 .body(Body::empty())
                 .unwrap(),
-        )
+            &token,
+        ))
         .await
         .unwrap();
     assert_eq!(resume_response.status(), StatusCode::OK);
@@ -225,21 +245,4 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
 async fn response_json(response: axum::response::Response) -> Value {
     let body = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&body).unwrap()
-}
-
-async fn seed_project(pool: &PgPool) -> String {
-    let org_id: String = sqlx::query_scalar(
-        "INSERT INTO organizations (name) VALUES ('test-org') RETURNING id::text",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap();
-
-    sqlx::query_scalar(
-        "INSERT INTO projects (organization_id, name) VALUES ($1::uuid, 'test-project') RETURNING id::text",
-    )
-    .bind(org_id)
-    .fetch_one(pool)
-    .await
-    .unwrap()
 }

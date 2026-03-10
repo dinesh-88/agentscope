@@ -7,6 +7,8 @@ pub struct Config {
     pub database_url: String,
     pub server_port: u16,
     pub log_level: String,
+    pub jwt_secret: String,
+    pub jwt_expiry_seconds: i64,
 }
 
 impl Config {
@@ -20,11 +22,19 @@ impl Config {
             .unwrap_or(3000);
 
         let log_level = env::var("LOG_LEVEL").unwrap_or_else(|_| "info".to_string());
+        let jwt_secret = env::var("JWT_SECRET")
+            .map_err(|_| AgentScopeError::Config("JWT_SECRET is required".to_string()))?;
+        let jwt_expiry_seconds = env::var("JWT_EXPIRY_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<i64>().ok())
+            .unwrap_or(28_800);
 
         Ok(Self {
             database_url,
             server_port,
             log_level,
+            jwt_secret,
+            jwt_expiry_seconds,
         })
     }
 }

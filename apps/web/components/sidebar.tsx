@@ -1,5 +1,9 @@
+"use client";
+
 import Link from "next/link";
-import { Activity, ChevronsRight, DatabaseZap, Rows3, Sparkles } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { Activity, AlertCircle, FlaskConical, LayoutDashboard, Menu, PlaySquare, Settings, Users, X } from "lucide-react";
+import { useState } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -8,54 +12,88 @@ type SidebarProps = {
 };
 
 const navItems = [
-  { href: "/runs", label: "Runs", icon: Rows3 },
-  { href: "/runs?panel=insights", label: "Insights", icon: Sparkles },
-  { href: "/runs?panel=root-cause", label: "Root Cause", icon: DatabaseZap },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/runs", label: "Runs", icon: PlaySquare },
+  { href: "/agents", label: "Agents", icon: Users },
+  { href: "/insights", label: "Insights", icon: AlertCircle },
+  { href: "/sandbox", label: "Sandbox", icon: FlaskConical },
+  { href: "/settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar({ activePath = "/runs" }: SidebarProps) {
+  const pathname = usePathname();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  const currentPath = pathname ?? activePath;
+
   return (
-    <aside className="relative overflow-hidden rounded-[28px] border border-white/45 bg-[linear-gradient(180deg,rgba(15,23,42,0.96),rgba(22,32,56,0.92))] p-6 text-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]">
-      <div className="absolute inset-x-6 top-0 h-px bg-gradient-to-r from-transparent via-white/50 to-transparent" />
-      <div className="mb-10 flex items-center gap-3">
-        <div className="flex size-11 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200 ring-1 ring-cyan-100/15">
-          <Activity className="size-5" />
+    <>
+      <div className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 lg:hidden">
+        <div className="flex items-center gap-3">
+          <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+            <Activity className="size-4" />
+          </div>
+          <span className="text-lg font-semibold">AgentScope</span>
         </div>
-        <div>
-          <p className="text-xs uppercase tracking-[0.32em] text-cyan-100/55">AgentScope</p>
-          <h1 className="text-lg font-semibold tracking-tight">Run Console</h1>
-        </div>
+        <button
+          type="button"
+          onClick={() => setMobileMenuOpen((value) => !value)}
+          className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+        >
+          {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+        </button>
       </div>
 
-      <nav className="space-y-2">
-        {navItems.map((item) => {
-          const Icon = item.icon;
-          const isActive = activePath.startsWith(item.href.split("?")[0]);
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "group flex items-center justify-between rounded-2xl px-4 py-3 text-sm transition",
-                isActive
-                  ? "bg-white text-slate-950 shadow-lg shadow-cyan-950/20"
-                  : "text-slate-200 hover:bg-white/8 hover:text-white",
-              )}
-            >
-              <span className="flex items-center gap-3">
-                <Icon className="size-4" />
-                {item.label}
-              </span>
-              <ChevronsRight className={cn("size-4", isActive ? "text-slate-400" : "text-slate-500")} />
-            </Link>
-          );
-        })}
-      </nav>
+      {mobileMenuOpen ? (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          className="fixed inset-0 z-20 bg-black/20 lg:hidden"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      ) : null}
 
-      <div className="mt-10 rounded-2xl border border-white/10 bg-white/6 p-4">
-        <p className="text-xs uppercase tracking-[0.25em] text-white/45">Stack</p>
-        <p className="mt-2 text-sm text-slate-200">Next.js + shadcn/ui + Recharts</p>
-      </div>
-    </aside>
+      <aside
+        className={cn(
+          "fixed inset-y-0 left-0 z-30 w-64 border-r border-sidebar-border bg-sidebar transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
+          mobileMenuOpen ? "translate-x-0" : "-translate-x-full",
+        )}
+      >
+        <div className="flex h-full flex-col">
+          <div className="hidden h-16 items-center border-b border-sidebar-border px-6 lg:flex">
+            <div className="flex items-center gap-3">
+              <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+                <Activity className="size-4" />
+              </div>
+              <span className="text-lg font-semibold text-sidebar-foreground">AgentScope</span>
+            </div>
+          </div>
+
+          <nav className="flex-1 space-y-1 px-3 py-4 pt-20 lg:pt-4">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPath === item.href || (item.href === "/dashboard" && currentPath === "/");
+
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    isActive
+                      ? "bg-sidebar-accent text-sidebar-foreground"
+                      : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                  )}
+                >
+                  <Icon className="size-5" />
+                  <span>{item.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+        </div>
+      </aside>
+    </>
   );
 }

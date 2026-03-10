@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 agentscope-common = { path = "../common" }
 agentscope-trace = { path = "../trace" }
+serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }
 tracing = { workspace = true }

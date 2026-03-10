@@ -1,3 +1,5 @@
+mod support;
+
 use agentscope_api::{app, IngestPayload};
 use agentscope_storage::Storage;
 use agentscope_trace::{Artifact, Run, Span};
@@ -9,14 +11,27 @@ use chrono::Utc;
 use http_body_util::BodyExt;
 use serde_json::json;
 use sqlx::PgPool;
+use support::{
+    jwt_settings, login_token, seed_project, seed_project_api_key, seed_user_with_role,
+    with_bearer, TEST_API_KEY,
+};
 use tower::ServiceExt;
 
 #[sqlx::test(migrations = "../storage/migrations")]
 async fn ingest_and_query_runs(pool: PgPool) {
-    let project_id = seed_project(&pool).await;
+    let project_id = seed_project(&pool, "test-org", "test-project").await;
+    let org_id: String =
+        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
+            .bind(&project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    seed_user_with_role(&pool, &org_id, "viewer@example.com", "member").await;
+    seed_project_api_key(&pool, &project_id, TEST_API_KEY).await;
 
     let storage = Storage { pool: pool.clone() };
-    let router = app(storage);
+    let router = app(storage, jwt_settings());
+    let token = login_token(&router, "viewer@example.com").await;
 
     let run_id = uuid::Uuid::new_v4().to_string();
     let span_id = uuid::Uuid::new_v4().to_string();
@@ -61,6 +76,7 @@ async fn ingest_and_query_runs(pool: PgPool) {
         .method("POST")
         .uri("/v1/ingest")
         .header("content-type", "application/json")
+        .header("x-agentscope-api-key", TEST_API_KEY)
         .body(Body::from(serde_json::to_vec(&payload).unwrap()))
         .unwrap();
 
@@ -69,13 +85,14 @@ async fn ingest_and_query_runs(pool: PgPool) {
 
     let runs_response = router
         .clone()
-        .oneshot(
+        .oneshot(with_bearer(
             Request::builder()
                 .method("GET")
                 .uri("/v1/runs")
                 .body(Body::empty())
                 .unwrap(),
-        )
+            &token,
+        ))
         .await
         .unwrap();
 
@@ -139,13 +156,14 @@ async fn ingest_and_query_runs(pool: PgPool) {
 
     let metrics_response = router
         .clone()
-        .oneshot(
+        .oneshot(with_bearer(
             Request::builder()
                 .method("GET")
                 .uri(format!("/v1/runs/{run_id}/metrics"))
                 .body(Body::empty())
                 .unwrap(),
-        )
+            &token,
+        ))
         .await
         .unwrap();
     assert_eq!(metrics_response.status(), StatusCode::OK);
@@ -166,13 +184,14 @@ async fn ingest_and_query_runs(pool: PgPool) {
 
     let insights_response = router
         .clone()
-        .oneshot(
+        .oneshot(with_bearer(
             Request::builder()
                 .method("GET")
                 .uri(format!("/v1/runs/{run_id}/insights"))
                 .body(Body::empty())
                 .unwrap(),
-        )
+            &token,
+        ))
         .await
         .unwrap();
     assert_eq!(insights_response.status(), StatusCode::OK);
@@ -188,13 +207,14 @@ async fn ingest_and_query_runs(pool: PgPool) {
     assert_eq!(insights[0]["insight_type"], "prompt_too_large");
 
     let root_cause_response = router
-        .oneshot(
+        .oneshot(with_bearer(
             Request::builder()
                 .method("GET")
                 .uri(format!("/v1/runs/{run_id}/root-cause"))
                 .body(Body::empty())
                 .unwrap(),
-        )
+            &token,
+        ))
         .await
         .unwrap();
     assert_eq!(root_cause_response.status(), StatusCode::OK);
@@ -208,21 +228,4 @@ async fn ingest_and_query_runs(pool: PgPool) {
     let root_cause: serde_json::Value = serde_json::from_slice(&root_cause_body).unwrap();
     assert_eq!(root_cause["root_cause_type"], "TOOL_FAILURE");
     assert_eq!(root_cause["evidence"]["span_id"], "demo");
-}
-
-async fn seed_project(pool: &PgPool) -> String {
-    let org_id: String = sqlx::query_scalar(
-        "INSERT INTO organizations (name) VALUES ('test-org') RETURNING id::text",
-    )
-    .fetch_one(pool)
-    .await
-    .unwrap();
-
-    sqlx::query_scalar(
-        "INSERT INTO projects (organization_id, name) VALUES ($1::uuid, 'test-project') RETURNING id::text",
-    )
-    .bind(org_id)
-    .fetch_one(pool)
-    .await
-    .unwrap()
 }

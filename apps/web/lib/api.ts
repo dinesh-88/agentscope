@@ -1,6 +1,7 @@
 import axios from "axios";
 
 export const API_BASE_URL = "http://localhost:8080";
+export const UI_JWT_COOKIE_NAME = "agentscope_jwt";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -71,8 +72,98 @@ export type RunMetrics = {
   estimated_cost: number;
 };
 
+export type SandboxTarget = "python" | "real" | "ts";
+
+export type SandboxStartResponse = {
+  status: string;
+  target: SandboxTarget;
+};
+
+export type SandboxTargetStatus = {
+  target: SandboxTarget;
+  status: string;
+  pid: number | null;
+  last_started_at: string | null;
+  last_finished_at: string | null;
+  last_exit_code: number | null;
+  last_error: string | null;
+};
+
+export type SandboxStatusResponse = {
+  python: SandboxTargetStatus;
+  real: SandboxTargetStatus;
+  ts: SandboxTargetStatus;
+};
+
+export type LoginResponse = {
+  token: string;
+  expires_at: string;
+  user: {
+    id: string;
+    email: string;
+    display_name: string | null;
+  };
+};
+
+function parseCookieValue(source: string, name: string): string | null {
+  const match = source.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function getJwtToken(): Promise<string | null> {
+  if (typeof window === "undefined") {
+    return process.env.AGENTSCOPE_UI_JWT ?? null;
+  }
+
+  return parseCookieValue(document.cookie, UI_JWT_COOKIE_NAME);
+}
+
+export function getClientJwtToken(): string | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  return parseCookieValue(document.cookie, UI_JWT_COOKIE_NAME);
+}
+
+export function storeUiJwt(token: string) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.cookie = `${UI_JWT_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; SameSite=Lax`;
+}
+
+export function clearUiJwt() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.cookie = `${UI_JWT_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getJwtToken();
+  if (!token) {
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+}
+
 async function request<T>(path: string): Promise<T> {
-  const response = await api.get<T>(path);
+  const response = await api.get<T>(path, {
+    headers: await authHeaders(),
+  });
+  return response.data;
+}
+
+async function postRequest<T>(path: string): Promise<T> {
+  const response = await api.post<T>(path, undefined, {
+    headers: await authHeaders(),
+  });
   return response.data;
 }
 
@@ -150,4 +241,20 @@ export async function getRunMetrics(runId: string): Promise<RunMetrics | null> {
     }
     throw error;
   }
+}
+
+export async function runSandbox(target: SandboxTarget): Promise<SandboxStartResponse> {
+  return postRequest<SandboxStartResponse>(`/v1/sandbox/${target}/run`);
+}
+
+export async function getSandboxStatus(): Promise<SandboxStatusResponse> {
+  return request<SandboxStatusResponse>("/v1/sandbox/status");
+}
+
+export async function login(email: string, password: string): Promise<LoginResponse> {
+  const response = await api.post<LoginResponse>("/v1/auth/login", {
+    email,
+    password,
+  });
+  return response.data;
 }

@@ -56,6 +56,40 @@ impl Storage {
         Ok(run)
     }
 
+    pub async fn get_run_for_user(
+        &self,
+        id: &str,
+        user_id: &str,
+    ) -> Result<Option<Run>, AgentScopeError> {
+        let run = sqlx::query_as::<_, Run>(
+            r#"
+            SELECT runs.id::text AS id,
+                   runs.project_id::text AS project_id,
+                   runs.workflow_name,
+                   runs.agent_name,
+                   runs.status,
+                   runs.started_at,
+                   runs.ended_at
+            FROM runs
+            INNER JOIN projects
+                ON projects.id = runs.project_id
+            INNER JOIN memberships
+                ON memberships.organization_id = projects.organization_id
+            WHERE runs.id = $1::uuid
+              AND memberships.user_id = $2::uuid
+            "#,
+        )
+        .bind(id)
+        .bind(user_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|e| {
+            AgentScopeError::Storage(format!("failed to get run {id} for user {user_id}: {e}"))
+        })?;
+
+        Ok(run)
+    }
+
     pub async fn list_runs(&self) -> Result<Vec<Run>, AgentScopeError> {
         let runs = sqlx::query_as::<_, Run>(
             r#"
@@ -73,6 +107,35 @@ impl Storage {
         .fetch_all(&self.pool)
         .await
         .map_err(|e| AgentScopeError::Storage(format!("failed to list runs: {e}")))?;
+
+        Ok(runs)
+    }
+
+    pub async fn list_runs_for_user(&self, user_id: &str) -> Result<Vec<Run>, AgentScopeError> {
+        let runs = sqlx::query_as::<_, Run>(
+            r#"
+            SELECT DISTINCT runs.id::text AS id,
+                   runs.project_id::text AS project_id,
+                   runs.workflow_name,
+                   runs.agent_name,
+                   runs.status,
+                   runs.started_at,
+                   runs.ended_at
+            FROM runs
+            INNER JOIN projects
+                ON projects.id = runs.project_id
+            INNER JOIN memberships
+                ON memberships.organization_id = projects.organization_id
+            WHERE memberships.user_id = $1::uuid
+            ORDER BY runs.started_at DESC
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            AgentScopeError::Storage(format!("failed to list runs for user {user_id}: {e}"))
+        })?;
 
         Ok(runs)
     }

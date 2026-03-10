@@ -142,10 +142,10 @@ impl Storage {
         let metrics = sqlx::query_as::<_, RunMetrics>(
             r#"
             SELECT
-                COALESCE(SUM(input_tokens), 0) AS input_tokens,
-                COALESCE(SUM(output_tokens), 0) AS output_tokens,
-                COALESCE(SUM(total_tokens), 0) AS total_tokens,
-                COALESCE(SUM(estimated_cost), 0.0) AS estimated_cost
+                COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens,
+                COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
+                COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
+                COALESCE(SUM(estimated_cost), 0.0)::double precision AS estimated_cost
             FROM spans
             WHERE run_id = $1::uuid
             "#,

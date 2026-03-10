@@ -1,4 +1,5 @@
 pub mod artifacts;
+pub mod auth;
 pub mod insights;
 pub mod postgres;
 pub mod replays;

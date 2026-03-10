@@ -1,6 +1,6 @@
 use std::net::SocketAddr;
 
-use agentscope_api::app;
+use agentscope_api::{app, auth::JwtSettings};
 use agentscope_common::config::{init_tracing, Config};
 use agentscope_storage::Storage;
 use tracing::info;
@@ -25,7 +25,16 @@ async fn main() {
         .await
         .expect("failed to bind server port");
 
-    axum::serve(listener, app(storage))
-        .await
-        .expect("api server crashed");
+    axum::serve(
+        listener,
+        app(
+            storage,
+            JwtSettings {
+                secret: config.jwt_secret.clone(),
+                expiry_seconds: config.jwt_expiry_seconds,
+            },
+        ),
+    )
+    .await
+    .expect("api server crashed");
 }

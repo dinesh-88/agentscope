@@ -5,9 +5,11 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use tokio::sync::broadcast;
 use uuid::Uuid;
 
 use crate::engine::replay::step_controller::{ReplayStep, StepController};
+use crate::events;
 
 #[derive(Debug, Clone, Deserialize)]
 pub struct StartReplayRequest {
@@ -79,11 +81,18 @@ struct ForkedRun {
 
 pub struct ReplayEngine<'a> {
     storage: &'a Storage,
+    span_events: Option<broadcast::Sender<events::SpanEvent>>,
 }
 
 impl<'a> ReplayEngine<'a> {
-    pub fn new(storage: &'a Storage) -> Self {
-        Self { storage }
+    pub fn new_with_events(
+        storage: &'a Storage,
+        span_events: broadcast::Sender<events::SpanEvent>,
+    ) -> Self {
+        Self {
+            storage,
+            span_events: Some(span_events),
+        }
     }
 
     pub async fn start(
@@ -341,6 +350,9 @@ impl<'a> ReplayEngine<'a> {
                 metadata: span.metadata,
             };
             self.storage.insert_span(&cloned_span).await?;
+            if let Some(sender) = &self.span_events {
+                events::publish_span_created(sender, &cloned_span);
+            }
         }
 
         let mut artifact_map = HashMap::new();
