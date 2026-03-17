@@ -13,7 +13,7 @@ pub async fn finalize_run(
 ) -> Result<(), AgentScopeError> {
     let ended_at = Utc::now();
 
-    sqlx::query("UPDATE runs SET status = $1, ended_at = $2 WHERE id = $3::uuid")
+    sqlx::query("UPDATE runs SET status = $1, ended_at = $2 WHERE id = $3")
         .bind(status)
         .bind(ended_at)
         .bind(run_id)

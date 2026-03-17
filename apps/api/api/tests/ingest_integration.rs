@@ -40,11 +40,16 @@ async fn ingest_and_query_runs(pool: PgPool) {
         run: Run {
             id: run_id.clone(),
             project_id,
+            organization_id: None,
             workflow_name: "customer_support".to_string(),
             agent_name: "assistant_agent".to_string(),
             status: "running".to_string(),
             started_at: Utc::now(),
             ended_at: None,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_tokens: 0,
+            total_cost_usd: 0.0,
         },
         spans: vec![Span {
             id: span_id,
@@ -61,10 +66,12 @@ async fn ingest_and_query_runs(pool: PgPool) {
             output_tokens: Some(50),
             total_tokens: Some(150),
             estimated_cost: None,
+            context_window: None,
+            context_usage_percent: None,
             metadata: Some(json!({"file_path": "/tmp/demo.txt"})),
         }],
         artifacts: vec![Artifact {
-            id: uuid::Uuid::new_v4().to_string(),
+            id: "artifact_008_prompt".to_string(),
             run_id: run_id.clone(),
             span_id: None,
             kind: "prompt".to_string(),
@@ -106,24 +113,22 @@ async fn ingest_and_query_runs(pool: PgPool) {
     let runs: Vec<Run> = serde_json::from_slice(&body).unwrap();
     assert!(runs.iter().any(|run| run.id == run_id));
 
-    let stored_run =
-        sqlx::query_scalar::<_, String>("SELECT id::text FROM runs WHERE id = $1::uuid")
-            .bind(&run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let stored_run = sqlx::query_scalar::<_, String>("SELECT id::text FROM runs WHERE id = $1")
+        .bind(&run_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(stored_run, run_id);
 
-    let span_count =
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM spans WHERE run_id = $1::uuid")
-            .bind(&run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let span_count = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM spans WHERE run_id = $1")
+        .bind(&run_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
     assert_eq!(span_count, 1);
 
     let stored_metadata: serde_json::Value =
-        sqlx::query_scalar("SELECT metadata FROM spans WHERE run_id = $1::uuid LIMIT 1")
+        sqlx::query_scalar("SELECT metadata FROM spans WHERE run_id = $1 LIMIT 1")
             .bind(&run_id)
             .fetch_one(&pool)
             .await
@@ -133,11 +138,11 @@ async fn ingest_and_query_runs(pool: PgPool) {
     sqlx::query(
         r#"
         INSERT INTO run_insights (id, run_id, insight_type, severity, message, recommendation)
-        VALUES ($1::uuid, $2::uuid, 'prompt_too_large', 'high', 'Prompt is large.', 'Summarize it.')
+        VALUES ($1::uuid, $2, 'prompt_too_large', 'high', 'Prompt is large.', 'Summarize it.')
         "#,
     )
     .bind(uuid::Uuid::new_v4())
-    .bind(uuid::Uuid::parse_str(&run_id).unwrap())
+    .bind(&run_id)
     .execute(&pool)
     .await
     .unwrap();
@@ -145,11 +150,11 @@ async fn ingest_and_query_runs(pool: PgPool) {
     sqlx::query(
         r#"
         INSERT INTO run_root_causes (id, run_id, root_cause_type, confidence, message, evidence, suggested_fix)
-        VALUES ($1::uuid, $2::uuid, 'TOOL_FAILURE', 0.95, 'Tool failed.', '{"span_id":"demo"}'::jsonb, 'Retry the tool.')
+        VALUES ($1::uuid, $2, 'TOOL_FAILURE', 0.95, 'Tool failed.', '{"span_id":"demo"}'::jsonb, 'Retry the tool.')
         "#,
     )
     .bind(uuid::Uuid::new_v4())
-    .bind(uuid::Uuid::parse_str(&run_id).unwrap())
+    .bind(&run_id)
     .execute(&pool)
     .await
     .unwrap();

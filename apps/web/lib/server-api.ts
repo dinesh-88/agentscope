@@ -3,9 +3,13 @@ import { cookies } from "next/headers";
 
 import {
   API_BASE_URL,
-  UI_JWT_COOKIE_NAME,
+  UI_SESSION_COOKIE_NAME,
   type Artifact,
+  type DemoScenario,
+  type MeResponse,
   type Run,
+  type RunAnalysis,
+  type RunComparison,
   type RunInsight,
   type RunMetrics,
   type RunRootCause,
@@ -18,13 +22,13 @@ const api = axios.create({
 });
 
 async function authHeaders(): Promise<Record<string, string>> {
-  const token = (await cookies()).get(UI_JWT_COOKIE_NAME)?.value;
+  const token = (await cookies()).get(UI_SESSION_COOKIE_NAME)?.value;
   if (!token) {
     return {};
   }
 
   return {
-    Authorization: `Bearer ${token}`,
+    Cookie: `${UI_SESSION_COOKIE_NAME}=${token}`,
   };
 }
 
@@ -39,8 +43,55 @@ function isNotFound(error: unknown) {
   return axios.isAxiosError(error) && error.response?.status === 404;
 }
 
+function isServerError(error: unknown) {
+  const status = axios.isAxiosError(error) ? error.response?.status : undefined;
+  return typeof status === "number" && status >= 500;
+}
+
+function logOptionalEndpointFailure(path: string, error: unknown) {
+  if (!axios.isAxiosError(error)) {
+    return;
+  }
+
+  console.warn(`Optional API request failed for ${path} with status ${error.response?.status ?? "unknown"}`);
+}
+
+async function requestOptional<T>(path: string, fallback: T): Promise<T> {
+  try {
+    return await request<T>(path);
+  } catch (error) {
+    if (isNotFound(error) || isServerError(error)) {
+      logOptionalEndpointFailure(path, error);
+      return fallback;
+    }
+
+    throw error;
+  }
+}
+
 export async function getRuns(): Promise<Run[]> {
   return request<Run[]>("/v1/runs");
+}
+
+export type RunSearchFilters = {
+  query?: string;
+  status?: string;
+  workflow_name?: string;
+  agent_name?: string;
+  project_id?: string;
+  limit?: number;
+};
+
+export async function getRunsFiltered(filters: RunSearchFilters = {}): Promise<Run[]> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== null && value !== "") {
+      params.set(key, String(value));
+    }
+  }
+
+  const suffix = params.size > 0 ? `?${params.toString()}` : "";
+  return request<Run[]>(`/v1/runs${suffix}`);
 }
 
 export async function getRun(runId: string): Promise<Run | null> {
@@ -57,41 +108,32 @@ export async function getRun(runId: string): Promise<Run | null> {
 }
 
 export async function getRunSpans(runId: string): Promise<Span[]> {
-  try {
-    return await request<Span[]>(`/v1/runs/${runId}/spans`);
-  } catch (error) {
-    if (isNotFound(error)) {
-      return [];
-    }
-    throw error;
-  }
+  return requestOptional<Span[]>(`/v1/runs/${runId}/spans`, []);
 }
 
 export async function getRunArtifacts(runId: string): Promise<Artifact[]> {
-  try {
-    return await request<Artifact[]>(`/v1/runs/${runId}/artifacts`);
-  } catch (error) {
-    if (isNotFound(error)) {
-      return [];
-    }
-    throw error;
-  }
+  return requestOptional<Artifact[]>(`/v1/runs/${runId}/artifacts`, []);
 }
 
 export async function getRunInsights(runId: string): Promise<RunInsight[]> {
-  try {
-    return await request<RunInsight[]>(`/v1/runs/${runId}/insights`);
-  } catch (error) {
-    if (isNotFound(error)) {
-      return [];
-    }
-    throw error;
-  }
+  return requestOptional<RunInsight[]>(`/v1/runs/${runId}/insights`, []);
 }
 
 export async function getRunRootCause(runId: string): Promise<RunRootCause | null> {
+  return requestOptional<RunRootCause | null>(`/v1/runs/${runId}/root-cause`, null);
+}
+
+export async function getRunMetrics(runId: string): Promise<RunMetrics | null> {
+  return requestOptional<RunMetrics | null>(`/v1/runs/${runId}/metrics`, null);
+}
+
+export async function getRunAnalysis(runId: string): Promise<RunAnalysis | null> {
+  return requestOptional<RunAnalysis | null>(`/v1/runs/${runId}/analysis`, null);
+}
+
+export async function compareRuns(runA: string, runB: string): Promise<RunComparison | null> {
   try {
-    return await request<RunRootCause>(`/v1/runs/${runId}/root-cause`);
+    return await request<RunComparison>(`/v1/runs/${runA}/compare/${runB}`);
   } catch (error) {
     if (isNotFound(error)) {
       return null;
@@ -100,13 +142,17 @@ export async function getRunRootCause(runId: string): Promise<RunRootCause | nul
   }
 }
 
-export async function getRunMetrics(runId: string): Promise<RunMetrics | null> {
+export async function getCurrentUser(): Promise<MeResponse | null> {
   try {
-    return await request<RunMetrics>(`/v1/runs/${runId}/metrics`);
+    return await request<MeResponse>("/v1/auth/me");
   } catch (error) {
-    if (isNotFound(error)) {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
       return null;
     }
     throw error;
   }
+}
+
+export async function getDemoScenarios(): Promise<DemoScenario[]> {
+  return request<DemoScenario[]>("/v1/demo/scenarios");
 }

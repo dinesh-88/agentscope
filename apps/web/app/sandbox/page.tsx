@@ -20,9 +20,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   API_BASE_URL,
-  getClientJwtToken,
   type Run,
   type SandboxStatusResponse,
+  getCurrentUser,
   getRuns,
   getSandboxStatus,
   runSandbox,
@@ -147,6 +147,7 @@ export default function SandboxPage() {
   const [loading, setLoading] = useState({ python: false, real: false, ts: false });
   const [error, setError] = useState<string | null>(null);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [canRunSandbox, setCanRunSandbox] = useState(false);
   const knownRunIds = useRef<Set<string>>(new Set());
 
   const sandboxRuns = useMemo(
@@ -166,10 +167,11 @@ export default function SandboxPage() {
 
     async function refresh() {
       try {
-        const [nextRuns, nextStatus] = await Promise.all([getRuns(), getSandboxStatus()]);
+        const [nextRuns, nextStatus, me] = await Promise.all([getRuns(), getSandboxStatus(), getCurrentUser()]);
         if (!cancelled) {
           setRuns(nextRuns);
           setStatus(nextStatus);
+          setCanRunSandbox(me.user.permissions.includes("sandbox:run"));
         }
       } catch (nextError) {
         if (!cancelled) {
@@ -190,10 +192,7 @@ export default function SandboxPage() {
   }, []);
 
   useEffect(() => {
-    const token = getClientJwtToken();
-    const events = new EventSource(
-      token ? `${API_BASE_URL}/v1/events/stream?access_token=${encodeURIComponent(token)}` : `${API_BASE_URL}/v1/events/stream`,
-    );
+    const events = new EventSource(`${API_BASE_URL}/v1/events/stream`, { withCredentials: true });
 
     events.addEventListener("span_created", (event) => {
       try {
@@ -277,7 +276,7 @@ export default function SandboxPage() {
                 {(["python", "real", "ts"] as SandboxTarget[]).map((target) => {
                   const meta = getTargetDisplay(target);
                   const state = getTargetStatus(target, status, loading[target]);
-                  const canRun = !(loading[target] || status?.[target].status === "running");
+                  const canRun = canRunSandbox && !(loading[target] || status?.[target].status === "running");
 
                   return (
                     <div key={target} className="rounded-lg border border-black/8 bg-white p-5">
@@ -314,7 +313,7 @@ export default function SandboxPage() {
                         size="sm"
                       >
                         {getStatusIcon(state)}
-                        <span>{getStatusText(state)}</span>
+                        <span>{canRunSandbox ? getStatusText(state) : "Not allowed"}</span>
                       </Button>
                     </div>
                   );

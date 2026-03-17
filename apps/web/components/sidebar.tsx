@@ -2,10 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, AlertCircle, FlaskConical, LayoutDashboard, Menu, PlaySquare, Settings, Users, X } from "lucide-react";
-import { useState } from "react";
+import { Activity, AlertCircle, FlaskConical, LayoutDashboard, Menu, PlaySquare, Rocket, Settings, Users, X } from "lucide-react";
+import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
+import { getCurrentUser, logout } from "@/lib/api";
 
 type SidebarProps = {
   activePath?: string;
@@ -16,6 +17,7 @@ const navItems = [
   { href: "/runs", label: "Runs", icon: PlaySquare },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/insights", label: "Insights", icon: AlertCircle },
+  { href: "/demo", label: "Demo", icon: Rocket },
   { href: "/sandbox", label: "Sandbox", icon: FlaskConical },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -23,8 +25,40 @@ const navItems = [
 export function Sidebar({ activePath = "/runs" }: SidebarProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [permissions, setPermissions] = useState<string[] | null>(null);
 
   const currentPath = pathname ?? activePath;
+  const visibleNavItems = navItems.filter((item) => {
+    if (!permissions) return item.href !== "/settings";
+    if (item.href === "/sandbox") return permissions.includes("sandbox:run");
+    if (item.href === "/settings") return permissions.includes("project:manage");
+    return true;
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getCurrentUser()
+      .then((response) => {
+        if (!cancelled) {
+          setPermissions(response.user.permissions);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPermissions([]);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleLogout() {
+    await logout();
+    window.location.href = "/login";
+  }
 
   return (
     <>
@@ -70,7 +104,7 @@ export function Sidebar({ activePath = "/runs" }: SidebarProps) {
           </div>
 
           <nav className="flex-1 space-y-1 px-3 py-4 pt-20 lg:pt-4">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = currentPath === item.href || (item.href === "/dashboard" && currentPath === "/");
 
@@ -91,6 +125,14 @@ export function Sidebar({ activePath = "/runs" }: SidebarProps) {
                 </Link>
               );
             })}
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <X className="size-5" />
+              <span>Logout</span>
+            </button>
           </nav>
         </div>
       </aside>

@@ -33,12 +33,14 @@ impl Storage {
                 output_tokens,
                 total_tokens,
                 estimated_cost,
+                context_window,
+                context_usage_percent,
                 metadata
             )
             VALUES (
-                $1::uuid,
-                $2::uuid,
-                $3::uuid,
+                $1,
+                $2,
+                $3,
                 $4,
                 $5,
                 $6,
@@ -49,20 +51,13 @@ impl Storage {
                 $11,
                 $12,
                 $13,
-                (
-                    SELECT
-                        CASE
-                            WHEN $9 IS NULL OR $10 IS NULL OR ($11 IS NULL AND $12 IS NULL) THEN NULL
-                            ELSE (COALESCE($11, 0)::double precision * mp.input_price)
-                               + (COALESCE($12, 0)::double precision * mp.output_price)
-                        END
-                    FROM model_pricing mp
-                    WHERE mp.provider = $9 AND mp.model = $10
-                ),
+                $14,
+                $15,
+                $16,
                 (
                     CASE
-                        WHEN $14::jsonb = 'null'::jsonb THEN NULL
-                        ELSE $14::jsonb
+                        WHEN $17::jsonb = 'null'::jsonb THEN NULL
+                        ELSE $17::jsonb
                     END
                 )
             )
@@ -80,6 +75,8 @@ impl Storage {
                 output_tokens = EXCLUDED.output_tokens,
                 total_tokens = EXCLUDED.total_tokens,
                 estimated_cost = EXCLUDED.estimated_cost,
+                context_window = EXCLUDED.context_window,
+                context_usage_percent = EXCLUDED.context_usage_percent,
                 metadata = EXCLUDED.metadata
             "#,
         )
@@ -96,6 +93,9 @@ impl Storage {
         .bind(span.input_tokens)
         .bind(span.output_tokens)
         .bind(total_tokens)
+        .bind(span.estimated_cost)
+        .bind(span.context_window)
+        .bind(span.context_usage_percent)
         .bind(&span.metadata)
         .execute(&self.pool)
         .await
@@ -122,9 +122,11 @@ impl Storage {
                    output_tokens,
                    total_tokens,
                    estimated_cost,
+                   context_window,
+                   context_usage_percent,
                    metadata
             FROM spans
-            WHERE run_id = $1::uuid
+            WHERE run_id = $1
             ORDER BY started_at ASC
             "#,
         )
@@ -142,12 +144,13 @@ impl Storage {
         let metrics = sqlx::query_as::<_, RunMetrics>(
             r#"
             SELECT
+                $1::text AS run_id,
                 COALESCE(SUM(input_tokens), 0)::bigint AS input_tokens,
                 COALESCE(SUM(output_tokens), 0)::bigint AS output_tokens,
                 COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
                 COALESCE(SUM(estimated_cost), 0.0)::double precision AS estimated_cost
             FROM spans
-            WHERE run_id = $1::uuid
+            WHERE run_id = $1
             "#,
         )
         .bind(run_id)

@@ -1,7 +1,11 @@
 import { AppShell } from "@/components/app-shell";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { getCurrentUser } from "@/lib/server-api";
 
-export default function SettingsPage() {
+export default async function SettingsPage() {
+  const me = await getCurrentUser();
+  const canManageProject = me?.user.permissions.includes("project:manage") ?? false;
+
   return (
     <AppShell activePath="/settings">
       <section className="p-6 sm:p-8">
@@ -21,11 +25,15 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
               <span>API Auth</span>
-              <span className="font-medium text-gray-900">JWT session cookie</span>
+              <span className="font-medium text-gray-900">HTTP-only session cookie</span>
             </div>
             <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
               <span>Design system</span>
               <span className="font-medium text-gray-900">Figma-aligned</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-gray-50 px-4 py-3">
+              <span>Project management</span>
+              <span className="font-medium text-gray-900">{canManageProject ? "Allowed" : "Read only"}</span>
             </div>
           </CardContent>
         </Card>

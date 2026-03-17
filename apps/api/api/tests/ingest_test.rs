@@ -112,11 +112,11 @@ async fn ingest_over_http_and_query_runs(pool: PgPool) {
     sqlx::query(
         r#"
         INSERT INTO run_insights (id, run_id, insight_type, severity, message, recommendation)
-        VALUES ($1::uuid, $2::uuid, 'duplicate_prompt_lines', 'medium', 'Duplicate lines found.', 'Remove them.')
+        VALUES ($1::uuid, $2, 'duplicate_prompt_lines', 'medium', 'Duplicate lines found.', 'Remove them.')
         "#,
     )
     .bind(uuid::Uuid::new_v4())
-    .bind(uuid::Uuid::parse_str(run_id).unwrap())
+    .bind(run_id)
     .execute(&pool)
     .await
     .unwrap();
@@ -124,11 +124,11 @@ async fn ingest_over_http_and_query_runs(pool: PgPool) {
     sqlx::query(
         r#"
         INSERT INTO run_root_causes (id, run_id, root_cause_type, confidence, message, evidence, suggested_fix)
-        VALUES ($1::uuid, $2::uuid, 'PROVIDER_API_ERROR', 0.91, 'Provider failed.', '{"http_status":503}'::jsonb, 'Retry with backoff.')
+        VALUES ($1::uuid, $2, 'PROVIDER_API_ERROR', 0.91, 'Provider failed.', '{"http_status":503}'::jsonb, 'Retry with backoff.')
         "#,
     )
     .bind(uuid::Uuid::new_v4())
-    .bind(uuid::Uuid::parse_str(run_id).unwrap())
+    .bind(run_id)
     .execute(&pool)
     .await
     .unwrap();

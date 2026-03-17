@@ -1,21 +1,27 @@
 import axios from "axios";
 
 export const API_BASE_URL = "http://localhost:8080";
-export const UI_JWT_COOKIE_NAME = "agentscope_jwt";
+export const UI_SESSION_COOKIE_NAME = "agentscope_session";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   timeout: 10_000,
+  withCredentials: true,
 });
 
 export type Run = {
   id: string;
   project_id: string;
+  organization_id?: string | null;
   workflow_name: string;
   agent_name: string;
   status: string;
   started_at: string;
   ended_at: string | null;
+  total_input_tokens?: number;
+  total_output_tokens?: number;
+  total_tokens?: number;
+  total_cost_usd?: number;
 };
 
 export type Span = {
@@ -33,6 +39,8 @@ export type Span = {
   output_tokens?: number | null;
   total_tokens?: number | null;
   estimated_cost?: number | null;
+  context_window?: number | null;
+  context_usage_percent?: number | null;
   metadata?: Record<string, unknown> | null;
 };
 
@@ -66,10 +74,54 @@ export type RunRootCause = {
 };
 
 export type RunMetrics = {
+  run_id: string;
   input_tokens: number;
   output_tokens: number;
   total_tokens: number;
   estimated_cost: number;
+};
+
+export type RunAnalysis = {
+  id: string;
+  run_id: string;
+  project_id: string;
+  failure_types: string[];
+  root_cause_category: string;
+  summary: string;
+  evidence: Record<string, unknown>;
+  suggested_fixes: unknown[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type ArtifactDiff = {
+  label: string;
+  run_a: string[];
+  run_b: string[];
+};
+
+export type RunComparison = {
+  run_a: Run;
+  run_b: Run;
+  summary: {
+    status_changed: boolean;
+    token_delta: number;
+    cost_delta: number;
+    span_count_delta: number;
+  };
+  diffs: {
+    prompts: ArtifactDiff[];
+    responses: ArtifactDiff[];
+    models: string[];
+    artifacts: ArtifactDiff[];
+    metrics: {
+      run_a: RunMetrics;
+      run_b: RunMetrics;
+      token_delta: number;
+      cost_delta: number;
+    };
+    spans: string[];
+  };
 };
 
 export type SandboxTarget = "python" | "real" | "ts";
@@ -102,7 +154,9 @@ export type LoginResponse = {
     id: string;
     email: string;
     display_name: string | null;
+    avatar_url?: string | null;
   };
+  onboarding: OnboardingState;
 };
 
 export type RegisterRequest = {
@@ -125,66 +179,52 @@ export type RegisterResponse = LoginResponse & {
   api_key: string;
 };
 
-function parseCookieValue(source: string, name: string): string | null {
-  const match = source.match(new RegExp(`(?:^|; )${name}=([^;]+)`));
-  return match ? decodeURIComponent(match[1]) : null;
-}
+export type Membership = {
+  id: string;
+  organization_id: string;
+  organization_name: string;
+  role: string;
+  created_at: string;
+};
 
-async function getJwtToken(): Promise<string | null> {
-  if (typeof window === "undefined") {
-    return process.env.AGENTSCOPE_UI_JWT ?? null;
-  }
+export type OnboardingState = {
+  has_organization: boolean;
+  has_project: boolean;
+  has_first_run: boolean;
+  default_project_id: string | null;
+  generated_api_key: string | null;
+};
 
-  return parseCookieValue(document.cookie, UI_JWT_COOKIE_NAME);
-}
-
-export function getClientJwtToken(): string | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  return parseCookieValue(document.cookie, UI_JWT_COOKIE_NAME);
-}
-
-export function storeUiJwt(token: string, expiresAt?: string) {
-  if (typeof document === "undefined") {
-    return;
-  }
-
-  const expires = expiresAt ? `; Expires=${new Date(expiresAt).toUTCString()}` : "";
-  document.cookie = `${UI_JWT_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; SameSite=Lax${expires}`;
-}
-
-export function clearUiJwt() {
-  if (typeof document === "undefined") {
-    return;
-  }
-
-  document.cookie = `${UI_JWT_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax`;
-}
-
-async function authHeaders(): Promise<Record<string, string>> {
-  const token = await getJwtToken();
-  if (!token) {
-    return {};
-  }
-
-  return {
-    Authorization: `Bearer ${token}`,
+export type MeResponse = {
+  user: {
+    id: string;
+    email: string;
+    display_name: string | null;
+    avatar_url: string | null;
+    memberships: Membership[];
+    permissions: string[];
+    is_admin: boolean;
   };
-}
+  onboarding: OnboardingState;
+};
+
+export type DemoScenario = {
+  id: string;
+  name: string;
+};
+
+export type DemoRunResponse = {
+  status: string;
+  run_id: string;
+};
 
 async function request<T>(path: string): Promise<T> {
-  const response = await api.get<T>(path, {
-    headers: await authHeaders(),
-  });
+  const response = await api.get<T>(path);
   return response.data;
 }
 
 async function postRequest<T>(path: string): Promise<T> {
-  const response = await api.post<T>(path, undefined, {
-    headers: await authHeaders(),
-  });
+  const response = await api.post<T>(path);
   return response.data;
 }
 
@@ -264,6 +304,21 @@ export async function getRunMetrics(runId: string): Promise<RunMetrics | null> {
   }
 }
 
+export async function getRunAnalysis(runId: string): Promise<RunAnalysis | null> {
+  try {
+    return await request<RunAnalysis>(`/v1/runs/${runId}/analysis`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function compareRuns(runA: string, runB: string): Promise<RunComparison> {
+  return request<RunComparison>(`/v1/runs/${runA}/compare/${runB}`);
+}
+
 export async function runSandbox(target: SandboxTarget): Promise<SandboxStartResponse> {
   return postRequest<SandboxStartResponse>(`/v1/sandbox/${target}/run`);
 }
@@ -282,5 +337,29 @@ export async function login(email: string, password: string): Promise<LoginRespo
 
 export async function register(payload: RegisterRequest): Promise<RegisterResponse> {
   const response = await api.post<RegisterResponse>("/v1/auth/register", payload);
+  return response.data;
+}
+
+export async function logout(): Promise<void> {
+  await api.post("/v1/auth/logout");
+}
+
+export async function getCurrentUser(): Promise<MeResponse> {
+  const response = await api.get<MeResponse>("/v1/auth/me");
+  return response.data;
+}
+
+export async function getOnboardingState(): Promise<OnboardingState> {
+  return request<OnboardingState>("/v1/onboarding/state");
+}
+
+export async function getDemoScenarios(): Promise<DemoScenario[]> {
+  return request<DemoScenario[]>("/v1/demo/scenarios");
+}
+
+export async function runDemoScenario(scenario: string): Promise<DemoRunResponse> {
+  const response = await api.post<DemoRunResponse>("/v1/demo/run", {
+    scenario,
+  });
   return response.data;
 }

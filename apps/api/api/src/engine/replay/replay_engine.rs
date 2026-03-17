@@ -310,11 +310,16 @@ impl<'a> ReplayEngine<'a> {
         let derived_run = Run {
             id: derived_run_id.clone(),
             project_id: original_run.project_id,
+            organization_id: original_run.organization_id,
             workflow_name: format!("{} [replay]", original_run.workflow_name),
             agent_name: original_run.agent_name,
             status: "replay_forked".to_string(),
             started_at: Utc::now(),
             ended_at: None,
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_tokens: 0,
+            total_cost_usd: 0.0,
         };
         self.storage.insert_run(&derived_run).await?;
 
@@ -347,6 +352,8 @@ impl<'a> ReplayEngine<'a> {
                 output_tokens: span.output_tokens,
                 total_tokens: span.total_tokens,
                 estimated_cost: span.estimated_cost,
+                context_window: span.context_window,
+                context_usage_percent: span.context_usage_percent,
                 metadata: span.metadata,
             };
             self.storage.insert_span(&cloned_span).await?;

@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo } from "react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { ChevronRight, Network, Workflow } from "lucide-react";
+import { ChevronRight, GitBranch, Timer } from "lucide-react";
 
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type Span } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useRunDetailStore } from "@/lib/run-detail-store";
@@ -49,71 +49,53 @@ export function SpanTree({ spans }: SpanTreeProps) {
     }
   }, [orderedSpans, selectedSpanId, setSelectedSpanId]);
 
-  const chartData = orderedSpans
-    .filter((span) => (span.input_tokens ?? 0) > 0 || (span.output_tokens ?? 0) > 0)
-    .map((span) => ({
-      name: span.name,
-      input: span.input_tokens ?? 0,
-      output: span.output_tokens ?? 0,
-    }));
-
   return (
-    <div className="space-y-5">
-      <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-        <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-900">
-          <Workflow className="size-4 text-cyan-600" />
-          Span tree
-        </div>
-        <div className="space-y-2">
-          {orderedSpans.map((span) => (
+    <Card className="border border-black/8 shadow-none">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <GitBranch className="size-4 text-blue-600" />
+          Span Timeline
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {orderedSpans.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-black/10 bg-neutral-50 p-6 text-sm text-neutral-500">
+            No spans were captured for this run.
+          </div>
+        ) : (
+          orderedSpans.map((span) => (
             <button
               key={span.id}
               type="button"
               onClick={() => setSelectedSpanId(span.id)}
               className={cn(
-                "flex w-full items-center justify-between rounded-2xl border px-4 py-3 text-left transition",
+                "flex w-full items-center justify-between rounded-xl border px-4 py-3 text-left transition",
                 selectedSpanId === span.id
-                  ? "border-cyan-300 bg-cyan-50"
-                  : "border-slate-200/80 bg-slate-50/70 hover:border-slate-300 hover:bg-white",
+                  ? "border-blue-400 bg-blue-50"
+                  : "border-black/8 bg-neutral-50 hover:border-neutral-300 hover:bg-white",
               )}
               style={{ paddingLeft: `${span.level * 18 + 16}px` }}
             >
               <div className="flex items-center gap-3">
-                <ChevronRight className={cn("size-4 text-slate-400", span.level === 0 && "text-cyan-600")} />
+                <ChevronRight className={cn("size-4 text-neutral-400", span.level === 0 && "text-blue-600")} />
                 <div>
-                  <div className="font-medium text-slate-950">{span.name}</div>
-                  <div className="text-xs text-slate-500">
+                  <div className="font-medium text-neutral-950">{span.name}</div>
+                  <div className="text-xs text-neutral-500">
                     {span.span_type} · {span.provider ?? "n/a"} · {span.model ?? "unresolved"}
                   </div>
                 </div>
               </div>
-              <div className="text-right text-xs text-slate-500">
+              <div className="text-right text-xs text-neutral-500">
                 <div>{span.status}</div>
-                <div>{span.total_tokens ?? 0} tokens</div>
+                <div className="inline-flex items-center gap-1">
+                  <Timer className="size-3" />
+                  {span.total_tokens ?? 0} tokens
+                </div>
               </div>
             </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="rounded-3xl border border-slate-200/80 bg-white p-5 shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
-        <div className="mb-4 flex items-center gap-2 text-sm font-medium text-slate-900">
-          <Network className="size-4 text-amber-600" />
-          Token distribution
-        </div>
-        <div className="h-64">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={chartData}>
-              <CartesianGrid strokeDasharray="4 4" stroke="#dbe4ee" />
-              <XAxis dataKey="name" tickLine={false} axisLine={false} />
-              <YAxis tickLine={false} axisLine={false} />
-              <Tooltip />
-              <Bar dataKey="input" fill="#0f766e" radius={[6, 6, 0, 0]} />
-              <Bar dataKey="output" fill="#f59e0b" radius={[6, 6, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-    </div>
+          ))
+        )}
+      </CardContent>
+    </Card>
   );
 }

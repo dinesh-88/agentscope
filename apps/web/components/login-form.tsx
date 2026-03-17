@@ -1,20 +1,22 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import { Github } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { login, register, storeUiJwt } from "@/lib/api";
+import { API_BASE_URL, login, register } from "@/lib/api";
 
 type LoginFormProps = {
   nextPath?: string;
+  initialMode?: "login" | "register";
 };
 
-export function LoginForm({ nextPath }: LoginFormProps) {
+export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
   const router = useRouter();
-  const [mode, setMode] = useState<"login" | "register">("login");
+  const [mode, setMode] = useState<"login" | "register">(initialMode);
   const [email, setEmail] = useState("owner@demo.agentscope.local");
   const [password, setPassword] = useState("demo-password");
   const [displayName, setDisplayName] = useState("Demo Owner");
@@ -22,6 +24,11 @@ export function LoginForm({ nextPath }: LoginFormProps) {
   const [projectName, setProjectName] = useState("Primary Project");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    setIsHydrated(true);
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,8 +46,11 @@ export function LoginForm({ nextPath }: LoginFormProps) {
               organization_name: organizationName,
               project_name: projectName,
             });
-      storeUiJwt(response.token, response.expires_at);
-      router.replace(nextPath || "/dashboard");
+      const destination =
+        !response.onboarding.has_first_run || !response.onboarding.has_project
+          ? "/onboarding"
+          : nextPath || "/dashboard";
+      router.replace(destination);
       router.refresh();
     } catch (error) {
       if (axios.isAxiosError(error) && typeof error.response?.data === "string") {
@@ -97,10 +107,22 @@ export function LoginForm({ nextPath }: LoginFormProps) {
               <CardDescription className="text-sm text-slate-600">
                 {mode === "login"
                   ? "Use the seeded demo owner account or any provisioned UI user."
-                  : "Registration creates a user, an owner membership, a default project, and an SDK API key."}
+                  : "Registration creates a user session and a default workspace for onboarding."}
               </CardDescription>
             </CardHeader>
             <CardContent className="px-8 py-8">
+              {!isHydrated ? (
+                <div className="space-y-5" suppressHydrationWarning>
+                  <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+                    <div className="h-10 rounded-xl bg-white shadow-sm" />
+                    <div className="h-10 rounded-xl bg-transparent" />
+                  </div>
+                  <div className="h-20 rounded-2xl bg-slate-100" />
+                  <div className="h-20 rounded-2xl bg-slate-100" />
+                  <div className="h-11 rounded-xl bg-slate-950/10" />
+                </div>
+              ) : (
+                <>
               <div className="mb-5 grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
                 <button
                   className={`rounded-xl px-3 py-2 text-sm font-medium transition ${mode === "login" ? "bg-white text-slate-950 shadow-sm" : "text-slate-600"}`}
@@ -122,6 +144,22 @@ export function LoginForm({ nextPath }: LoginFormProps) {
                 >
                   Register
                 </button>
+              </div>
+
+              <div className="mb-5 grid gap-3 sm:grid-cols-2">
+                <a
+                  className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 transition hover:bg-slate-50"
+                  href={`${API_BASE_URL}/v1/auth/oauth/google`}
+                >
+                  Continue with Google
+                </a>
+                <a
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 transition hover:bg-slate-50"
+                  href={`${API_BASE_URL}/v1/auth/oauth/github`}
+                >
+                  <Github className="size-4" />
+                  Continue with GitHub
+                </a>
               </div>
 
               <form className="space-y-5" onSubmit={handleSubmit}>
@@ -209,6 +247,8 @@ export function LoginForm({ nextPath }: LoginFormProps) {
                 <p className="mt-1">Email: owner@demo.agentscope.local</p>
                 <p>Password: demo-password</p>
               </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

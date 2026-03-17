@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+agentscope-api = { path = "../api" }
 agentscope-common = { path = "../common" }
 agentscope-storage = { path = "../storage" }
 agentscope-trace = { path = "../trace" }

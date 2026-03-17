@@ -9,6 +9,8 @@ pub fn jwt_settings() -> JwtSettings {
     JwtSettings {
         secret: TEST_JWT_SECRET.to_string(),
         expiry_seconds: 3_600,
+        cookie_name: "agentscope_session".to_string(),
+        secure_cookies: false,
     }
 }
 
@@ -67,6 +69,15 @@ pub async fn seed_project_api_key(pool: &PgPool, project_id: &str, raw_key: &str
         INSERT INTO project_api_keys (project_id, label, key_hash)
         VALUES ($1::uuid, 'test-key', encode(digest($2, 'sha256'), 'hex'))
         "#,
+    )
+    .bind(project_id)
+    .bind(raw_key)
+    .execute(pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        "UPDATE projects SET api_key_hash = encode(digest($2, 'sha256'), 'hex') WHERE id = $1::uuid",
     )
     .bind(project_id)
     .bind(raw_key)

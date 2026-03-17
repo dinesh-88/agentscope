@@ -4,6 +4,8 @@ mod rca_analyzer;
 
 use agentscope_common::config::{init_tracing, Config};
 use agentscope_storage::Storage;
+use tokio::time::{self, Duration};
+use tracing::info;
 
 #[tokio::main]
 async fn main() {
@@ -25,15 +27,53 @@ async fn main() {
             .expect("failed to finalize run");
     }
 
-    if std::env::var("ANALYZE_COMPLETED_RUNS").ok().as_deref() == Some("true") {
-        prompt_analyzer::analyze_completed_runs(&storage)
+    let analyze_completed_runs =
+        std::env::var("ANALYZE_COMPLETED_RUNS").ok().as_deref() == Some("true");
+    let analyze_root_causes = std::env::var("ANALYZE_ROOT_CAUSES").ok().as_deref() == Some("true");
+    let analysis_interval_seconds = std::env::var("ANALYSIS_POLL_INTERVAL_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0);
+
+    if analyze_completed_runs || analyze_root_causes {
+        run_analysis_cycle(&storage, analyze_completed_runs, analyze_root_causes)
             .await
-            .expect("failed to analyze completed runs");
+            .expect("failed to run analysis cycle");
     }
 
-    if std::env::var("ANALYZE_ROOT_CAUSES").ok().as_deref() == Some("true") {
-        rca_analyzer::analyze_completed_runs(&storage)
-            .await
-            .expect("failed to analyze root causes");
+    if let Some(interval_seconds) = analysis_interval_seconds {
+        if !(analyze_completed_runs || analyze_root_causes) {
+            return;
+        }
+
+        info!(
+            interval_seconds,
+            analyze_completed_runs, analyze_root_causes, "starting recurring analysis worker"
+        );
+
+        let mut ticker = time::interval(Duration::from_secs(interval_seconds));
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            run_analysis_cycle(&storage, analyze_completed_runs, analyze_root_causes)
+                .await
+                .expect("failed to run recurring analysis cycle");
+        }
     }
+}
+
+async fn run_analysis_cycle(
+    storage: &Storage,
+    analyze_completed_runs: bool,
+    analyze_root_causes: bool,
+) -> Result<(), agentscope_common::errors::AgentScopeError> {
+    if analyze_completed_runs {
+        prompt_analyzer::analyze_completed_runs(storage).await?;
+    }
+
+    if analyze_root_causes {
+        rca_analyzer::analyze_completed_runs(storage).await?;
+    }
+
+    Ok(())
 }

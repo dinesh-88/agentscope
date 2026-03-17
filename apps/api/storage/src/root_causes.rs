@@ -14,7 +14,7 @@ impl Storage {
             AgentScopeError::Storage(format!("failed to start root-cause transaction: {e}"))
         })?;
 
-        sqlx::query("DELETE FROM run_root_causes WHERE run_id = $1::uuid")
+        sqlx::query("DELETE FROM run_root_causes WHERE run_id = $1")
             .bind(run_id)
             .execute(&mut *tx)
             .await
@@ -30,7 +30,7 @@ impl Storage {
                 INSERT INTO run_root_causes
                     (id, run_id, root_cause_type, confidence, message, evidence, suggested_fix, created_at)
                 VALUES
-                    ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8)
+                    ($1::uuid, $2, $3, $4, $5, $6, $7, $8)
                 "#,
             )
             .bind(&root_cause.id)
@@ -77,7 +77,7 @@ impl Storage {
                 suggested_fix,
                 created_at
             FROM run_root_causes
-            WHERE run_id = $1::uuid
+            WHERE run_id = $1
             ORDER BY confidence DESC, created_at ASC
             "#,
         )

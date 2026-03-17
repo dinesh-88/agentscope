@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { Search } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +10,12 @@ import { type Run } from "@/lib/api";
 
 type RunsScreenProps = {
   runs: Run[];
+  initialFilters?: {
+    query?: string;
+    status?: string;
+    workflow_name?: string;
+    agent_name?: string;
+  };
 };
 
 function formatDate(value: string | null) {
@@ -36,22 +43,22 @@ function getStatusColor(status: string) {
   }
 }
 
-export function RunsScreen({ runs }: RunsScreenProps) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+export function RunsScreen({ runs, initialFilters }: RunsScreenProps) {
+  const router = useRouter();
+  const [isPending, startTransition] = useTransition();
+  const [searchTerm, setSearchTerm] = useState(initialFilters?.query ?? "");
+  const [statusFilter, setStatusFilter] = useState(initialFilters?.status ?? "all");
+  const [runA, setRunA] = useState("");
+  const [runB, setRunB] = useState("");
 
-  const filteredRuns = useMemo(
-    () =>
-      runs.filter((run) => {
-        const query = searchTerm.toLowerCase();
-        const matchesSearch =
-          run.workflow_name.toLowerCase().includes(query) || run.agent_name.toLowerCase().includes(query);
-        const matchesStatus = statusFilter === "all" || run.status === statusFilter;
-
-        return matchesSearch && matchesStatus;
-      }),
-    [runs, searchTerm, statusFilter],
-  );
+  function applyFilters(nextQuery: string, nextStatus: string) {
+    const params = new URLSearchParams();
+    if (nextQuery) params.set("query", nextQuery);
+    if (nextStatus && nextStatus !== "all") params.set("status", nextStatus);
+    startTransition(() => {
+      router.replace(`/runs${params.size > 0 ? `?${params.toString()}` : ""}`);
+    });
+  }
 
   return (
     <section className="p-6 sm:p-8">
@@ -62,30 +69,86 @@ export function RunsScreen({ runs }: RunsScreenProps) {
 
       <Card className="border border-black/8 shadow-none ring-0">
         <CardHeader>
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <CardTitle>All Runs ({filteredRuns.length})</CardTitle>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <div className="relative w-full sm:w-72">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
-                <input
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="Search runs..."
-                  className="h-10 w-full rounded-lg border border-black/8 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-500"
-                />
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <CardTitle>All Runs ({runs.length})</CardTitle>
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <div className="relative w-full sm:w-72">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" />
+                  <input
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        applyFilters(searchTerm, statusFilter);
+                      }
+                    }}
+                    placeholder="Search runs..."
+                    className="h-10 w-full rounded-lg border border-black/8 bg-white pl-9 pr-3 text-sm outline-none transition focus:border-blue-500"
+                  />
+                </div>
+                <select
+                  value={statusFilter}
+                  onChange={(event) => {
+                    const nextStatus = event.target.value;
+                    setStatusFilter(nextStatus);
+                    applyFilters(searchTerm, nextStatus);
+                  }}
+                  className="h-10 rounded-lg border border-black/8 bg-white px-3 text-sm outline-none transition focus:border-blue-500"
+                >
+                  <option value="all">All Status</option>
+                  <option value="completed">Completed</option>
+                  <option value="success">Success</option>
+                  <option value="running">Running</option>
+                  <option value="failed">Failed</option>
+                  <option value="error">Error</option>
+                </select>
+                <button
+                  className="h-10 rounded-lg bg-neutral-950 px-4 text-sm font-medium text-white disabled:bg-neutral-300"
+                  disabled={isPending}
+                  onClick={() => applyFilters(searchTerm, statusFilter)}
+                  type="button"
+                >
+                  {isPending ? "Filtering..." : "Apply"}
+                </button>
               </div>
+            </div>
+            <div className="grid gap-3 rounded-xl border border-black/8 bg-neutral-50 p-4 lg:grid-cols-[1fr_1fr_auto]">
               <select
-                value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value)}
+                value={runA}
+                onChange={(event) => setRunA(event.target.value)}
                 className="h-10 rounded-lg border border-black/8 bg-white px-3 text-sm outline-none transition focus:border-blue-500"
               >
-                <option value="all">All Status</option>
-                <option value="completed">Completed</option>
-                <option value="success">Success</option>
-                <option value="running">Running</option>
-                <option value="failed">Failed</option>
-                <option value="error">Error</option>
+                <option value="">Select run A</option>
+                {runs.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {run.workflow_name} · {run.id}
+                  </option>
+                ))}
               </select>
+              <select
+                value={runB}
+                onChange={(event) => setRunB(event.target.value)}
+                className="h-10 rounded-lg border border-black/8 bg-white px-3 text-sm outline-none transition focus:border-blue-500"
+              >
+                <option value="">Select run B</option>
+                {runs.map((run) => (
+                  <option key={run.id} value={run.id}>
+                    {run.workflow_name} · {run.id}
+                  </option>
+                ))}
+              </select>
+              <Link
+                href={runA && runB ? `/runs/compare/${runA}/${runB}` : "#"}
+                aria-disabled={!runA || !runB || runA === runB}
+                className={`inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-medium ${
+                  !runA || !runB || runA === runB
+                    ? "pointer-events-none bg-neutral-200 text-neutral-500"
+                    : "bg-neutral-950 text-white hover:bg-neutral-800"
+                }`}
+              >
+                Compare
+              </Link>
             </div>
           </div>
         </CardHeader>
@@ -103,14 +166,14 @@ export function RunsScreen({ runs }: RunsScreenProps) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
-                {filteredRuns.length === 0 ? (
+                {runs.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-8 text-center text-sm text-gray-500">
                       No runs found
                     </td>
                   </tr>
                 ) : (
-                  filteredRuns.map((run) => (
+                  runs.map((run) => (
                     <tr key={run.id} className="hover:bg-gray-50">
                       <td className="py-4">
                         <div className="font-medium text-gray-900">{run.workflow_name}</div>

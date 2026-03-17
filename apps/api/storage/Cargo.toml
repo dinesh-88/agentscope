@@ -6,6 +6,9 @@ edition = "2021"
 [dependencies]
 agentscope-common = { path = "../common" }
 agentscope-trace = { path = "../trace" }
+argon2 = "0.5"
+chrono = { workspace = true }
+rand_core = { version = "0.6", features = ["getrandom"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sqlx = { workspace = true }

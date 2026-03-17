@@ -1,0 +1,61 @@
+{
+  "run": {
+    "id": "33333333-3333-3333-3333-333333333331",
+    "project_id": "00000000-0000-0000-0000-000000000000",
+    "organization_id": "00000000-0000-0000-0000-000000000000",
+    "workflow_name": "sandbox_broken_agent",
+    "agent_name": "Broken Agent Demo",
+    "status": "failed",
+    "started_at": "2026-03-11T12:00:00Z",
+    "ended_at": "2026-03-11T12:00:06Z",
+    "total_input_tokens": 120,
+    "total_output_tokens": 20,
+    "total_tokens": 140,
+    "total_cost_usd": 0.0009
+  },
+  "spans": [
+    {
+      "id": "33333333-3333-3333-3333-333333333332",
+      "run_id": "33333333-3333-3333-3333-333333333331",
+      "parent_span_id": null,
+      "span_type": "workflow",
+      "name": "sandbox_broken_agent",
+      "status": "failed",
+      "started_at": "2026-03-11T12:00:00Z",
+      "ended_at": "2026-03-11T12:00:06Z",
+      "provider": "demo",
+      "model": "gpt-4o-mini",
+      "input_tokens": 120,
+      "output_tokens": 20,
+      "total_tokens": 140,
+      "estimated_cost": 0.0009,
+      "context_window": 128000,
+      "context_usage_percent": 0.11,
+      "metadata": { "demo": true, "error": "Tool timeout" }
+    }
+  ],
+  "artifacts": [],
+  "root_causes": [
+    {
+      "id": "33333333-3333-3333-3333-333333333333",
+      "run_id": "33333333-3333-3333-3333-333333333331",
+      "root_cause_type": "tool_timeout",
+      "confidence": 0.91,
+      "message": "The agent waited too long for a dependent tool call.",
+      "evidence": { "tool": "web_search", "timeout_ms": 10000 },
+      "suggested_fix": "Reduce tool latency or add retry and timeout handling.",
+      "created_at": "2026-03-11T12:00:07Z"
+    }
+  ],
+  "insights": [
+    {
+      "id": "33333333-3333-3333-3333-333333333334",
+      "run_id": "33333333-3333-3333-3333-333333333331",
+      "insight_type": "Failure pattern",
+      "severity": "high",
+      "message": "This run is intended to exercise RCA and alert surfaces.",
+      "recommendation": "Use it to validate failure handling and comparison baselines.",
+      "created_at": "2026-03-11T12:00:08Z"
+    }
+  ]
+}

@@ -41,11 +41,16 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
         run: Run {
             id: run_id.clone(),
             project_id,
+            organization_id: None,
             workflow_name: "time_travel_agent".to_string(),
             agent_name: "debugger".to_string(),
             status: "completed".to_string(),
             started_at: Utc::now(),
             ended_at: Some(Utc::now()),
+            total_input_tokens: 0,
+            total_output_tokens: 0,
+            total_tokens: 0,
+            total_cost_usd: 0.0,
         },
         spans: vec![
             Span {
@@ -63,6 +68,8 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
                 output_tokens: Some(10),
                 total_tokens: Some(35),
                 estimated_cost: None,
+                context_window: None,
+                context_usage_percent: None,
                 metadata: None,
             },
             Span {
@@ -80,6 +87,8 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
                 output_tokens: None,
                 total_tokens: None,
                 estimated_cost: None,
+                context_window: None,
+                context_usage_percent: None,
                 metadata: None,
             },
         ],
@@ -210,7 +219,7 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
     assert_eq!(replay_rows, 1);
 
     let forked_prompt: Value = sqlx::query_scalar(
-        "SELECT payload FROM artifacts WHERE run_id = $1::uuid AND kind = 'llm.prompt' LIMIT 1",
+        "SELECT payload FROM artifacts WHERE run_id = $1 AND kind = 'llm.prompt' LIMIT 1",
     )
     .bind(&forked_run_id)
     .fetch_one(&pool)
@@ -234,7 +243,7 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
     assert_eq!(resume_body["replay"]["current_step"], 2);
     assert_eq!(resume_body["next_step"], Value::Null);
 
-    let forked_status: String = sqlx::query_scalar("SELECT status FROM runs WHERE id = $1::uuid")
+    let forked_status: String = sqlx::query_scalar("SELECT status FROM runs WHERE id = $1")
         .bind(&forked_run_id)
         .fetch_one(&pool)
         .await
