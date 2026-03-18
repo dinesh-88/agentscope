@@ -19,9 +19,9 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState(mode === "login" ? "owner@demo.agentscope.local" : "");
   const [password, setPassword] = useState(mode === "login" ? "demo-password" : "");
-  const [displayName, setDisplayName] = useState("Demo Owner");
-  const [organizationName, setOrganizationName] = useState("Acme Agents");
-  const [projectName, setProjectName] = useState("Primary Project");
+  const [displayName, setDisplayName] = useState("");
+  const [organizationName, setOrganizationName] = useState("");
+  const [projectName, setProjectName] = useState("");
   const [agreeToTerms, setAgreeToTerms] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -45,11 +45,11 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
         mode === "login"
           ? await login(email, password)
           : await register({
-              email,
+              email: email.trim(),
               password,
-              display_name: displayName,
-              organization_name: organizationName,
-              project_name: projectName,
+              display_name: displayName.trim(),
+              organization_name: organizationName.trim(),
+              project_name: projectName.trim(),
             });
 
       persistSessionToken(response.token, response.expires_at);
@@ -366,9 +366,40 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
               <p className="mt-1 text-xs text-gray-500">Must be at least 8 characters</p>
             </div>
 
-            <div className="hidden">
-              <input value={organizationName} onChange={(event) => setOrganizationName(event.target.value)} required type="text" />
-              <input value={projectName} onChange={(event) => setProjectName(event.target.value)} type="text" />
+            <div>
+              <label htmlFor="organization-name-signup" className="mb-2 block text-sm font-medium">
+                Organization Name
+              </label>
+              <div className="relative">
+                <User className="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                <input
+                  id="organization-name-signup"
+                  type="text"
+                  value={organizationName}
+                  onChange={(event) => setOrganizationName(event.target.value)}
+                  placeholder="Acme Agents"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  required
+                />
+              </div>
+            </div>
+
+            <div>
+              <label htmlFor="project-name-signup" className="mb-2 block text-sm font-medium">
+                Project Name
+              </label>
+              <div className="relative">
+                <Activity className="absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2 text-gray-400" />
+                <input
+                  id="project-name-signup"
+                  type="text"
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                  placeholder="Primary Project"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  required
+                />
+              </div>
             </div>
 
             <label className="group flex cursor-pointer items-start gap-3">

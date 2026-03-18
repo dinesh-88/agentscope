@@ -177,7 +177,7 @@ export type RegisterRequest = {
   password: string;
   display_name?: string;
   organization_name: string;
-  project_name?: string;
+  project_name: string;
 };
 
 export type RegisterResponse = LoginResponse & {

@@ -215,10 +215,14 @@ impl Storage {
         display_name: Option<&str>,
         avatar_url: Option<&str>,
     ) -> Result<AuthUser, AgentScopeError> {
+        // Keep a non-null legacy password hash for databases that still enforce
+        // users.password_hash NOT NULL, while modern auth uses user_passwords.
+        let legacy_password_hash = hash_password(&Uuid::new_v4().to_string())?;
+
         let user = sqlx::query_as::<_, AuthUser>(
             r#"
-            INSERT INTO users (email, name, display_name, avatar_url, updated_at)
-            VALUES ($1, $2, $2, $3, now())
+            INSERT INTO users (email, password_hash, name, display_name, avatar_url, updated_at)
+            VALUES ($1, $2, $3, $3, $4, now())
             RETURNING id::text AS id,
                       email,
                       COALESCE(name, display_name) AS display_name,
@@ -226,6 +230,7 @@ impl Storage {
             "#,
         )
         .bind(email)
+        .bind(&legacy_password_hash)
         .bind(display_name)
         .bind(avatar_url)
         .fetch_one(&self.pool)

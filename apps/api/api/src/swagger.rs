@@ -152,12 +152,13 @@ fn spec() -> Value {
           },
           "RegisterRequest": {
             "type": "object",
+            "required": ["email", "password", "organization_name", "project_name"],
             "properties": {
               "email": { "type": "string" },
               "password": { "type": "string" },
               "display_name": { "type": ["string", "null"] },
               "organization_name": { "type": "string" },
-              "project_name": { "type": ["string", "null"] }
+              "project_name": { "type": "string" }
             }
           }
         }

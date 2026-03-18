@@ -66,8 +66,8 @@ pub struct RegisterRequest {
     pub email: String,
     pub password: String,
     pub display_name: Option<String>,
-    pub organization_name: Option<String>,
-    pub project_name: Option<String>,
+    pub organization_name: String,
+    pub project_name: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -172,22 +172,16 @@ pub async fn register(
         .as_deref()
         .map(str::trim)
         .filter(|value| !value.is_empty());
-    let organization_name = payload
-        .organization_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("My Organization");
-    let project_name = payload
-        .project_name
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .unwrap_or("Default Project");
+    let organization_name = payload.organization_name.trim();
+    let project_name = payload.project_name.trim();
 
-    if email.is_empty() || password.is_empty() {
+    if email.is_empty()
+        || password.is_empty()
+        || organization_name.is_empty()
+        || project_name.is_empty()
+    {
         return Err(ApiError::Validation(
-            "email and password are required".to_string(),
+            "email, password, organization_name, and project_name are required".to_string(),
         ));
     }
 
