@@ -1,15 +1,10 @@
-import { AppShell } from "@/components/app-shell";
-import { DashboardView } from "@/components/dashboard-view";
-import { getRuns } from "@/lib/server-api";
+import { cookies } from "next/headers";
 
-export const dynamic = "force-dynamic";
+import { AgentScopeLanding } from "@/components/agent-scope-landing";
+import { UI_SESSION_COOKIE_NAME } from "@/lib/api";
 
 export default async function HomePage() {
-  const runs = await getRuns();
+  const token = (await cookies()).get(UI_SESSION_COOKIE_NAME)?.value;
 
-  return (
-    <AppShell activePath="/dashboard">
-      <DashboardView runs={runs} />
-    </AppShell>
-  );
+  return <AgentScopeLanding isAuthenticated={Boolean(token)} />;
 }
