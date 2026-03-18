@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { SystemFlowAnimation } from "@/components/system-flow-animation";
 import {
   Activity,
   ArrowRight,
@@ -153,73 +154,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
 
           <div className="relative w-full">
             <div className="absolute inset-0 -z-10 bg-gradient-to-br from-purple-500/20 to-blue-500/20 blur-3xl" />
-            <div className="overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 shadow-2xl backdrop-blur-sm">
-              <div className="flex items-center justify-between border-b border-white/10 bg-gray-900/80 px-6 py-4">
-                <div className="flex items-center gap-4">
-                  <span className="text-sm font-medium">Run Details</span>
-                  <span className="rounded border border-red-500/30 bg-red-500/20 px-2 py-1 text-xs text-red-400">
-                    Failed
-                  </span>
-                </div>
-                <div className="flex items-center gap-4 text-xs text-gray-400">
-                  <span>Duration: 2.4s</span>
-                  <span>Cost: $0.04</span>
-                  <span>Tokens: 1,247</span>
-                </div>
-              </div>
-
-              <div className="p-6">
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="h-12 w-1 rounded bg-green-500" />
-                    <div className="flex-1 rounded-lg border border-white/5 bg-gray-800/50 p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Agent Init</span>
-                        <span className="text-xs text-gray-500">120ms</span>
-                      </div>
-                      <span className="text-xs text-gray-500">model: gpt-4</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="h-12 w-1 rounded bg-green-500" />
-                    <div className="flex-1 rounded-lg border border-white/5 bg-gray-800/50 p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium">Tool: search_database</span>
-                        <span className="text-xs text-gray-500">450ms</span>
-                      </div>
-                      <span className="text-xs text-gray-500">Retrieved 3 results</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <div className="h-12 w-1 rounded bg-red-500" />
-                    <div className="flex-1 rounded-lg border border-red-500/30 bg-red-500/10 p-3">
-                      <div className="flex items-center justify-between">
-                        <span className="text-sm font-medium text-red-400">Tool: send_email</span>
-                        <span className="text-xs text-red-400">Failed</span>
-                      </div>
-                      <span className="text-xs text-red-400">Error: Missing API key</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-4 md:grid-cols-2">
-                  <div className="rounded-lg border border-white/5 bg-gray-800/30 p-4">
-                    <div className="mb-2 text-xs text-gray-500">Prompt</div>
-                    <div className="font-mono text-sm text-gray-300">
-                      Send a summary email to user@example.com with the search results...
-                    </div>
-                  </div>
-                  <div className="rounded-lg border border-white/5 bg-gray-800/30 p-4">
-                    <div className="mb-2 text-xs text-gray-500">Error</div>
-                    <div className="font-mono text-sm text-red-400">
-                      EmailServiceError: API key not configured
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
+            <SystemFlowAnimation />
           </div>
         </div>
       </section>

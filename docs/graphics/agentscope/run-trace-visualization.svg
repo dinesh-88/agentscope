@@ -1,0 +1,71 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0F14"/>
+      <stop offset="1" stop-color="#0F1624"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="190" y1="0" x2="1410" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="8" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <style>
+      .title { font: 700 42px ui-sans-serif, Inter, system-ui, sans-serif; fill: #E6EDF7; }
+      .label { font: 600 20px ui-sans-serif, Inter, system-ui, sans-serif; fill: #D7E1EF; }
+      .meta { font: 500 16px ui-sans-serif, Inter, system-ui, sans-serif; fill: #8DA3C0; }
+      .mono { font: 500 15px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #A9BAD2; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="350" cy="130" r="180" fill="#7C3AED" opacity="0.12" filter="url(#softGlow)"/>
+  <circle cx="1230" cy="760" r="220" fill="#2563EB" opacity="0.12" filter="url(#softGlow)"/>
+
+  <text x="120" y="120" class="title">Run Trace Visualization</text>
+
+  <rect x="110" y="170" width="1380" height="620" rx="24" fill="#101925" stroke="#27384F"/>
+
+  <line x1="260" y1="250" x2="1380" y2="250" stroke="#2D425E" stroke-width="2"/>
+  <line x1="260" y1="300" x2="1380" y2="300" stroke="#1C2A3D"/>
+  <line x1="260" y1="400" x2="1380" y2="400" stroke="#1C2A3D"/>
+  <line x1="260" y1="500" x2="1380" y2="500" stroke="#1C2A3D"/>
+  <line x1="260" y1="600" x2="1380" y2="600" stroke="#1C2A3D"/>
+
+  <text x="130" y="305" class="label">root.run</text>
+  <text x="130" y="405" class="label">child.plan</text>
+  <text x="130" y="505" class="label">child.tool_call</text>
+  <text x="130" y="605" class="label">child.summarize</text>
+
+  <rect x="300" y="278" width="920" height="44" rx="12" fill="#1B2B40" stroke="url(#accent)"/>
+  <text x="320" y="307" class="mono">span: root.run  •  0ms → 1240ms</text>
+
+  <line x1="500" y1="322" x2="500" y2="378" stroke="#4A6AA1" stroke-width="1.5"/>
+  <rect x="500" y="378" width="340" height="44" rx="12" fill="#1A2A3D" stroke="#4F75B1"/>
+  <text x="520" y="406" class="mono">span: child.plan  •  230ms → 700ms</text>
+
+  <line x1="900" y1="322" x2="900" y2="478" stroke="#4A6AA1" stroke-width="1.5"/>
+  <rect x="900" y="478" width="280" height="44" rx="12" fill="#1A2A3D" stroke="#4F75B1"/>
+  <text x="920" y="506" class="mono">span: tool.call  •  710ms → 1030ms</text>
+
+  <line x1="1160" y1="522" x2="1160" y2="578" stroke="#9D3E4B" stroke-width="1.5"/>
+  <rect x="1160" y="578" width="180" height="44" rx="12" fill="#2A151A" stroke="#EF4444"/>
+  <text x="1178" y="606" class="mono" fill="#F9B4BA">status: failed</text>
+
+  <circle cx="990" cy="500" r="7" fill="#60A5FA"/>
+  <text x="1006" y="505" class="meta">Tool call</text>
+
+  <circle cx="1242" cy="600" r="7" fill="#EF4444" filter="url(#softGlow)"/>
+  <text x="1258" y="605" class="meta" fill="#F6AAB3">Failure</text>
+
+  <text x="280" y="230" class="meta">0ms</text>
+  <text x="550" y="230" class="meta">300ms</text>
+  <text x="820" y="230" class="meta">600ms</text>
+  <text x="1090" y="230" class="meta">900ms</text>
+  <text x="1340" y="230" class="meta">1200ms</text>
+</svg>

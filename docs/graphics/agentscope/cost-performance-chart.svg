@@ -1,0 +1,49 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0F14"/>
+      <stop offset="1" stop-color="#101A2A"/>
+    </linearGradient>
+    <linearGradient id="lineGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <style>
+      .title { font: 700 42px ui-sans-serif, Inter, system-ui, sans-serif; fill: #E8EEF8; }
+      .panel { fill: #101A27; stroke: #2D425D; }
+      .panelTitle { font: 600 22px ui-sans-serif, Inter, system-ui, sans-serif; fill: #DCE6F5; }
+      .axis { stroke: #30465F; stroke-width: 1.5; }
+      .meta { font: 500 16px ui-sans-serif, Inter, system-ui, sans-serif; fill: #90A6C3; }
+      .metric { font: 700 28px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #C6D7F0; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <text x="120" y="120" class="title">Cost &amp; Performance</text>
+
+  <rect x="110" y="180" width="440" height="610" rx="24" class="panel"/>
+  <rect x="580" y="180" width="440" height="610" rx="24" class="panel"/>
+  <rect x="1050" y="180" width="440" height="610" rx="24" class="panel"/>
+
+  <text x="150" y="240" class="panelTitle">Token Usage</text>
+  <line x1="150" y1="700" x2="500" y2="700" class="axis"/>
+  <line x1="150" y1="300" x2="150" y2="700" class="axis"/>
+  <path d="M160 640 C220 600 260 610 320 560 C360 525 400 520 490 430" stroke="url(#lineGrad)" stroke-width="3" fill="none"/>
+  <text x="150" y="760" class="metric">1.46M tokens</text>
+
+  <text x="620" y="240" class="panelTitle">Latency Trend</text>
+  <line x1="620" y1="700" x2="970" y2="700" class="axis"/>
+  <line x1="620" y1="300" x2="620" y2="700" class="axis"/>
+  <path d="M630 360 C690 380 740 420 790 470 C840 525 900 545 960 560" stroke="url(#lineGrad)" stroke-width="3" fill="none"/>
+  <text x="620" y="760" class="metric">P95 412ms</text>
+
+  <text x="1090" y="240" class="panelTitle">Cost Per Run</text>
+  <line x1="1090" y1="700" x2="1440" y2="700" class="axis"/>
+  <line x1="1090" y1="300" x2="1090" y2="700" class="axis"/>
+  <path d="M1100 620 C1160 590 1220 560 1290 520 C1350 485 1390 455 1430 430" stroke="url(#lineGrad)" stroke-width="3" fill="none"/>
+  <text x="1090" y="760" class="metric">$0.028 / run</text>
+
+  <text x="150" y="282" class="meta">tokens</text>
+  <text x="620" y="282" class="meta">milliseconds</text>
+  <text x="1090" y="282" class="meta">usd</text>
+</svg>

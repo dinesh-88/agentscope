@@ -1,0 +1,52 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0F14"/>
+      <stop offset="1" stop-color="#0F1726"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="330" y1="200" x2="1270" y2="700" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="9" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <style>
+      .title { font: 700 42px ui-sans-serif, Inter, system-ui, sans-serif; fill: #E8EEF8; }
+      .label { font: 600 28px ui-sans-serif, Inter, system-ui, sans-serif; fill: #DCE6F5; }
+      .sub { font: 500 17px ui-sans-serif, Inter, system-ui, sans-serif; fill: #90A6C3; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="#5D89F7"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <text x="120" y="120" class="title">Sandbox Workflow</text>
+
+  <rect x="180" y="260" width="1240" height="460" rx="30" fill="#101A27" stroke="#2D425E"/>
+
+  <rect x="290" y="380" width="220" height="180" rx="24" fill="#18263A" stroke="#3C5C8C"/>
+  <text x="400" y="470" text-anchor="middle" class="label">Input</text>
+  <text x="400" y="505" text-anchor="middle" class="sub">prompt + config</text>
+
+  <rect x="690" y="360" width="220" height="220" rx="24" fill="#1A2A40" stroke="url(#accent)"/>
+  <text x="800" y="470" text-anchor="middle" class="label">Agent</text>
+  <text x="800" y="505" text-anchor="middle" class="sub">sandbox run</text>
+
+  <rect x="1090" y="380" width="220" height="180" rx="24" fill="#18263A" stroke="#3C5C8C"/>
+  <text x="1200" y="470" text-anchor="middle" class="label">Output</text>
+  <text x="1200" y="505" text-anchor="middle" class="sub">trace + result</text>
+
+  <line x1="510" y1="470" x2="690" y2="470" stroke="url(#accent)" stroke-width="2" marker-end="url(#arrow)"/>
+  <line x1="910" y1="470" x2="1090" y2="470" stroke="url(#accent)" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <path d="M1200 570 C1200 640 1000 690 800 690 C600 690 400 640 400 570" stroke="url(#accent)" stroke-width="2" fill="none" marker-end="url(#arrow)"/>
+  <text x="800" y="740" text-anchor="middle" class="sub">Iterate: adjust prompt, tools, and policies</text>
+
+  <circle cx="800" cy="470" r="140" fill="#7C3AED" opacity="0.08" filter="url(#glow)"/>
+</svg>

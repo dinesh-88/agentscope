@@ -1,0 +1,64 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1600" y2="900" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0F14"/>
+      <stop offset="1" stop-color="#111A2A"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="160" y1="0" x2="920" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <style>
+      .title { font: 700 42px ui-sans-serif, Inter, system-ui, sans-serif; fill: #E8EEF8; }
+      .label { font: 600 20px ui-sans-serif, Inter, system-ui, sans-serif; fill: #D7E1EF; }
+      .mono { font: 500 16px ui-monospace, SFMono-Regular, Menlo, monospace; fill: #A4B6CE; }
+      .panelTitle { font: 700 24px ui-sans-serif, Inter, system-ui, sans-serif; fill: #E9F0FB; }
+      .body { font: 500 17px ui-sans-serif, Inter, system-ui, sans-serif; fill: #B9C8DD; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="10" markerHeight="10" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="#5E89F8"/>
+    </marker>
+  </defs>
+
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <text x="120" y="120" class="title">Root Cause Analysis</text>
+
+  <rect x="100" y="170" width="920" height="620" rx="24" fill="#101925" stroke="#2A3B53"/>
+  <rect x="1060" y="170" width="440" height="620" rx="24" fill="#111C2B" stroke="#314865"/>
+
+  <text x="140" y="220" class="label">Workflow</text>
+
+  <g stroke="url(#accent)" stroke-width="2" fill="none">
+    <line x1="280" y1="320" x2="420" y2="320" marker-end="url(#arrow)"/>
+    <line x1="560" y1="320" x2="700" y2="320" marker-end="url(#arrow)"/>
+    <line x1="700" y1="320" x2="700" y2="470" marker-end="url(#arrow)"/>
+    <line x1="700" y1="470" x2="840" y2="470" marker-end="url(#arrow)"/>
+  </g>
+
+  <rect x="160" y="270" width="120" height="100" rx="16" fill="#172435" stroke="#40608F"/>
+  <text x="220" y="327" text-anchor="middle" class="mono">ingest</text>
+
+  <rect x="420" y="270" width="140" height="100" rx="16" fill="#172435" stroke="#40608F"/>
+  <text x="490" y="327" text-anchor="middle" class="mono">plan step</text>
+
+  <rect x="700" y="270" width="180" height="100" rx="16" fill="#30181C" stroke="#EF4444"/>
+  <text x="790" y="318" text-anchor="middle" class="mono" fill="#F5B3BB">tool call failed</text>
+  <text x="790" y="342" text-anchor="middle" class="mono" fill="#F5B3BB">timeout</text>
+
+  <rect x="840" y="420" width="120" height="100" rx="16" fill="#172435" stroke="#40608F"/>
+  <text x="900" y="477" text-anchor="middle" class="mono">retry</text>
+
+  <text x="1088" y="230" class="panelTitle">Failure Details</text>
+  <rect x="1090" y="260" width="380" height="120" rx="16" fill="#1A283B" stroke="#385478"/>
+  <text x="1120" y="306" class="body">Step: `tool.call(search_docs)`</text>
+  <text x="1120" y="338" class="body">Error: timeout after 30s</text>
+
+  <text x="1088" y="440" class="panelTitle">Explanation</text>
+  <text x="1090" y="478" class="body">Upstream API latency spiked above</text>
+  <text x="1090" y="508" class="body">configured timeout threshold.</text>
+
+  <text x="1088" y="580" class="panelTitle">Suggested Fix</text>
+  <rect x="1090" y="606" width="380" height="130" rx="16" fill="#172A23" stroke="#2E7C66"/>
+  <text x="1120" y="652" class="body" fill="#BDE7DA">Increase timeout to 60s and add</text>
+  <text x="1120" y="682" class="body" fill="#BDE7DA">circuit-breaker fallback response.</text>
+</svg>

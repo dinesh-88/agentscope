@@ -1,0 +1,83 @@
+<svg width="1800" height="680" viewBox="0 0 1800 680" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1800" y2="680" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#0B0F14"/>
+      <stop offset="1" stop-color="#101826"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="120" y1="0" x2="1680" y2="0" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#8B5CF6"/>
+      <stop offset="1" stop-color="#3B82F6"/>
+    </linearGradient>
+    <filter id="softGlow" x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10Z" fill="#5D87F8"/>
+    </marker>
+    <style>
+      .title { font: 700 38px ui-sans-serif, Inter, system-ui, -apple-system, sans-serif; fill: #E6EDF7; }
+      .label { font: 620 25px ui-sans-serif, Inter, system-ui, -apple-system, sans-serif; fill: #DCE6F5; }
+      .sub { font: 500 16px ui-sans-serif, Inter, system-ui, -apple-system, sans-serif; fill: #97AECB; }
+      .item { font: 520 15px ui-sans-serif, Inter, system-ui, -apple-system, sans-serif; fill: #B7C8E0; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="680" fill="url(#bg)"/>
+  <circle cx="260" cy="110" r="170" fill="#7C3AED" opacity="0.14" filter="url(#softGlow)"/>
+  <circle cx="1510" cy="590" r="200" fill="#2563EB" opacity="0.12" filter="url(#softGlow)"/>
+
+  <text x="90" y="100" class="title">AgentScope System Flow</text>
+
+  <g stroke="url(#accent)" stroke-width="1.8" stroke-linecap="round" fill="none" opacity="0.95">
+    <line x1="315" y1="360" x2="380" y2="360" marker-end="url(#arrow)"/>
+    <line x1="585" y1="360" x2="650" y2="360" marker-end="url(#arrow)"/>
+    <line x1="855" y1="360" x2="920" y2="360" marker-end="url(#arrow)"/>
+    <line x1="1125" y1="360" x2="1190" y2="360" marker-end="url(#arrow)"/>
+    <line x1="1395" y1="360" x2="1460" y2="360" marker-end="url(#arrow)"/>
+  </g>
+
+  <g>
+    <rect x="90" y="230" width="225" height="260" rx="22" fill="#121A26" stroke="#30445F"/>
+    <text x="203" y="335" text-anchor="middle" class="label">User App</text>
+    <text x="203" y="367" text-anchor="middle" class="sub">Your AI App</text>
+  </g>
+
+  <g>
+    <rect x="360" y="230" width="225" height="260" rx="22" fill="#121A26" stroke="#36537A"/>
+    <text x="472" y="322" text-anchor="middle" class="label">AgentScope SDK</text>
+    <text x="472" y="356" text-anchor="middle" class="sub">Python / TypeScript</text>
+  </g>
+
+  <g>
+    <rect x="630" y="230" width="225" height="260" rx="22" fill="#121A26" stroke="#396092"/>
+    <text x="742" y="322" text-anchor="middle" class="label">Ingestion API</text>
+    <text x="742" y="356" text-anchor="middle" class="sub">/v1/ingest</text>
+  </g>
+
+  <g>
+    <rect x="900" y="230" width="225" height="260" rx="22" fill="#121A26" stroke="#3971A8"/>
+    <text x="1012" y="304" text-anchor="middle" class="label">Run Processing</text>
+    <text x="1012" y="346" text-anchor="middle" class="item">Runs</text>
+    <text x="1012" y="374" text-anchor="middle" class="item">Spans</text>
+    <text x="1012" y="402" text-anchor="middle" class="item">Artifacts</text>
+  </g>
+
+  <g>
+    <rect x="1170" y="230" width="225" height="260" rx="22" fill="#121A26" stroke="#3480BD"/>
+    <text x="1282" y="304" text-anchor="middle" class="label">Insights</text>
+    <text x="1282" y="346" text-anchor="middle" class="item">Root Cause Analysis</text>
+    <text x="1282" y="374" text-anchor="middle" class="item">Optimization</text>
+  </g>
+
+  <g>
+    <rect x="1440" y="230" width="225" height="260" rx="22" fill="#121A26" stroke="#2D8ED2"/>
+    <text x="1552" y="304" text-anchor="middle" class="label">AgentScope UI</text>
+    <text x="1552" y="346" text-anchor="middle" class="item">Trace view</text>
+    <text x="1552" y="374" text-anchor="middle" class="item">Charts</text>
+    <text x="1552" y="402" text-anchor="middle" class="item">Insights panel</text>
+  </g>
+</svg>
