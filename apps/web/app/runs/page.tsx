@@ -1,9 +1,13 @@
 import Link from "next/link";
+import { unstable_noStore as noStore } from "next/cache";
 
 import { AppShell } from "@/components/app-shell";
+import { RunsAutoRefresh } from "@/components/runs-auto-refresh";
 import { getRuns } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 function getStatusColor(status: string) {
   switch (status) {
@@ -40,10 +44,12 @@ function formatDate(value: string) {
 }
 
 export default async function RunsPage() {
+  noStore();
   const runs = await getRuns();
 
   return (
     <AppShell activePath="/runs">
+      <RunsAutoRefresh intervalMs={5000} />
       <div className="p-8">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>

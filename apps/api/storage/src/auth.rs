@@ -575,7 +575,7 @@ impl Storage {
     ) -> Result<Option<ProjectApiKey>, AgentScopeError> {
         let key = sqlx::query_as::<_, ProjectApiKey>(
             r#"
-            SELECT id::text AS id,
+            SELECT project_api_keys.id::text AS id,
                    project_api_keys.project_id::text AS project_id,
                    projects.organization_id::text AS organization_id,
                    project_api_keys.label

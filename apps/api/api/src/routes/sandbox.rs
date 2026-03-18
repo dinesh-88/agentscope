@@ -72,10 +72,17 @@ impl SandboxManager {
         }
     }
 
-    pub async fn start_python(&self) -> Result<SandboxStartResponse, ApiError> {
+    pub async fn start_python(
+        &self,
+        ingest_api_key: &str,
+        ingest_base_url: &str,
+    ) -> Result<SandboxStartResponse, ApiError> {
         let repo_root = sandbox_repo_root();
         self.start_target("python", repo_root.clone(), |command| {
             command.env("PYTHONPATH", pythonpath_for_repo_root(&repo_root));
+            command.env("AGENTSCOPE_API_KEY", ingest_api_key);
+            command.env("AGENTSCOPE_API_BASE", ingest_base_url);
+            command.env("AGENTSCOPE_API", ingest_base_url);
             command
                 .arg("examples/sandbox/python-agent/main.py")
                 .stdin(Stdio::null())
@@ -85,10 +92,17 @@ impl SandboxManager {
         .await
     }
 
-    pub async fn start_real(&self) -> Result<SandboxStartResponse, ApiError> {
+    pub async fn start_real(
+        &self,
+        ingest_api_key: &str,
+        ingest_base_url: &str,
+    ) -> Result<SandboxStartResponse, ApiError> {
         let repo_root = sandbox_repo_root();
         self.start_target("real", repo_root.clone(), |command| {
             command.env("PYTHONPATH", pythonpath_for_repo_root(&repo_root));
+            command.env("AGENTSCOPE_API_KEY", ingest_api_key);
+            command.env("AGENTSCOPE_API_BASE", ingest_base_url);
+            command.env("AGENTSCOPE_API", ingest_base_url);
             command
                 .arg("examples/sandbox/python-agent/real_agent.py")
                 .stdin(Stdio::null())
@@ -98,8 +112,15 @@ impl SandboxManager {
         .await
     }
 
-    pub async fn start_ts(&self) -> Result<SandboxStartResponse, ApiError> {
+    pub async fn start_ts(
+        &self,
+        ingest_api_key: &str,
+        ingest_base_url: &str,
+    ) -> Result<SandboxStartResponse, ApiError> {
         self.start_target("ts", sandbox_repo_root(), |command| {
+            command.env("AGENTSCOPE_API_KEY", ingest_api_key);
+            command.env("AGENTSCOPE_API_BASE", ingest_base_url);
+            command.env("AGENTSCOPE_API", ingest_base_url);
             command
                 .arg("examples/sandbox/ts-agent/dist/main.js")
                 .stdin(Stdio::null())
@@ -257,24 +278,45 @@ pub async fn run_python(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<SandboxStartResponse>, ApiError> {
-    enforce_sandbox_limits(&state, &user.id).await?;
-    Ok(Json(state.sandbox.start_python().await?))
+    let project_id = enforce_sandbox_limits(&state, &user.id).await?;
+    let ingest_api_key = state.storage.create_bootstrap_api_key(&project_id).await?;
+    let ingest_base_url = sandbox_ingest_base_url();
+    Ok(Json(
+        state
+            .sandbox
+            .start_python(&ingest_api_key, &ingest_base_url)
+            .await?,
+    ))
 }
 
 pub async fn run_ts(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<SandboxStartResponse>, ApiError> {
-    enforce_sandbox_limits(&state, &user.id).await?;
-    Ok(Json(state.sandbox.start_ts().await?))
+    let project_id = enforce_sandbox_limits(&state, &user.id).await?;
+    let ingest_api_key = state.storage.create_bootstrap_api_key(&project_id).await?;
+    let ingest_base_url = sandbox_ingest_base_url();
+    Ok(Json(
+        state
+            .sandbox
+            .start_ts(&ingest_api_key, &ingest_base_url)
+            .await?,
+    ))
 }
 
 pub async fn run_real(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<SandboxStartResponse>, ApiError> {
-    enforce_sandbox_limits(&state, &user.id).await?;
-    Ok(Json(state.sandbox.start_real().await?))
+    let project_id = enforce_sandbox_limits(&state, &user.id).await?;
+    let ingest_api_key = state.storage.create_bootstrap_api_key(&project_id).await?;
+    let ingest_base_url = sandbox_ingest_base_url();
+    Ok(Json(
+        state
+            .sandbox
+            .start_real(&ingest_api_key, &ingest_base_url)
+            .await?,
+    ))
 }
 
 pub async fn status(
@@ -321,7 +363,7 @@ fn resolve_node_command() -> String {
     env::var("AGENTSCOPE_SANDBOX_NODE").unwrap_or_else(|_| "node".to_string())
 }
 
-async fn enforce_sandbox_limits(state: &Arc<AppState>, user_id: &str) -> Result<(), ApiError> {
+async fn enforce_sandbox_limits(state: &Arc<AppState>, user_id: &str) -> Result<String, ApiError> {
     let project_id = state
         .storage
         .get_default_project_for_user(user_id)
@@ -330,5 +372,29 @@ async fn enforce_sandbox_limits(state: &Arc<AppState>, user_id: &str) -> Result<
         .ok_or_else(|| ApiError::Forbidden("no default project found for user".to_string()))?;
     limits::check_rate_limit(state, &project_id).await?;
     limits::check_token_quota(state, &project_id, 0).await?;
-    Ok(())
+    Ok(project_id)
+}
+
+fn sandbox_ingest_base_url() -> String {
+    if let Ok(url) = env::var("AGENTSCOPE_SANDBOX_API_BASE") {
+        if !url.trim().is_empty() {
+            return url.trim_end_matches('/').to_string();
+        }
+    }
+    if let Ok(url) = env::var("AGENTSCOPE_API_BASE") {
+        if !url.trim().is_empty() {
+            return url.trim_end_matches('/').to_string();
+        }
+    }
+    if let Ok(url) = env::var("AGENTSCOPE_API") {
+        if !url.trim().is_empty() {
+            return url.trim_end_matches('/').to_string();
+        }
+    }
+    if let Ok(port) = env::var("SERVER_PORT") {
+        if !port.trim().is_empty() {
+            return format!("http://127.0.0.1:{port}");
+        }
+    }
+    "http://127.0.0.1:8080".to_string()
 }
