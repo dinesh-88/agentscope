@@ -8,8 +8,8 @@ export default async function DashboardPage() {
   const runs = await getRuns();
 
   return (
-    <AppShell activePath="/dashboard">
-      <DashboardView runs={runs} />
+    <AppShell activePath="/dashboard" theme="dark" mainClassName="px-0 pb-0">
+      <DashboardView runs={runs} dark />
     </AppShell>
   );
 }
