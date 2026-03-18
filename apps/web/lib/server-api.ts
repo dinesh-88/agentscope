@@ -7,6 +7,7 @@ import {
   type Artifact,
   type DemoScenario,
   type MeResponse,
+  type ProjectInsight,
   type Run,
   type RunAnalysis,
   type RunComparison,
@@ -125,6 +126,10 @@ export async function getRunArtifacts(runId: string): Promise<Artifact[]> {
 
 export async function getRunInsights(runId: string): Promise<RunInsight[]> {
   return requestOptional<RunInsight[]>(`/v1/runs/${runId}/insights`, []);
+}
+
+export async function getProjectInsights(projectId: string): Promise<ProjectInsight[]> {
+  return requestOptional<ProjectInsight[]>(`/v1/projects/${projectId}/insights`, []);
 }
 
 export async function getRunRootCause(runId: string): Promise<RunRootCause | null> {

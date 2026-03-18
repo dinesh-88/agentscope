@@ -62,6 +62,18 @@ export type RunInsight = {
   created_at: string;
 };
 
+export type ProjectInsight = {
+  id: string;
+  project_id: string;
+  insight_type: string;
+  severity: string;
+  message: string;
+  evidence: Record<string, unknown>;
+  recommendation: string;
+  run_count: number;
+  created_at: string;
+};
+
 export type RunRootCause = {
   id: string;
   run_id: string;
@@ -340,6 +352,17 @@ export async function getRunArtifacts(runId: string): Promise<Artifact[]> {
 export async function getRunInsights(runId: string): Promise<RunInsight[]> {
   try {
     return await request<RunInsight[]>(`/v1/runs/${runId}/insights`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function getProjectInsights(projectId: string): Promise<ProjectInsight[]> {
+  try {
+    return await request<ProjectInsight[]>(`/v1/projects/${projectId}/insights`);
   } catch (error) {
     if (isNotFound(error)) {
       return [];
