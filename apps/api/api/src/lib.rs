@@ -7,7 +7,7 @@ mod limits;
 mod routes;
 mod swagger;
 
-use std::sync::Arc;
+use std::{env, sync::Arc};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::{runs::RunSearchFilters, Storage};
@@ -58,6 +58,29 @@ pub struct ProjectApiKeyResponse {
 }
 
 pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
+    let cors_allowed_origins = env::var("CORS_ALLOWED_ORIGINS")
+        .ok()
+        .map(|value| {
+            value
+                .split(',')
+                .filter_map(|origin| {
+                    let trimmed = origin.trim();
+                    if trimmed.is_empty() {
+                        return None;
+                    }
+                    trimmed.parse::<header::HeaderValue>().ok()
+                })
+                .collect::<Vec<_>>()
+        })
+        .filter(|origins| !origins.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                "http://localhost:3000"
+                    .parse::<header::HeaderValue>()
+                    .expect("localhost origin must parse"),
+            ]
+        });
+
     let state = Arc::new(AppState {
         storage,
         span_events: events::span_event_channel(),
@@ -128,11 +151,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .nest("/v1", sdk_routes.merge(ui_routes))
         .layer(
             CorsLayer::new()
-                .allow_origin(
-                    "http://localhost:3000"
-                        .parse::<header::HeaderValue>()
-                        .unwrap(),
-                )
+                .allow_origin(cors_allowed_origins)
                 .allow_credentials(true)
                 .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::COOKIE])
                 .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS]),

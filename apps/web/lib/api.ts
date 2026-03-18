@@ -1,7 +1,7 @@
 import axios from "axios";
 
-export const API_BASE_URL = "http://localhost:8080";
-export const UI_SESSION_COOKIE_NAME = "agentscope_session";
+export const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? process.env.API_BASE_URL ?? "http://localhost:8080";
+export const UI_SESSION_COOKIE_NAME = process.env.NEXT_PUBLIC_UI_SESSION_COOKIE_NAME ?? "agentscope_session";
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -430,7 +430,14 @@ export async function register(payload: RegisterRequest): Promise<RegisterRespon
 }
 
 export async function logout(): Promise<void> {
-  await api.post("/v1/auth/logout");
+  try {
+    await api.post("/v1/auth/logout");
+  } finally {
+    if (typeof document !== "undefined") {
+      const secure = window.location.protocol === "https:" ? "; Secure" : "";
+      document.cookie = `${UI_SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
+    }
+  }
 }
 
 export async function getCurrentUser(): Promise<MeResponse> {

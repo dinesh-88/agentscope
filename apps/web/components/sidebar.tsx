@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { AlertCircle, FlaskConical, LayoutDashboard, Menu, PlaySquare, Settings, Users, X } from "lucide-react";
 
-import { getCurrentUser, logout } from "@/lib/api";
+import { UI_SESSION_COOKIE_NAME, getCurrentUser, logout } from "@/lib/api";
 
 type SidebarProps = {
   activePath?: string;
@@ -55,6 +55,8 @@ export function Sidebar({ activePath = "/dashboard", theme = "light" }: SidebarP
 
   async function handleLogout() {
     await logout();
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${UI_SESSION_COOKIE_NAME}=; Path=/; Max-Age=0; SameSite=Lax${secure}`;
     window.location.href = "/login";
   }
 

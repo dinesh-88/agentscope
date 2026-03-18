@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Activity, Eye, EyeOff, Github, Lock, Mail, User } from "lucide-react";
 
-import { API_BASE_URL, login, register } from "@/lib/api";
+import { API_BASE_URL, UI_SESSION_COOKIE_NAME, login, register } from "@/lib/api";
 
 type LoginFormProps = {
   nextPath?: string;
@@ -26,6 +26,15 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  function persistSessionToken(token: string, expiresAt: string) {
+    const expiresAtMs = Date.parse(expiresAt);
+    const maxAgeSeconds = Number.isFinite(expiresAtMs) ? Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000)) : null;
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    const maxAge = maxAgeSeconds !== null ? `; Max-Age=${maxAgeSeconds}` : "";
+
+    document.cookie = `${UI_SESSION_COOKIE_NAME}=${encodeURIComponent(token)}; Path=/; SameSite=Lax${secure}${maxAge}`;
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -42,6 +51,8 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
               organization_name: organizationName,
               project_name: projectName,
             });
+
+      persistSessionToken(response.token, response.expires_at);
 
       const destination =
         mode === "login"
