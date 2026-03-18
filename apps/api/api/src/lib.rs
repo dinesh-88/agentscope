@@ -3,6 +3,7 @@ pub mod auth;
 pub mod demo;
 mod engine;
 mod events;
+mod limits;
 mod routes;
 mod swagger;
 
@@ -21,6 +22,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
@@ -29,9 +31,7 @@ use uuid::Uuid;
 
 use crate::analysis::pricing;
 use crate::analysis::run_compare::RunCompareResponse;
-use crate::auth::{
-    permissions::Permission, AuthenticatedUser, JwtSettings, ProjectApiKeyAuth,
-};
+use crate::auth::{permissions::Permission, AuthenticatedUser, JwtSettings, ProjectApiKeyAuth};
 use crate::engine::replay::replay_engine::{
     ModifyReplayRequest, ReplayEngine, ReplayResponse, StartReplayRequest,
 };
@@ -79,6 +79,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
     let ui_routes = Router::new()
         .route("/events/stream", get(events::stream))
         .route("/runs", get(list_runs))
+        .route("/runs/search", get(search_runs))
         .route("/runs/:id", get(get_run))
         .route("/runs/:id/analysis", get(get_run_analysis))
         .route("/runs/:id/spans", get(get_run_spans))
@@ -90,6 +91,17 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/demo/scenarios", get(routes::demo::list_scenarios))
         .route("/demo/run", post(routes::demo::run_demo))
         .route("/projects/:id/insights", get(get_project_insights))
+        .route("/projects/:id/usage", get(get_project_usage))
+        .route("/alerts", post(create_alert).get(list_alerts))
+        .route("/alerts/:id", axum::routing::delete(delete_alert))
+        .route("/alerts/events", get(list_alert_events))
+        .route("/orgs/:org_id/invites", post(create_org_invite))
+        .route("/invites/accept", post(accept_invite))
+        .route("/orgs/:org_id/members", get(list_org_members))
+        .route(
+            "/orgs/:org_id/members/:user_id",
+            axum::routing::delete(remove_org_member),
+        )
         .route("/projects/:id/api-keys", post(create_project_api_key))
         .route("/onboarding/state", get(get_onboarding_state))
         .route("/replay/start", post(start_replay))
@@ -106,15 +118,24 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/v1/auth/register", post(auth::register))
         .route("/v1/auth/logout", post(auth::logout))
         .route("/v1/auth/me", get(auth::me))
+        .route("/v1/auth/oidc", get(auth::oidc_start))
+        .route("/v1/auth/oidc/callback", get(auth::oidc_callback))
         .route("/v1/auth/oauth/:provider", get(auth::oauth_start))
-        .route("/v1/auth/oauth/:provider/callback", get(auth::oauth_callback))
+        .route(
+            "/v1/auth/oauth/:provider/callback",
+            get(auth::oauth_callback),
+        )
         .nest("/v1", sdk_routes.merge(ui_routes))
         .layer(
             CorsLayer::new()
-                .allow_origin("http://localhost:3000".parse::<header::HeaderValue>().unwrap())
+                .allow_origin(
+                    "http://localhost:3000"
+                        .parse::<header::HeaderValue>()
+                        .unwrap(),
+                )
                 .allow_credentials(true)
                 .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::COOKIE])
-                .allow_methods([Method::GET, Method::POST, Method::OPTIONS]),
+                .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS]),
         )
         .with_state(state)
 }
@@ -129,6 +150,8 @@ async fn ingest(
     validate_payload(&payload)?;
     attach_project_context(&mut payload, &api_key);
     normalize_spans(&mut payload.spans);
+    limits::check_rate_limit(&state, &payload.run.project_id).await?;
+    limits::check_token_quota(&state, &payload.run.project_id, payload.run.total_tokens).await?;
 
     state.storage.insert_run(&payload.run).await?;
 
@@ -142,8 +165,38 @@ async fn ingest(
     }
 
     state.storage.update_run_metrics(&payload.run.id).await?;
+    limits::increment_usage(&state, &payload.run.project_id, payload.run.total_tokens).await?;
 
     Ok(StatusCode::OK)
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateAlertRequest {
+    project_id: String,
+    name: String,
+    condition_type: String,
+    threshold_value: f64,
+    window_minutes: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct ProjectUsagePoint {
+    date: String,
+    runs: i32,
+    tokens: i64,
+    cost: f64,
+    errors: i32,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateInviteRequest {
+    email: String,
+    role: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct AcceptInviteRequest {
+    token: String,
 }
 
 fn validate_payload(payload: &IngestPayload) -> Result<(), ApiError> {
@@ -215,19 +268,23 @@ async fn list_runs(
     Query(filters): Query<ListRunsQuery>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<Vec<Run>>, ApiError> {
+    let filters = filters.into_storage_filters()?;
     let runs = state
         .storage
-        .list_runs_for_user_filtered(
-            &user.id,
-            &RunSearchFilters {
-                query: filters.query,
-                status: filters.status,
-                workflow_name: filters.workflow_name,
-                agent_name: filters.agent_name,
-                project_id: filters.project_id,
-                limit: filters.limit,
-            },
-        )
+        .list_runs_for_user_filtered(&user.id, &filters)
+        .await?;
+    Ok(Json(runs))
+}
+
+async fn search_runs(
+    State(state): State<Arc<AppState>>,
+    Query(filters): Query<ListRunsQuery>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<Run>>, ApiError> {
+    let filters = filters.into_storage_filters()?;
+    let runs = state
+        .storage
+        .list_runs_for_user_filtered(&user.id, &filters)
         .await?;
     Ok(Json(runs))
 }
@@ -236,10 +293,49 @@ async fn list_runs(
 struct ListRunsQuery {
     query: Option<String>,
     status: Option<String>,
+    model: Option<String>,
+    agent: Option<String>,
     workflow_name: Option<String>,
     agent_name: Option<String>,
+    tokens_min: Option<i64>,
+    tokens_max: Option<i64>,
+    duration_min_ms: Option<i64>,
+    duration_max_ms: Option<i64>,
+    time_from: Option<String>,
+    time_to: Option<String>,
     project_id: Option<String>,
     limit: Option<i64>,
+}
+
+impl ListRunsQuery {
+    fn into_storage_filters(self) -> Result<RunSearchFilters, ApiError> {
+        Ok(RunSearchFilters {
+            query: self.query,
+            status: self.status,
+            model: self.model,
+            agent: self.agent,
+            workflow_name: self.workflow_name,
+            agent_name: self.agent_name,
+            tokens_min: self.tokens_min,
+            tokens_max: self.tokens_max,
+            duration_min_ms: self.duration_min_ms,
+            duration_max_ms: self.duration_max_ms,
+            time_from: parse_timestamp(self.time_from.as_deref(), "time_from")?,
+            time_to: parse_timestamp(self.time_to.as_deref(), "time_to")?,
+            project_id: self.project_id,
+            limit: self.limit,
+        })
+    }
+}
+
+fn parse_timestamp(value: Option<&str>, field: &str) -> Result<Option<DateTime<Utc>>, ApiError> {
+    let Some(value) = value.filter(|value| !value.is_empty()) else {
+        return Ok(None);
+    };
+
+    DateTime::parse_from_rfc3339(value)
+        .map(|timestamp| Some(timestamp.with_timezone(&Utc)))
+        .map_err(|_| ApiError::Validation(format!("{field} must be RFC3339 timestamp")))
 }
 
 async fn get_run(
@@ -354,6 +450,143 @@ async fn get_project_insights(
     Ok(Json(insights))
 }
 
+async fn get_project_usage(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<ProjectUsagePoint>>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    state.storage.aggregate_project_usage_daily().await?;
+    let rows = state.storage.get_project_usage_daily(&id).await?;
+    let response = rows
+        .into_iter()
+        .map(|row| ProjectUsagePoint {
+            date: row.date.to_string(),
+            runs: row.run_count,
+            tokens: row.total_tokens,
+            cost: row.cost_usd,
+            errors: row.error_count,
+        })
+        .collect::<Vec<_>>();
+    Ok(Json(response))
+}
+
+async fn create_alert(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<CreateAlertRequest>,
+) -> Result<Json<agentscope_storage::alerts::Alert>, ApiError> {
+    ensure_project_access(&state, &payload.project_id, &user.id).await?;
+    let allowed_conditions = [
+        "failure_rate",
+        "latency_ms",
+        "token_usage",
+        "cost_usd",
+        "tool_error_rate",
+    ];
+    if !allowed_conditions.contains(&payload.condition_type.as_str()) {
+        return Err(ApiError::Validation(
+            "condition_type must be one of failure_rate, latency_ms, token_usage, cost_usd, tool_error_rate"
+                .to_string(),
+        ));
+    }
+    let alert = state
+        .storage
+        .create_alert(
+            &payload.project_id,
+            &payload.name,
+            &payload.condition_type,
+            payload.threshold_value,
+            payload.window_minutes,
+        )
+        .await?;
+    Ok(Json(alert))
+}
+
+async fn list_alerts(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<agentscope_storage::alerts::Alert>>, ApiError> {
+    Ok(Json(state.storage.list_alerts_for_user(&user.id).await?))
+}
+
+async fn delete_alert(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<StatusCode, ApiError> {
+    if !state.storage.delete_alert_for_user(&id, &user.id).await? {
+        return Err(ApiError::NotFound(format!("alert {id} not found")));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_alert_events(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<agentscope_storage::alerts::AlertEvent>>, ApiError> {
+    Ok(Json(state.storage.list_alert_events_for_user(&user.id).await?))
+}
+
+async fn create_org_invite(
+    Path(org_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<CreateInviteRequest>,
+) -> Result<Json<agentscope_storage::team::InviteRecord>, ApiError> {
+    ensure_org_manage_access(&state, &org_id, &user).await?;
+    let allowed_roles = ["owner", "admin", "developer", "viewer"];
+    if !allowed_roles.contains(&payload.role.as_str()) {
+        return Err(ApiError::Validation(
+            "role must be one of owner, admin, developer, viewer".to_string(),
+        ));
+    }
+    let invite = state
+        .storage
+        .create_invite(&org_id, &payload.email, &payload.role)
+        .await?;
+    Ok(Json(invite))
+}
+
+async fn accept_invite(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<AcceptInviteRequest>,
+) -> Result<StatusCode, ApiError> {
+    let accepted = state
+        .storage
+        .accept_invite(&payload.token, &user.id, &user.email)
+        .await?;
+    if accepted.is_none() {
+        return Err(ApiError::Validation("invalid or expired invite token".to_string()));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn list_org_members(
+    Path(org_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<agentscope_storage::team::TeamMember>>, ApiError> {
+    ensure_org_member_access(&state, &org_id, &user.id).await?;
+    let members = state.storage.list_org_members(&org_id).await?;
+    Ok(Json(members))
+}
+
+async fn remove_org_member(
+    Path((org_id, user_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<StatusCode, ApiError> {
+    ensure_org_manage_access(&state, &org_id, &user).await?;
+    if !state.storage.remove_org_member(&org_id, &user_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "member {user_id} not found in organization {org_id}"
+        )));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn create_project_api_key(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
@@ -368,6 +601,15 @@ async fn create_project_api_key(
     {
         return Err(ApiError::Forbidden(
             "project api key creation requires api_key:create permission".to_string(),
+        ));
+    }
+    if !user
+        .permissions
+        .iter()
+        .any(|permission| permission == Permission::ProjectManage.as_str())
+    {
+        return Err(ApiError::Forbidden(
+            "project changes require project:manage permission".to_string(),
         ));
     }
 
@@ -485,11 +727,49 @@ async fn ensure_project_access(
     Ok(())
 }
 
+async fn ensure_org_member_access(
+    state: &Arc<AppState>,
+    organization_id: &str,
+    user_id: &str,
+) -> Result<(), ApiError> {
+    if state
+        .storage
+        .get_role_for_organization(user_id, organization_id)
+        .await?
+        .is_none()
+    {
+        return Err(ApiError::NotFound(format!(
+            "organization {organization_id} not found"
+        )));
+    }
+
+    Ok(())
+}
+
+async fn ensure_org_manage_access(
+    state: &Arc<AppState>,
+    organization_id: &str,
+    user: &AuthenticatedUser,
+) -> Result<(), ApiError> {
+    let role = state
+        .storage
+        .get_role_for_organization(&user.id, organization_id)
+        .await?;
+    let can_manage = matches!(role.as_deref(), Some("owner") | Some("admin"));
+    if !can_manage {
+        return Err(ApiError::Forbidden(
+            "organization user management requires user:manage permission".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub enum ApiError {
     Validation(String),
     NotFound(String),
     Unauthorized(String),
     Forbidden(String),
+    TooManyRequests(String),
     Storage(String),
 }
 
@@ -510,6 +790,9 @@ impl IntoResponse for ApiError {
             Self::NotFound(message) => (StatusCode::NOT_FOUND, message).into_response(),
             Self::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message).into_response(),
             Self::Forbidden(message) => (StatusCode::FORBIDDEN, message).into_response(),
+            Self::TooManyRequests(message) => {
+                (StatusCode::TOO_MANY_REQUESTS, message).into_response()
+            }
             Self::Storage(message) => {
                 error!(error = %message, "request failed due to storage error");
                 (StatusCode::INTERNAL_SERVER_ERROR, message).into_response()

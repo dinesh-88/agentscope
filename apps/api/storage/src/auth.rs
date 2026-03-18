@@ -54,6 +54,7 @@ pub struct OauthProviderRecord {
     pub client_id: String,
     pub client_secret: String,
     pub redirect_uri: String,
+    pub issuer_url: Option<String>,
     pub enabled: bool,
 }
 
@@ -347,6 +348,7 @@ impl Storage {
         client_id: &str,
         client_secret: &str,
         redirect_uri: &str,
+        issuer_url: Option<&str>,
         enabled: bool,
     ) -> Result<(), AgentScopeError> {
         sqlx::query(
@@ -356,14 +358,16 @@ impl Storage {
                 client_id,
                 client_secret,
                 redirect_uri,
+                issuer_url,
                 enabled,
                 updated_at
             )
-            VALUES ($1, $2, $3, $4, $5, now())
+            VALUES ($1, $2, $3, $4, $5, $6, now())
             ON CONFLICT (provider) DO UPDATE
             SET client_id = EXCLUDED.client_id,
                 client_secret = EXCLUDED.client_secret,
                 redirect_uri = EXCLUDED.redirect_uri,
+                issuer_url = EXCLUDED.issuer_url,
                 enabled = EXCLUDED.enabled,
                 updated_at = now()
             "#,
@@ -372,6 +376,7 @@ impl Storage {
         .bind(client_id)
         .bind(client_secret)
         .bind(redirect_uri)
+        .bind(issuer_url)
         .bind(enabled)
         .execute(&self.pool)
         .await
@@ -390,7 +395,7 @@ impl Storage {
     ) -> Result<Option<OauthProviderRecord>, AgentScopeError> {
         let record = sqlx::query_as::<_, OauthProviderRecord>(
             r#"
-            SELECT provider, client_id, client_secret, redirect_uri, enabled
+            SELECT provider, client_id, client_secret, redirect_uri, issuer_url, enabled
             FROM oauth_providers
             WHERE provider = $1
             "#,
@@ -935,9 +940,14 @@ fn hash_password(password: &str) -> Result<String, AgentScopeError> {
 }
 
 fn verify_argon2_password(hash: &str, password: &str) -> Result<bool, AgentScopeError> {
-    let parsed = PasswordHash::new(hash).map_err(|error| {
-        AgentScopeError::Storage(format!("failed to parse password hash: {error}"))
-    })?;
+    if !hash.starts_with("$argon2") {
+        return Ok(false);
+    }
+
+    let parsed = match PasswordHash::new(hash) {
+        Ok(parsed) => parsed,
+        Err(_) => return Ok(false),
+    };
 
     Ok(Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
@@ -949,4 +959,17 @@ fn is_unique_violation(error: &sqlx::Error) -> bool {
         error,
         sqlx::Error::Database(database_error) if database_error.code().as_deref() == Some("23505")
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::verify_argon2_password;
+
+    #[test]
+    fn verify_argon2_password_returns_false_for_legacy_hash_format() {
+        let legacy_bcrypt_hash = "$2b$12$6O3R8sj8WvL9x2K5Vf9GpeKgCq8Kuq6UrkM6Q0Yz6i7s0x9D7XWnO";
+        let verified = verify_argon2_password(legacy_bcrypt_hash, "password123")
+            .expect("legacy hashes should not trigger storage errors");
+        assert!(!verified);
+    }
 }

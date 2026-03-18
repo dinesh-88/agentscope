@@ -18,6 +18,7 @@ use uuid::Uuid;
 use crate::{ApiError, AppState};
 
 pub mod api_key;
+mod oidc;
 pub mod permissions;
 
 use self::{
@@ -263,6 +264,16 @@ pub async fn oauth_start(
             urlencoding::encode(&provider_config.redirect_uri),
             urlencoding::encode(&state_token),
         ),
+        "oidc" => {
+            let discovery = oidc::fetch_oidc_discovery(&provider_config).await?;
+            format!(
+                "{}?response_type=code&client_id={}&redirect_uri={}&scope=openid%20email%20profile&state={}",
+                discovery.authorization_endpoint,
+                urlencoding::encode(&provider_config.client_id),
+                urlencoding::encode(&provider_config.redirect_uri),
+                urlencoding::encode(&state_token),
+            )
+        }
         _ => {
             return Err(ApiError::Validation(format!(
                 "unsupported oauth provider {provider}"
@@ -275,6 +286,10 @@ pub async fn oauth_start(
         response,
         oauth_state_cookie(&state.jwt, &state_token),
     ))
+}
+
+pub async fn oidc_start(State(state): State<Arc<AppState>>) -> Result<Response, ApiError> {
+    oauth_start(Path("oidc".to_string()), State(state)).await
 }
 
 pub async fn oauth_callback(
@@ -365,6 +380,20 @@ pub async fn oauth_callback(
         with_cookie_header(response, session_cookie_header(&state.jwt, &session.session_token)),
         clear_oauth_state_cookie(&state.jwt),
     ))
+}
+
+pub async fn oidc_callback(
+    Query(query): Query<OAuthCallbackQuery>,
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> Result<Response, ApiError> {
+    oauth_callback(
+        Path("oidc".to_string()),
+        Query(query),
+        State(state),
+        headers,
+    )
+    .await
 }
 
 pub async fn require_api_key(
@@ -628,9 +657,18 @@ async fn load_oauth_provider(
         std::env::var(format!("{}_OAUTH_CLIENT_SECRET", provider.to_uppercase())),
         std::env::var(format!("{}_OAUTH_REDIRECT_URI", provider.to_uppercase())),
     ) {
+        let issuer_url =
+            std::env::var(format!("{}_OAUTH_ISSUER_URL", provider.to_uppercase())).ok();
         state
             .storage
-            .upsert_oauth_provider(provider, &client_id, &client_secret, &redirect_uri, true)
+            .upsert_oauth_provider(
+                provider,
+                &client_id,
+                &client_secret,
+                &redirect_uri,
+                issuer_url.as_deref(),
+                true,
+            )
             .await?;
     }
 
@@ -653,6 +691,7 @@ async fn exchange_oauth_code(
     match provider {
         "google" => exchange_google_code(&client, provider_config, code).await,
         "github" => exchange_github_code(&client, provider_config, code).await,
+        "oidc" => oidc::exchange_oidc_code(&client, provider_config, code).await,
         _ => Err(ApiError::Validation(format!(
             "unsupported oauth provider {provider}"
         ))),

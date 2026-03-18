@@ -9,6 +9,7 @@ pub struct Config {
     pub log_level: String,
     pub jwt_secret: String,
     pub jwt_expiry_seconds: i64,
+    pub secure_cookies: bool,
 }
 
 impl Config {
@@ -28,6 +29,10 @@ impl Config {
             .ok()
             .and_then(|value| value.parse::<i64>().ok())
             .unwrap_or(28_800);
+        let secure_cookies = env::var("SECURE_COOKIES")
+            .ok()
+            .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+            .unwrap_or(false);
 
         Ok(Self {
             database_url,
@@ -35,6 +40,7 @@ impl Config {
             log_level,
             jwt_secret,
             jwt_expiry_seconds,
+            secure_cookies,
         })
     }
 }

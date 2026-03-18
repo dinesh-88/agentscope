@@ -2,7 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, AlertCircle, FlaskConical, LayoutDashboard, Menu, PlaySquare, Rocket, Settings, Users, X } from "lucide-react";
+import {
+  Activity,
+  AlertCircle,
+  Bell,
+  ChartColumn,
+  FlaskConical,
+  LayoutDashboard,
+  Menu,
+  PlaySquare,
+  Settings,
+  Sparkles,
+  X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
 import { useEffect, useState } from "react";
 
 import { cn } from "@/lib/utils";
@@ -15,33 +28,25 @@ type SidebarProps = {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/runs", label: "Runs", icon: PlaySquare },
-  { href: "/agents", label: "Agents", icon: Users },
-  { href: "/insights", label: "Insights", icon: AlertCircle },
-  { href: "/demo", label: "Demo", icon: Rocket },
+  { href: "/insights", label: "Insights", icon: Sparkles },
+  { href: "/alerts", label: "Alerts", icon: Bell },
+  { href: "/usage", label: "Usage", icon: ChartColumn },
   { href: "/sandbox", label: "Sandbox", icon: FlaskConical },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar({ activePath = "/runs" }: SidebarProps) {
+export function Sidebar({ activePath = "/dashboard" }: SidebarProps) {
   const pathname = usePathname();
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
   const [permissions, setPermissions] = useState<string[] | null>(null);
-
   const currentPath = pathname ?? activePath;
-  const visibleNavItems = navItems.filter((item) => {
-    if (!permissions) return item.href !== "/settings";
-    if (item.href === "/sandbox") return permissions.includes("sandbox:run");
-    if (item.href === "/settings") return permissions.includes("project:manage");
-    return true;
-  });
 
   useEffect(() => {
     let cancelled = false;
-
     void getCurrentUser()
-      .then((response) => {
+      .then((me) => {
         if (!cancelled) {
-          setPermissions(response.user.permissions);
+          setPermissions(me.user.permissions);
         }
       })
       .catch(() => {
@@ -49,93 +54,114 @@ export function Sidebar({ activePath = "/runs" }: SidebarProps) {
           setPermissions([]);
         }
       });
-
     return () => {
       cancelled = true;
     };
   }, []);
+
+  const visibleItems = navItems.filter((item) => {
+    if (!permissions) return item.href !== "/settings";
+    if (item.href === "/sandbox") return permissions.includes("sandbox:run");
+    if (item.href === "/settings") return permissions.includes("project:manage");
+    return true;
+  });
 
   async function handleLogout() {
     await logout();
     window.location.href = "/login";
   }
 
-  return (
-    <>
-      <div className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-card px-4 lg:hidden">
-        <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-            <Activity className="size-4" />
-          </div>
-          <span className="text-lg font-semibold">AgentScope</span>
+  const SidebarBody = (
+    <aside className="flex h-full w-72 flex-col border-r border-black/5 bg-white/80 backdrop-blur-xl">
+      <div className="flex h-16 items-center gap-3 border-b border-black/5 px-5">
+        <div className="grid size-9 place-content-center rounded-xl bg-neutral-900 text-white">
+          <Activity className="size-4" />
         </div>
+        <div>
+          <p className="text-sm font-semibold text-neutral-900">AgentScope</p>
+          <p className="text-xs text-neutral-500">Operations Console</p>
+        </div>
+      </div>
+
+      <nav className="flex-1 space-y-1 p-3">
+        {visibleItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = currentPath === item.href || (item.href === "/dashboard" && currentPath === "/");
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              onClick={() => setMobileOpen(false)}
+              className={cn(
+                "relative flex items-center gap-3 overflow-hidden rounded-xl px-3 py-2.5 text-sm font-medium transition",
+                isActive ? "text-neutral-900" : "text-neutral-500 hover:text-neutral-900",
+              )}
+            >
+              {isActive ? (
+                <motion.span
+                  layoutId="sidebar-active-pill"
+                  className="absolute inset-0 -z-10 rounded-xl bg-neutral-900/8"
+                  transition={{ type: "spring", stiffness: 400, damping: 35 }}
+                />
+              ) : null}
+              <Icon className="size-4" />
+              {item.label}
+            </Link>
+          );
+        })}
+      </nav>
+
+      <div className="border-t border-black/5 p-3">
         <button
           type="button"
-          onClick={() => setMobileMenuOpen((value) => !value)}
-          className="rounded-lg p-2 text-muted-foreground hover:bg-secondary hover:text-foreground"
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left text-sm font-medium text-neutral-500 transition hover:bg-neutral-100 hover:text-neutral-900"
         >
-          {mobileMenuOpen ? <X className="size-5" /> : <Menu className="size-5" />}
+          <AlertCircle className="size-4" />
+          Sign out
+        </button>
+      </div>
+    </aside>
+  );
+
+  return (
+    <>
+      <div className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-black/5 bg-white/80 px-4 backdrop-blur-xl lg:hidden">
+        <div className="text-sm font-semibold text-neutral-900">AgentScope</div>
+        <button
+          type="button"
+          className="grid size-9 place-content-center rounded-lg border border-black/10"
+          onClick={() => setMobileOpen((value) => !value)}
+        >
+          {mobileOpen ? <X className="size-4" /> : <Menu className="size-4" />}
         </button>
       </div>
 
-      {mobileMenuOpen ? (
-        <button
-          type="button"
-          aria-label="Close navigation"
-          className="fixed inset-0 z-20 bg-black/20 lg:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        />
-      ) : null}
+      <div className="hidden lg:sticky lg:top-0 lg:block lg:h-screen">{SidebarBody}</div>
 
-      <aside
-        className={cn(
-          "fixed inset-y-0 left-0 z-30 w-64 border-r border-sidebar-border bg-sidebar transition-transform duration-300 lg:sticky lg:top-0 lg:h-screen lg:translate-x-0",
-          mobileMenuOpen ? "translate-x-0" : "-translate-x-full",
-        )}
-      >
-        <div className="flex h-full flex-col">
-          <div className="hidden h-16 items-center border-b border-sidebar-border px-6 lg:flex">
-            <div className="flex items-center gap-3">
-              <div className="flex size-9 items-center justify-center rounded-lg bg-primary text-primary-foreground">
-                <Activity className="size-4" />
-              </div>
-              <span className="text-lg font-semibold text-sidebar-foreground">AgentScope</span>
-            </div>
-          </div>
-
-          <nav className="flex-1 space-y-1 px-3 py-4 pt-20 lg:pt-4">
-            {visibleNavItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentPath === item.href || (item.href === "/dashboard" && currentPath === "/");
-
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
-                    isActive
-                      ? "bg-sidebar-accent text-sidebar-foreground"
-                      : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-                  )}
-                >
-                  <Icon className="size-5" />
-                  <span>{item.label}</span>
-                </Link>
-              );
-            })}
-            <button
+      <AnimatePresence>
+        {mobileOpen ? (
+          <>
+            <motion.button
               type="button"
-              onClick={handleLogout}
-              className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              className="fixed inset-0 z-40 bg-black/20 lg:hidden"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setMobileOpen(false)}
+            />
+            <motion.div
+              className="fixed inset-y-0 left-0 z-50 lg:hidden"
+              initial={{ x: -300 }}
+              animate={{ x: 0 }}
+              exit={{ x: -300 }}
+              transition={{ type: "spring", stiffness: 400, damping: 35 }}
             >
-              <X className="size-5" />
-              <span>Logout</span>
-            </button>
-          </nav>
-        </div>
-      </aside>
+              {SidebarBody}
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
     </>
   );
 }

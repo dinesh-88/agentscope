@@ -218,6 +218,59 @@ export type DemoRunResponse = {
   run_id: string;
 };
 
+export type ProjectUsagePoint = {
+  date: string;
+  runs: number;
+  tokens: number;
+  cost: number;
+  errors: number;
+};
+
+export type Alert = {
+  id: string;
+  project_id: string;
+  name: string;
+  condition_type: string;
+  threshold_value: number;
+  window_minutes: number;
+  enabled: boolean;
+  created_at: string;
+};
+
+export type AlertEvent = {
+  id: string;
+  alert_id: string;
+  triggered_at: string;
+  payload: Record<string, unknown>;
+};
+
+export type CreateAlertRequest = {
+  project_id: string;
+  name: string;
+  condition_type: string;
+  threshold_value: number;
+  window_minutes: number;
+};
+
+export type TeamMember = {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  role: string;
+  joined_at: string;
+};
+
+export type InviteRecord = {
+  id: string;
+  email: string;
+  organization_id: string;
+  role: string;
+  token: string;
+  expires_at: string;
+  created_at: string;
+  accepted_at: string | null;
+};
+
 async function request<T>(path: string): Promise<T> {
   const response = await api.get<T>(path);
   return response.data;
@@ -228,8 +281,21 @@ async function postRequest<T>(path: string): Promise<T> {
   return response.data;
 }
 
+async function postRequestWithBody<T>(path: string, payload: unknown): Promise<T> {
+  const response = await api.post<T>(path, payload);
+  return response.data;
+}
+
+async function deleteRequest(path: string): Promise<void> {
+  await api.delete(path);
+}
+
 function isNotFound(error: unknown) {
   return axios.isAxiosError(error) && error.response?.status === 404;
+}
+
+function isUnauthorized(error: unknown) {
+  return axios.isAxiosError(error) && error.response?.status === 401;
 }
 
 export async function getRuns(): Promise<Run[]> {
@@ -345,8 +411,32 @@ export async function logout(): Promise<void> {
 }
 
 export async function getCurrentUser(): Promise<MeResponse> {
-  const response = await api.get<MeResponse>("/v1/auth/me");
-  return response.data;
+  try {
+    const response = await api.get<MeResponse>("/v1/auth/me");
+    return response.data;
+  } catch (error) {
+    if (isUnauthorized(error) || isNotFound(error)) {
+      return {
+        user: {
+          id: "",
+          email: "",
+          display_name: null,
+          avatar_url: null,
+          memberships: [],
+          permissions: [],
+          is_admin: false,
+        },
+        onboarding: {
+          has_organization: false,
+          has_project: false,
+          has_first_run: false,
+          default_project_id: null,
+          generated_api_key: null,
+        },
+      };
+    }
+    throw error;
+  }
 }
 
 export async function getOnboardingState(): Promise<OnboardingState> {
@@ -362,4 +452,71 @@ export async function runDemoScenario(scenario: string): Promise<DemoRunResponse
     scenario,
   });
   return response.data;
+}
+
+export async function getProjectUsage(projectId: string): Promise<ProjectUsagePoint[]> {
+  try {
+    return await request<ProjectUsagePoint[]>(`/v1/projects/${projectId}/usage`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function getAlerts(): Promise<Alert[]> {
+  try {
+    return await request<Alert[]>("/v1/alerts");
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function createAlert(payload: CreateAlertRequest): Promise<Alert> {
+  return postRequestWithBody<Alert>("/v1/alerts", payload);
+}
+
+export async function deleteAlert(alertId: string): Promise<void> {
+  return deleteRequest(`/v1/alerts/${alertId}`);
+}
+
+export async function getAlertEvents(): Promise<AlertEvent[]> {
+  try {
+    return await request<AlertEvent[]>("/v1/alerts/events");
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function createOrgInvite(
+  organizationId: string,
+  payload: { email: string; role: string },
+): Promise<InviteRecord> {
+  return postRequestWithBody<InviteRecord>(`/v1/orgs/${organizationId}/invites`, payload);
+}
+
+export async function acceptInvite(token: string): Promise<void> {
+  await postRequestWithBody<void>("/v1/invites/accept", { token });
+}
+
+export async function getOrgMembers(organizationId: string): Promise<TeamMember[]> {
+  try {
+    return await request<TeamMember[]>(`/v1/orgs/${organizationId}/members`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function removeOrgMember(organizationId: string, userId: string): Promise<void> {
+  return deleteRequest(`/v1/orgs/${organizationId}/members/${userId}`);
 }

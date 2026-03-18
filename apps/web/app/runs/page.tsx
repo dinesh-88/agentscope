@@ -8,8 +8,16 @@ type RunsPageProps = {
   searchParams?: Promise<{
     query?: string;
     status?: string;
+    model?: string;
+    agent?: string;
     workflow_name?: string;
     agent_name?: string;
+    tokens_min?: string;
+    tokens_max?: string;
+    duration_min_ms?: string;
+    duration_max_ms?: string;
+    time_from?: string;
+    time_to?: string;
   }>;
 };
 

@@ -76,10 +76,18 @@ export async function getRuns(): Promise<Run[]> {
 export type RunSearchFilters = {
   query?: string;
   status?: string;
+  model?: string;
+  agent?: string;
   workflow_name?: string;
   agent_name?: string;
+  tokens_min?: number | string;
+  tokens_max?: number | string;
+  duration_min_ms?: number | string;
+  duration_max_ms?: number | string;
+  time_from?: string;
+  time_to?: string;
   project_id?: string;
-  limit?: number;
+  limit?: number | string;
 };
 
 export async function getRunsFiltered(filters: RunSearchFilters = {}): Promise<Run[]> {
@@ -91,7 +99,7 @@ export async function getRunsFiltered(filters: RunSearchFilters = {}): Promise<R
   }
 
   const suffix = params.size > 0 ? `?${params.toString()}` : "";
-  return request<Run[]>(`/v1/runs${suffix}`);
+  return request<Run[]>(`/v1/runs/search${suffix}`);
 }
 
 export async function getRun(runId: string): Promise<Run | null> {

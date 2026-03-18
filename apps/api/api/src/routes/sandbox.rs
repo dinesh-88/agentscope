@@ -6,13 +6,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use axum::{extract::State, Json};
+use axum::{extract::{Extension, State}, Json};
 use chrono::Utc;
 use serde::Serialize;
 use tokio::process::Command;
 use tracing::{error, info};
 
-use crate::{ApiError, AppState};
+use crate::{auth::AuthenticatedUser, limits, ApiError, AppState};
 
 #[derive(Clone)]
 pub struct SandboxManager {
@@ -255,19 +255,25 @@ impl SandboxTargetStatus {
 
 pub async fn run_python(
     State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<SandboxStartResponse>, ApiError> {
+    enforce_sandbox_limits(&state, &user.id).await?;
     Ok(Json(state.sandbox.start_python().await?))
 }
 
 pub async fn run_ts(
     State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<SandboxStartResponse>, ApiError> {
+    enforce_sandbox_limits(&state, &user.id).await?;
     Ok(Json(state.sandbox.start_ts().await?))
 }
 
 pub async fn run_real(
     State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<SandboxStartResponse>, ApiError> {
+    enforce_sandbox_limits(&state, &user.id).await?;
     Ok(Json(state.sandbox.start_real().await?))
 }
 
@@ -302,4 +308,16 @@ fn resolve_python_command() -> String {
 
 fn resolve_node_command() -> String {
     env::var("AGENTSCOPE_SANDBOX_NODE").unwrap_or_else(|_| "node".to_string())
+}
+
+async fn enforce_sandbox_limits(state: &Arc<AppState>, user_id: &str) -> Result<(), ApiError> {
+    let project_id = state
+        .storage
+        .get_default_project_for_user(user_id)
+        .await?
+        .map(|(_, _, project_id, _)| project_id)
+        .ok_or_else(|| ApiError::Forbidden("no default project found for user".to_string()))?;
+    limits::check_rate_limit(state, &project_id).await?;
+    limits::check_token_quota(state, &project_id, 0).await?;
+    Ok(())
 }

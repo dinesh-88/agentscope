@@ -33,7 +33,7 @@ async fn main() {
                 secret: config.jwt_secret.clone(),
                 expiry_seconds: config.jwt_expiry_seconds,
                 cookie_name: "agentscope_session".to_string(),
-                secure_cookies: false,
+                secure_cookies: config.secure_cookies,
             },
         ),
     )

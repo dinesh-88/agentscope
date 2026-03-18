@@ -9,13 +9,35 @@ use crate::Storage;
 pub struct RunSearchFilters {
     pub query: Option<String>,
     pub status: Option<String>,
+    pub model: Option<String>,
+    pub agent: Option<String>,
     pub workflow_name: Option<String>,
     pub agent_name: Option<String>,
+    pub tokens_min: Option<i64>,
+    pub tokens_max: Option<i64>,
+    pub duration_min_ms: Option<i64>,
+    pub duration_max_ms: Option<i64>,
+    pub time_from: Option<chrono::DateTime<chrono::Utc>>,
+    pub time_to: Option<chrono::DateTime<chrono::Utc>>,
     pub project_id: Option<String>,
     pub limit: Option<i64>,
 }
 
 impl Storage {
+    pub async fn run_exists(&self, run_id: &str) -> Result<bool, AgentScopeError> {
+        let exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (SELECT 1 FROM runs WHERE id = $1::uuid)
+            "#,
+        )
+        .bind(run_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|e| AgentScopeError::Storage(format!("failed to check run {run_id}: {e}")))?;
+
+        Ok(exists)
+    }
+
     pub async fn insert_run(&self, run: &Run) -> Result<(), AgentScopeError> {
         sqlx::query(
             r#"
@@ -208,17 +230,76 @@ impl Storage {
             builder.push_bind(status);
         }
 
-        if let Some(workflow_name) = filters.workflow_name.as_deref().filter(|value| !value.is_empty()) {
+        if let Some(model) = filters.model.as_deref().filter(|value| !value.is_empty()) {
+            builder.push(
+                " AND EXISTS (SELECT 1 FROM spans WHERE spans.run_id = runs.id AND spans.model ILIKE ",
+            );
+            builder.push_bind(format!("%{model}%"));
+            builder.push(")");
+        }
+
+        if let Some(agent) = filters.agent.as_deref().filter(|value| !value.is_empty()) {
+            builder.push(" AND runs.agent_name ILIKE ");
+            builder.push_bind(format!("%{agent}%"));
+        }
+
+        if let Some(workflow_name) = filters
+            .workflow_name
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
             builder.push(" AND runs.workflow_name = ");
             builder.push_bind(workflow_name);
         }
 
-        if let Some(agent_name) = filters.agent_name.as_deref().filter(|value| !value.is_empty()) {
+        if let Some(agent_name) = filters
+            .agent_name
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
             builder.push(" AND runs.agent_name = ");
             builder.push_bind(agent_name);
         }
 
-        if let Some(project_id) = filters.project_id.as_deref().filter(|value| !value.is_empty()) {
+        if let Some(tokens_min) = filters.tokens_min {
+            builder.push(" AND COALESCE(runs.total_tokens, 0) >= ");
+            builder.push_bind(tokens_min);
+        }
+
+        if let Some(tokens_max) = filters.tokens_max {
+            builder.push(" AND COALESCE(runs.total_tokens, 0) <= ");
+            builder.push_bind(tokens_max);
+        }
+
+        if let Some(duration_min_ms) = filters.duration_min_ms {
+            builder.push(
+                " AND (EXTRACT(EPOCH FROM (COALESCE(runs.ended_at, now()) - runs.started_at)) * 1000) >= ",
+            );
+            builder.push_bind(duration_min_ms as f64);
+        }
+
+        if let Some(duration_max_ms) = filters.duration_max_ms {
+            builder.push(
+                " AND (EXTRACT(EPOCH FROM (COALESCE(runs.ended_at, now()) - runs.started_at)) * 1000) <= ",
+            );
+            builder.push_bind(duration_max_ms as f64);
+        }
+
+        if let Some(time_from) = filters.time_from {
+            builder.push(" AND runs.started_at >= ");
+            builder.push_bind(time_from);
+        }
+
+        if let Some(time_to) = filters.time_to {
+            builder.push(" AND runs.started_at <= ");
+            builder.push_bind(time_to);
+        }
+
+        if let Some(project_id) = filters
+            .project_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
             builder.push(" AND runs.project_id = ");
             builder.push_bind(project_id).push("::uuid");
         }

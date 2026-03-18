@@ -146,7 +146,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                 </button>
               </div>
 
-              <div className="mb-5 grid gap-3 sm:grid-cols-2">
+              <div className="mb-5 grid gap-3 sm:grid-cols-3">
                 <a
                   className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 transition hover:bg-slate-50"
                   href={`${API_BASE_URL}/v1/auth/oauth/google`}
@@ -159,6 +159,12 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                 >
                   <Github className="size-4" />
                   Continue with GitHub
+                </a>
+                <a
+                  className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 bg-white px-4 text-sm font-medium text-slate-900 transition hover:bg-slate-50"
+                  href={`${API_BASE_URL}/v1/auth/oidc`}
+                >
+                  Continue with SSO
                 </a>
               </div>
 

@@ -234,3 +234,81 @@ async fn ingest_and_query_runs(pool: PgPool) {
     assert_eq!(root_cause["root_cause_type"], "TOOL_FAILURE");
     assert_eq!(root_cause["evidence"]["span_id"], "demo");
 }
+
+#[sqlx::test(migrations = "../storage/migrations")]
+async fn search_runs_supports_status_model_agent_tokens_duration_and_time(pool: PgPool) {
+    let project_id = seed_project(&pool, "search-org", "search-project").await;
+    let org_id: String =
+        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
+            .bind(&project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    seed_user_with_role(&pool, &org_id, "searcher@example.com", "viewer").await;
+    let router = app(Storage { pool: pool.clone() }, jwt_settings());
+    let token = login_token(&router, "searcher@example.com").await;
+
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let started_at = Utc::now() - chrono::Duration::minutes(5);
+    let ended_at = started_at + chrono::Duration::seconds(12);
+
+    sqlx::query(
+        r#"
+        INSERT INTO runs (
+            id, project_id, organization_id, workflow_name, agent_name, status,
+            started_at, ended_at, total_input_tokens, total_output_tokens, total_tokens, total_cost_usd
+        )
+        VALUES ($1, $2::uuid, $3::uuid, 'search_flow', 'planner_agent', 'completed', $4, $5, 400, 200, 600, 0.0)
+        "#,
+    )
+    .bind(&run_id)
+    .bind(&project_id)
+    .bind(&org_id)
+    .bind(started_at)
+    .bind(ended_at)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        INSERT INTO spans (
+            id, run_id, parent_span_id, span_type, name, status, started_at, ended_at,
+            provider, model, input_tokens, output_tokens, total_tokens, estimated_cost, context_window,
+            context_usage_percent, metadata
+        )
+        VALUES ($1, $2, null, 'llm', 'search-span', 'ok', $3, $4, 'openai', 'gpt-4o-mini', 400, 200, 600, 0, null, null, '{}'::jsonb)
+        "#,
+    )
+    .bind(uuid::Uuid::new_v4().to_string())
+    .bind(&run_id)
+    .bind(started_at)
+    .bind(ended_at)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let uri = format!(
+        "/v1/runs/search?status=completed&model=gpt-4o-mini&agent=planner&tokens_min=500&tokens_max=700&duration_min_ms=10000&duration_max_ms=15000&time_from={}&time_to={}",
+        urlencoding::encode(&(started_at - chrono::Duration::seconds(1)).to_rfc3339()),
+        urlencoding::encode(&(started_at + chrono::Duration::seconds(1)).to_rfc3339()),
+    );
+
+    let response = router
+        .oneshot(with_bearer(
+            Request::builder()
+                .method("GET")
+                .uri(uri)
+                .body(Body::empty())
+                .unwrap(),
+            &token,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let runs: Vec<Run> = serde_json::from_slice(&body).unwrap();
+    assert_eq!(runs.len(), 1);
+    assert_eq!(runs[0].id, run_id);
+}

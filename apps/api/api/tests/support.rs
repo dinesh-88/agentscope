@@ -38,6 +38,7 @@ pub async fn seed_user_with_role(
     email: &str,
     role: &str,
 ) -> String {
+    let normalized_role = if role == "member" { "developer" } else { role };
     let user_id: String = sqlx::query_scalar(
         r#"
         INSERT INTO users (email, password_hash, display_name)
@@ -55,7 +56,7 @@ pub async fn seed_user_with_role(
     )
     .bind(&user_id)
     .bind(organization_id)
-    .bind(role)
+    .bind(normalized_role)
     .execute(pool)
     .await
     .unwrap();
