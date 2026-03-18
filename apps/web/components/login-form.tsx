@@ -227,11 +227,11 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
 
           <p className="mt-8 text-center text-xs text-gray-500">
             By signing in, you agree to our{" "}
-            <Link href="/settings/team" className="text-gray-400 transition-colors hover:text-white">
+            <Link href="/legal/terms" className="text-gray-400 transition-colors hover:text-white">
               Terms of Service
             </Link>{" "}
             and{" "}
-            <Link href="/settings" className="text-gray-400 transition-colors hover:text-white">
+            <Link href="/legal/privacy" className="text-gray-400 transition-colors hover:text-white">
               Privacy Policy
             </Link>
           </p>
@@ -253,7 +253,17 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
         <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-8 backdrop-blur-sm">
           <div className="mb-8 text-center">
             <h1 className="mb-2 text-2xl font-bold">Create your account</h1>
-            <p className="text-sm text-gray-400">Start debugging your AI agents today</p>
+            <p className="text-sm text-gray-400">Create account, install SDK, send first trace</p>
+          </div>
+
+          <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-blue-300">
+              Step 1 of 3
+            </div>
+            <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
+              <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-purple-500 to-blue-500" />
+            </div>
+            <p className="text-xs text-blue-100">Create account and workspace now. API key + first trace setup starts immediately after signup.</p>
           </div>
 
           <div className="mb-6 space-y-3">
@@ -412,11 +422,11 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
               />
               <span className="text-sm text-gray-400 transition-colors group-hover:text-gray-300">
                 I agree to the{" "}
-                <Link href="/settings/team" className="text-purple-400 hover:text-purple-300">
+                <Link href="/legal/terms" className="text-purple-400 hover:text-purple-300">
                   Terms of Service
                 </Link>{" "}
                 and{" "}
-                <Link href="/settings" className="text-purple-400 hover:text-purple-300">
+                <Link href="/legal/privacy" className="text-purple-400 hover:text-purple-300">
                   Privacy Policy
                 </Link>
               </span>
@@ -433,7 +443,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
               disabled={isSubmitting}
               className="w-full rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-3 font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {isSubmitting ? "Creating account..." : "Create Account"}
+              {isSubmitting ? "Creating account..." : "Create Account and Continue"}
             </button>
           </form>
 

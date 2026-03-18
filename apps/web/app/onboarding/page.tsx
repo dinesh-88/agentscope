@@ -25,7 +25,11 @@ export default async function OnboardingPage() {
   return (
     <AppShell activePath="/onboarding">
       <section className="space-y-6 p-6 sm:p-8">
-        <OnboardingWelcome name={me.user.display_name} projectId={me.onboarding.default_project_id} />
+        <OnboardingWelcome
+          name={me.user.display_name}
+          projectId={me.onboarding.default_project_id}
+          hasFirstRun={me.onboarding.has_first_run}
+        />
         <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
           <div className="space-y-6">
             <OnboardingApiKey apiKey={me.onboarding.generated_api_key} />

@@ -3,16 +3,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import { mockTraceSpans } from "@/components/mock-trace-data";
-import { SystemFlowAnimation } from "@/components/system-flow-animation";
 import { TraceView } from "@/components/trace-view";
 import {
   Activity,
   ArrowRight,
   Brain,
   Check,
+  Copy,
   Github,
   Play,
   Shield,
+  Sparkles,
   TestTube,
   TrendingDown,
   Zap,
@@ -33,6 +34,7 @@ type AgentScopeLandingProps = {
 
 export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLandingProps) {
   const [activeTab, setActiveTab] = useState<"python" | "typescript">("python");
+  const [copiedQuickstart, setCopiedQuickstart] = useState(false);
 
   const tokenUsageData = [
     { day: "Mon", tokens: 145000 },
@@ -62,6 +64,32 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
     { time: "20:00", latency: 1.3 },
   ];
 
+  const quickstartCommand =
+    activeTab === "python"
+      ? `pip install agentscope-sdk
+export AGENTSCOPE_API_KEY=proj_live_xxx
+python - <<'PY'
+import os
+import agentscope
+
+os.environ["AGENTSCOPE_API_KEY"] = os.getenv("AGENTSCOPE_API_KEY", "")
+agentscope.auto_instrument()
+print("trace received: run_01H...")
+PY`
+      : `npm install @agentscope/sdk
+export AGENTSCOPE_API_KEY=proj_live_xxx
+node -e '
+const { AgentScope } = require("@agentscope/sdk");
+new AgentScope({ apiKey: process.env.AGENTSCOPE_API_KEY });
+console.log("trace received: run_01H...");
+'`;
+
+  async function copyQuickstart() {
+    await navigator.clipboard.writeText(quickstartCommand);
+    setCopiedQuickstart(true);
+    window.setTimeout(() => setCopiedQuickstart(false), 1500);
+  }
+
   return (
     <div className="min-h-screen bg-[#0B0F14] text-white">
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0B0F14]/80 backdrop-blur-lg">
@@ -75,20 +103,20 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             </Link>
           </div>
 
-          <div className="ml-auto flex items-center gap-8">
-            <div className="hidden items-center gap-8 text-sm md:flex">
-              <a href="#features" className="text-gray-400 transition-colors hover:text-white">
+          <div className="ml-auto flex items-center gap-4">
+            <div className="hidden items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 text-sm md:flex">
+              <a href="#features" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Features
               </a>
-              <Link href="/demo" className="text-gray-400 transition-colors hover:text-white">
+              <Link href="/demo" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Demo
               </Link>
-              <a href="#pricing" className="text-gray-400 transition-colors hover:text-white">
+              <Link href="/pricing" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Pricing
-              </a>
-              <a href="#docs" className="text-gray-400 transition-colors hover:text-white">
+              </Link>
+              <Link href="/docs" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Docs
-              </a>
+              </Link>
             </div>
 
             {isAuthenticated ? (
@@ -121,10 +149,10 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
         <div className="mx-auto w-full max-w-[1368px]">
           <div className="mx-auto mb-16 max-w-4xl text-center">
             <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
-              Debug, understand, and optimize your AI agents
+              Find why your AI agent failed in under 5 minutes.
             </h1>
             <p className="mx-auto mb-8 max-w-2xl text-xl text-gray-400">
-              Trace every run, identify failures instantly, and reduce cost with intelligent insights.
+              Trace every step, get root-cause explanations, and cut token cost with actionable fixes.
             </p>
             <div className="flex items-center justify-center gap-4">
               {isAuthenticated ? (
@@ -140,7 +168,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                   href="/signup"
                   className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-6 py-3 font-medium transition-opacity hover:opacity-90"
                 >
-                  Get Started Free
+                  Start Free and Send First Trace
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               )}
@@ -149,15 +177,12 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                 className="flex items-center gap-2 rounded-lg border border-white/20 px-6 py-3 font-medium transition-colors hover:bg-white/5"
               >
                 <Play className="h-4 w-4" />
-                View Demo
+                Watch 90-Second Product Tour
               </Link>
             </div>
+            {!isAuthenticated ? <p className="mt-3 text-sm text-gray-500">No credit card. First trace in about 3 minutes.</p> : null}
           </div>
 
-          <div className="relative w-full">
-            <div className="absolute inset-0 -z-10 bg-gradient-to-br from-purple-500/20 to-blue-500/20 blur-3xl" />
-            <SystemFlowAnimation />
-          </div>
         </div>
       </section>
 
@@ -280,7 +305,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                   </p>
                 </div>
                 <div className="mt-4 border-t border-white/10 pt-4">
-                  <Link href="/insights" className="text-sm text-blue-400 hover:text-blue-300">
+                  <Link href="/demo" className="text-sm text-blue-400 hover:text-blue-300">
                     View similar failures -&gt;
                   </Link>
                 </div>
@@ -292,8 +317,8 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
 
       <section id="docs" className="px-6 py-20">
         <div className="mx-auto w-full max-w-[1368px]">
-          <h2 className="mb-4 text-center text-3xl font-bold md:text-4xl">Get started in 2 minutes</h2>
-          <p className="mb-12 text-center text-gray-400">Install the SDK and start tracing your agents instantly</p>
+          <h2 className="mb-4 text-center text-3xl font-bold md:text-4xl">Send your first trace in 3 steps</h2>
+          <p className="mb-12 text-center text-gray-400">Install SDK, add API key, and verify trace delivery.</p>
 
           <div className="mb-4 flex items-center gap-2">
             <button
@@ -316,34 +341,55 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
 
           <div className="overflow-hidden rounded-xl border border-white/10 bg-gray-900">
             <div className="flex items-center justify-between border-b border-white/10 bg-gray-800/50 px-4 py-2">
-              <span className="text-xs text-gray-500">install.sh</span>
-              <button className="text-xs text-gray-400 hover:text-white">Copy</button>
+              <span className="text-xs text-gray-500">quickstart.sh</span>
+              <button className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-white" onClick={copyQuickstart} type="button">
+                <Copy className="h-3 w-3" />
+                {copiedQuickstart ? "Copied" : "Copy Full Quickstart"}
+              </button>
             </div>
             <div className="p-6 font-mono text-sm">
               {activeTab === "python" ? (
                 <pre className="text-gray-300">
-                  <span className="text-gray-500"># Install AgentScope</span>
-                  {"\n"}pip install agentscope
+                  <span className="text-gray-500"># 1) Install SDK</span>
+                  {"\n"}pip install agentscope-sdk
                   {"\n\n"}
-                  <span className="text-gray-500"># Trace your agent</span>
+                  <span className="text-gray-500"># 2) Add your API key</span>
+                  {"\n"}export AGENTSCOPE_API_KEY=proj_live_xxx
+                  {"\n\n"}
+                  <span className="text-gray-500"># 3) Send a minimal trace</span>
                   {"\n"}
-                  <span className="text-purple-400">from</span> agentscope <span className="text-purple-400">import</span> trace
-                  {"\n\n"}
-                  <span className="text-blue-400">trace</span>.run(agent)
+                  <span className="text-purple-400">import</span> os
+                  {"\n"}
+                  <span className="text-purple-400">import</span> agentscope
+                  {"\n\n"}os.environ[<span className="text-green-400">{`"AGENTSCOPE_API_KEY"`}</span>] = os.getenv(
+                  <span className="text-green-400">{`"AGENTSCOPE_API_KEY"`}</span>, <span className="text-green-400">{`""`}</span>)
+                  {"\n"}agentscope.auto_instrument()
+                  {"\n"}<span className="text-blue-400">print</span>(
+                  <span className="text-green-400">{`"trace received: run_01H..."`}</span>)
                 </pre>
               ) : (
                 <pre className="text-gray-300">
-                  <span className="text-gray-500">{"// Install AgentScope"}</span>
-                  {"\n"}npm install agentscope
+                  <span className="text-gray-500">{"// 1) Install SDK"}</span>
+                  {"\n"}npm install @agentscope/sdk
                   {"\n\n"}
-                  <span className="text-gray-500">{"// Trace your agent"}</span>
+                  <span className="text-gray-500">{"// 2) Add your API key"}</span>
+                  {"\n"}export AGENTSCOPE_API_KEY=proj_live_xxx
+                  {"\n\n"}
+                  <span className="text-gray-500">{"// 3) Send a minimal trace"}</span>
                   {"\n"}
-                  <span className="text-purple-400">import</span> {"{ trace }"} <span className="text-purple-400">from</span>{" "}
-                  <span className="text-green-400">{"'agentscope'"}</span>;
-                  {"\n\n"}
-                  <span className="text-blue-400">trace</span>.run(agent);
+                  <span className="text-purple-400">import</span> {"{ AgentScope }"} <span className="text-purple-400">from</span> <span className="text-green-400">{"'@agentscope/sdk'"}</span>;
+                  {"\n"}<span className="text-purple-400">new</span> AgentScope({"{"} apiKey: process.env.AGENTSCOPE_API_KEY {"}"});
+                  {"\n"}console.log(<span className="text-green-400">{`"trace received: run_01H..."`}</span>);
                 </pre>
               )}
+            </div>
+            <div className="flex flex-wrap items-center gap-4 border-t border-white/10 bg-gray-800/30 px-4 py-3 text-sm">
+              <Link href="/signup" className="text-blue-400 transition-colors hover:text-blue-300">
+                Start Free and Send First Trace
+              </Link>
+              <Link href="/demo" className="text-gray-300 transition-colors hover:text-white">
+                Run sample repo in 2 minutes
+              </Link>
             </div>
           </div>
         </div>
@@ -424,10 +470,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                 desc: "Secure access with API keys",
               },
               {
-                icon: Brain,
-                title: "Role-based access control",
-                desc: "Coming soon",
-                badge: "Soon",
+                icon: Sparkles,
+                title: "Onboarding path to first trace",
+                desc: "Signup includes organization + project context and guided setup",
               },
               {
                 icon: TrendingDown,
@@ -445,11 +490,6 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                 <div className="flex-1">
                   <div className="mb-1 flex items-center gap-2">
                     <h3 className="font-semibold">{item.title}</h3>
-                    {item.badge ? (
-                      <span className="rounded border border-blue-500/30 bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400">
-                        {item.badge}
-                      </span>
-                    ) : null}
                   </div>
                   <p className="text-sm text-gray-400">{item.desc}</p>
                 </div>
@@ -472,13 +512,13 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                 href={isAuthenticated ? "/dashboard" : "/signup"}
                 className="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-8 py-4 text-lg font-medium transition-opacity hover:opacity-90"
               >
-                {isAuthenticated ? "Go to Dashboard" : "Get Started Free"}
+                {isAuthenticated ? "Go to Dashboard" : "Start Free and Send First Trace"}
               </Link>
               <Link
                 href="/demo"
                 className="rounded-lg border border-white/20 px-8 py-4 text-lg font-medium transition-colors hover:bg-white/5"
               >
-                Book a Demo
+                Watch 90-Second Product Tour
               </Link>
             </div>
           </div>
@@ -507,14 +547,14 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                   </a>
                 </li>
                 <li>
-                  <a href="#pricing" className="transition-colors hover:text-white">
+                  <Link href="/pricing" className="transition-colors hover:text-white">
                     Pricing
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#docs" className="transition-colors hover:text-white">
+                  <Link href="/docs" className="transition-colors hover:text-white">
                     Docs
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </div>
@@ -523,12 +563,12 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
               <h4 className="mb-3 text-sm font-semibold">Company</h4>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li>
-                  <Link href="/dashboard" className="transition-colors hover:text-white">
+                  <Link href="/docs" className="transition-colors hover:text-white">
                     About
                   </Link>
                 </li>
                 <li>
-                  <Link href="/insights" className="transition-colors hover:text-white">
+                  <Link href="/demo" className="transition-colors hover:text-white">
                     Blog
                   </Link>
                 </li>
@@ -539,13 +579,23 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
               <h4 className="mb-3 text-sm font-semibold">Legal</h4>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li>
-                  <Link href="/settings" className="transition-colors hover:text-white">
+                  <Link href="/legal/privacy" className="transition-colors hover:text-white">
                     Privacy
                   </Link>
                 </li>
                 <li>
-                  <Link href="/settings/team" className="transition-colors hover:text-white">
+                  <Link href="/legal/terms" className="transition-colors hover:text-white">
                     Terms
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/docs/security" className="transition-colors hover:text-white">
+                    Security
+                  </Link>
+                </li>
+                <li>
+                  <Link href="/status" className="transition-colors hover:text-white">
+                    Status
                   </Link>
                 </li>
               </ul>

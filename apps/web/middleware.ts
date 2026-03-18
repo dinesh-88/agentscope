@@ -7,7 +7,16 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(UI_SESSION_COOKIE_NAME)?.value;
   const isLoginRoute = pathname === "/login" || pathname === "/signup";
-  const isPublicRoute = pathname === "/" || isLoginRoute;
+  const isPublicRoute =
+    pathname === "/" ||
+    pathname === "/demo" ||
+    pathname === "/docs" ||
+    pathname === "/pricing" ||
+    pathname === "/status" ||
+    pathname === "/docs/security" ||
+    pathname === "/legal/privacy" ||
+    pathname === "/legal/terms" ||
+    isLoginRoute;
 
   if (isLoginRoute && token) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
@@ -32,6 +41,12 @@ export const config = {
     "/sandbox",
     "/settings",
     "/demo",
+    "/docs",
+    "/docs/security",
+    "/pricing",
+    "/status",
+    "/legal/privacy",
+    "/legal/terms",
     "/onboarding",
     "/login",
     "/signup",
