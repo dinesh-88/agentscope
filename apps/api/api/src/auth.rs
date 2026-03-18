@@ -590,10 +590,16 @@ fn with_cookie_header(mut response: Response, value: String) -> Response {
 
 fn session_cookie_header(settings: &JwtSettings, session_token: &str) -> String {
     let secure = if settings.secure_cookies { "; Secure" } else { "" };
+    let same_site = if settings.secure_cookies {
+        "None"
+    } else {
+        "Lax"
+    };
     format!(
-        "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age={}{}",
+        "{}={}; Path=/; HttpOnly; SameSite={}; Max-Age={}{}",
         settings.cookie_name,
         session_token,
+        same_site,
         settings.expiry_seconds,
         secure
     )
@@ -601,9 +607,14 @@ fn session_cookie_header(settings: &JwtSettings, session_token: &str) -> String 
 
 fn clear_cookie_header(settings: &JwtSettings) -> String {
     let secure = if settings.secure_cookies { "; Secure" } else { "" };
+    let same_site = if settings.secure_cookies {
+        "None"
+    } else {
+        "Lax"
+    };
     format!(
-        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}",
-        settings.cookie_name, secure
+        "{}=; Path=/; HttpOnly; SameSite={}; Max-Age=0{}",
+        settings.cookie_name, same_site, secure
     )
 }
 

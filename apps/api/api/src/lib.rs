@@ -431,7 +431,12 @@ async fn get_run_insights(
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<Vec<RunInsight>>, ApiError> {
     ensure_run_access(&state, &id, &user.id).await?;
-    let insights = state.storage.get_run_insights(&id).await?;
+    let insights = match state.storage.get_run_insights(&id).await? {
+        existing if existing.is_empty() => {
+            analysis::run_insights_engine::analyze_run(&state.storage, &id).await?
+        }
+        existing => existing,
+    };
     Ok(Json(insights))
 }
 
