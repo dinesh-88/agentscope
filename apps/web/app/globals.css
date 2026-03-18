@@ -149,4 +149,64 @@
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Enforce dark surfaces for app pages that still use legacy light utility classes. */
+  .dark .bg-white {
+    background-color: #101722 !important;
+  }
+
+  .dark .bg-white\/90 {
+    background-color: rgb(16 23 34 / 0.9) !important;
+  }
+
+  .dark .bg-white\/85 {
+    background-color: rgb(16 23 34 / 0.85) !important;
+  }
+
+  .dark .bg-white\/80 {
+    background-color: rgb(16 23 34 / 0.8) !important;
+  }
+
+  .dark .bg-white\/50 {
+    background-color: rgb(16 23 34 / 0.5) !important;
+  }
+
+  .dark .bg-gray-50 {
+    background-color: #0f141b !important;
+  }
+
+  .dark .bg-gray-100 {
+    background-color: #161f2d !important;
+  }
+
+  .dark .border-gray-200,
+  .dark .border-gray-300 {
+    border-color: rgb(255 255 255 / 0.1) !important;
+  }
+
+  .dark .border-black\/5,
+  .dark .border-black\/8,
+  .dark .border-black\/10 {
+    border-color: rgb(255 255 255 / 0.1) !important;
+  }
+
+  .dark .text-gray-900,
+  .dark .text-gray-800 {
+    color: rgb(243 244 246) !important;
+  }
+
+  .dark .text-gray-700,
+  .dark .text-gray-600,
+  .dark .text-gray-500 {
+    color: rgb(156 163 175) !important;
+  }
+
+  .dark .hover\:bg-gray-50:hover {
+    background-color: rgb(255 255 255 / 0.05) !important;
+  }
+
+  .dark .hover\:text-gray-900:hover,
+  .dark .hover\:text-gray-800:hover {
+    color: rgb(255 255 255) !important;
+  }
 }

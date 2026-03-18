@@ -62,7 +62,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
   return (
     <div className="min-h-screen bg-[#0B0F14] text-white">
       <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0B0F14]/80 backdrop-blur-lg">
-        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4">
+        <div className="mx-auto flex w-full max-w-[1368px] items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
             <Link href="/" className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
@@ -72,48 +72,50 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             </Link>
           </div>
 
-          <div className="hidden items-center gap-8 text-sm md:flex">
-            <a href="#features" className="text-gray-400 transition-colors hover:text-white">
-              Features
-            </a>
-            <a href="#demo" className="text-gray-400 transition-colors hover:text-white">
-              Demo
-            </a>
-            <a href="#pricing" className="text-gray-400 transition-colors hover:text-white">
-              Pricing
-            </a>
-            <a href="#docs" className="text-gray-400 transition-colors hover:text-white">
-              Docs
-            </a>
-          </div>
+          <div className="ml-auto flex items-center gap-8">
+            <div className="hidden items-center gap-8 text-sm md:flex">
+              <a href="#features" className="text-gray-400 transition-colors hover:text-white">
+                Features
+              </a>
+              <Link href="/demo" className="text-gray-400 transition-colors hover:text-white">
+                Demo
+              </Link>
+              <a href="#pricing" className="text-gray-400 transition-colors hover:text-white">
+                Pricing
+              </a>
+              <a href="#docs" className="text-gray-400 transition-colors hover:text-white">
+                Docs
+              </a>
+            </div>
 
-          {isAuthenticated ? (
-            <div className="flex items-center gap-3">
-              <Link
-                href="/dashboard"
-                className="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
-              >
-                Go to Dashboard
-              </Link>
-            </div>
-          ) : (
-            <div className="flex items-center gap-3">
-              <Link href="/login" className="text-sm text-gray-400 transition-colors hover:text-white">
-                Sign In
-              </Link>
-              <Link
-                href="/signup"
-                className="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
-              >
-                Get Started Free
-              </Link>
-            </div>
-          )}
+            {isAuthenticated ? (
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/dashboard"
+                  className="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+                >
+                  Go to Dashboard
+                </Link>
+              </div>
+            ) : (
+              <div className="flex items-center gap-3">
+                <Link href="/login" className="text-sm text-gray-400 transition-colors hover:text-white">
+                  Sign In
+                </Link>
+                <Link
+                  href="/signup"
+                  className="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+                >
+                  Get Started Free
+                </Link>
+              </div>
+            )}
+          </div>
         </div>
       </nav>
 
       <section className="px-6 pt-20 pb-32">
-        <div className="mx-auto max-w-7xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <div className="mx-auto mb-16 max-w-4xl text-center">
             <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
               Debug, understand, and optimize your AI agents
@@ -149,7 +151,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             </div>
           </div>
 
-          <div className="relative mx-auto max-w-6xl">
+          <div className="relative w-full">
             <div className="absolute inset-0 -z-10 bg-gradient-to-br from-purple-500/20 to-blue-500/20 blur-3xl" />
             <div className="overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 shadow-2xl backdrop-blur-sm">
               <div className="flex items-center justify-between border-b border-white/10 bg-gray-900/80 px-6 py-4">
@@ -223,7 +225,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section className="bg-gradient-to-b from-transparent to-purple-500/5 px-6 py-20">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-16 text-center text-3xl font-bold md:text-4xl">
             AI agents are powerful — but hard to debug
           </h2>
@@ -262,7 +264,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section id="features" className="px-6 py-20">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-16 text-center text-3xl font-bold md:text-4xl">
             Everything you need to understand your agents
           </h2>
@@ -312,7 +314,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section id="demo" className="bg-gradient-to-b from-blue-500/5 to-transparent px-6 py-20">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <div className="mb-12 text-center">
             <h2 className="mb-4 text-3xl font-bold md:text-4xl">From failure to insight in seconds</h2>
             <p className="text-lg text-gray-400">
@@ -371,7 +373,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section id="docs" className="px-6 py-20">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-4 text-center text-3xl font-bold md:text-4xl">Get started in 2 minutes</h2>
           <p className="mb-12 text-center text-gray-400">Install the SDK and start tracing your agents instantly</p>
 
@@ -430,7 +432,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section id="pricing" className="bg-gradient-to-b from-purple-500/5 to-transparent px-6 py-20">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <div className="mb-12 text-center">
             <h2 className="mb-4 text-3xl font-bold md:text-4xl">Control your cost. Improve performance.</h2>
             <p className="text-lg text-gray-400">
@@ -488,7 +490,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section className="px-6 py-20">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-12 text-center text-3xl font-bold md:text-4xl">Built for teams</h2>
 
           <div className="grid gap-6 md:grid-cols-2">
@@ -540,7 +542,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section className="px-6 py-32">
-        <div className="mx-auto max-w-4xl text-center">
+        <div className="mx-auto w-full max-w-[1368px] text-center">
           <div className="relative">
             <div className="absolute inset-0 -z-10 bg-gradient-to-br from-purple-500/20 to-blue-500/20 blur-3xl" />
             <h2 className="mb-6 text-4xl font-bold md:text-6xl">Start debugging your AI agents today</h2>
@@ -566,7 +568,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <footer className="border-t border-white/10 px-6 py-12">
-        <div className="mx-auto max-w-6xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <div className="mb-8 grid gap-8 md:grid-cols-4">
             <div>
               <div className="mb-4 flex items-center gap-2">

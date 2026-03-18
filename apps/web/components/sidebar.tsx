@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AlertCircle, FlaskConical, LayoutDashboard, Menu, PlaySquare, Settings, Users, X } from "lucide-react";
+import { AlertCircle, FlaskConical, LayoutDashboard, Menu, Moon, PlaySquare, Settings, Sun, Users, X } from "lucide-react";
 
 import { UI_SESSION_COOKIE_NAME, getCurrentUser, logout } from "@/lib/api";
 
 type SidebarProps = {
   activePath?: string;
   theme?: "light" | "dark";
+  onToggleTheme?: () => void;
 };
 
 const navItems = [
@@ -21,7 +22,7 @@ const navItems = [
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
-export function Sidebar({ activePath = "/dashboard", theme = "light" }: SidebarProps) {
+export function Sidebar({ activePath = "/dashboard", theme = "light", onToggleTheme }: SidebarProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [permissions, setPermissions] = useState<string[] | null>(null);
@@ -124,6 +125,18 @@ export function Sidebar({ activePath = "/dashboard", theme = "light" }: SidebarP
           </nav>
 
           <div className={`p-3 ${theme === "dark" ? "border-t border-white/10" : "border-t border-gray-200"}`}>
+            <button
+              type="button"
+              onClick={onToggleTheme}
+              className={`mb-2 flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
+                theme === "dark"
+                  ? "text-gray-400 hover:bg-white/5 hover:text-gray-100"
+                  : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+              }`}
+            >
+              {theme === "dark" ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+              <span>{theme === "dark" ? "Light theme" : "Dark theme"}</span>
+            </button>
             <button
               type="button"
               onClick={handleLogout}

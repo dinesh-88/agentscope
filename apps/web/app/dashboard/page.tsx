@@ -9,7 +9,7 @@ export default async function DashboardPage() {
 
   return (
     <AppShell activePath="/dashboard" theme="dark" mainClassName="px-0 pb-0">
-      <DashboardView runs={runs} dark />
+      <DashboardView runs={runs} />
     </AppShell>
   );
 }

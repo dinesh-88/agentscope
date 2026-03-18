@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { Activity, AlertTriangle, Clock, DollarSign } from "lucide-react";
 
+import { useAppTheme } from "@/components/app-shell";
 import { type Run } from "@/lib/api";
 
 function durationMs(run: Run) {
@@ -23,7 +24,9 @@ function normalizeStatus(status: string) {
   return status;
 }
 
-export function DashboardView({ runs, dark = true }: { runs: Run[]; dark?: boolean }) {
+export function DashboardView({ runs }: { runs: Run[] }) {
+  const { theme } = useAppTheme();
+  const dark = theme === "dark";
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
