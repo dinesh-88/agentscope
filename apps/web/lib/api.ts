@@ -64,13 +64,14 @@ export type RunInsight = {
 
 export type ProjectInsight = {
   id: string;
-  project_id: string;
-  insight_type: string;
-  severity: string;
-  message: string;
-  evidence: Record<string, unknown>;
-  recommendation: string;
-  run_count: number;
+  category: string;
+  type: string;
+  title: string;
+  description: string;
+  impact: "low" | "medium" | "high";
+  suggestion: string;
+  confidence: number;
+  highlighted: boolean;
   created_at: string;
 };
 

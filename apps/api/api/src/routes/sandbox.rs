@@ -301,9 +301,20 @@ fn pythonpath_for_repo_root(repo_root: &Path) -> String {
 }
 
 fn resolve_python_command() -> String {
-    env::var("AGENTSCOPE_SANDBOX_PYTHON")
-        .or_else(|_| env::var("PYTHON"))
-        .unwrap_or_else(|_| "python3".to_string())
+    if let Ok(command) = env::var("AGENTSCOPE_SANDBOX_PYTHON") {
+        return command;
+    }
+    if let Ok(command) = env::var("PYTHON") {
+        return command;
+    }
+
+    let repo_root = sandbox_repo_root();
+    let venv_python = repo_root.join(".venv").join("bin").join("python");
+    if venv_python.exists() {
+        return venv_python.display().to_string();
+    }
+
+    "python3".to_string()
 }
 
 fn resolve_node_command() -> String {

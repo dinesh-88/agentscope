@@ -9,8 +9,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from agentscope import auto_instrument, observe_run, observe_span
-from agentscope.run import _current_run_state
+REPO_ROOT = Path(__file__).resolve().parents[3]
+SDK_PATH = REPO_ROOT / "packages" / "python-sdk"
+if SDK_PATH.exists():
+    sys.path.insert(0, str(SDK_PATH))
+
+from agentscope import auto_instrument, observe_run, observe_span  # noqa: E402
+from agentscope.run import _current_run_state  # noqa: E402
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -18,6 +23,28 @@ PROJECT_DIR = ROOT_DIR / "sample_project"
 SOURCE_PATH = PROJECT_DIR / "buggy.py"
 OUTPUT_PATH = PROJECT_DIR / "buggy_fixed.py"
 MODEL = "gpt-4o-mini"
+
+
+def _load_openai_api_key_from_dotenv() -> None:
+    if os.environ.get("OPENAI_API_KEY"):
+        return
+
+    env_file = REPO_ROOT / ".env"
+    if not env_file.exists():
+        return
+
+    for raw_line in env_file.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() != "OPENAI_API_KEY":
+            continue
+
+        cleaned = value.strip().strip('"').strip("'")
+        if cleaned:
+            os.environ["OPENAI_API_KEY"] = cleaned
+        return
 
 
 def add_artifact(span: dict[str, Any], kind: str, payload: dict[str, Any]) -> None:
@@ -142,11 +169,20 @@ def run_verification(project_dir: Path, target: Path) -> subprocess.CompletedPro
 
 
 def main() -> None:
+    _load_openai_api_key_from_dotenv()
     if not os.environ.get("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is required to run the real sandbox agent")
+        raise RuntimeError(
+            "OPENAI_API_KEY is required to run the real sandbox agent. Set it in the environment or in repo .env."
+        )
 
     auto_instrument(["openai"])
-    from openai import OpenAI
+    try:
+        from openai import OpenAI
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Python package 'openai' is required for sandbox real agent. Install it in the interpreter used by API "
+            "(for example: pip install openai)."
+        ) from exc
 
     client = OpenAI()
 

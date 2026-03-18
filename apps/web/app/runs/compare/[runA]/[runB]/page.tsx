@@ -20,13 +20,13 @@ export default async function RunComparePage({ params }: RunComparePageProps) {
   }
 
   return (
-    <AppShell activePath="/runs">
+    <AppShell activePath="/runs" theme="dark">
       <section className="space-y-6 p-6 sm:p-8">
-        <div>
-          <Link href="/runs" className="text-sm font-medium text-blue-600 hover:text-blue-700">
-            Back to runs
+        <div className="space-y-2">
+          <Link href="/runs/compare" className="text-sm font-medium text-blue-300 hover:text-blue-200">
+            Change selected runs
           </Link>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-100">Run Compare</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-gray-100">Run Compare</h1>
         </div>
         <RunCompareView comparison={comparison} />
       </section>

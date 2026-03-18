@@ -45,9 +45,14 @@ export default async function RunsPage() {
   return (
     <AppShell activePath="/runs">
       <div className="p-8">
-        <div className="mb-8">
-          <h1 className="mb-2 text-2xl font-semibold text-gray-900">Runs</h1>
-          <p className="text-gray-600">Browse all workflow runs from production data</p>
+        <div className="mb-8 flex items-start justify-between gap-4">
+          <div>
+            <h1 className="mb-2 text-2xl font-semibold text-gray-900">Runs</h1>
+            <p className="text-gray-600">Browse all workflow runs from production data</p>
+          </div>
+          <Link href="/runs/compare" className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50">
+            Compare runs
+          </Link>
         </div>
 
         <div className="rounded-xl border border-gray-200 bg-white">

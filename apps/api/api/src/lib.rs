@@ -12,7 +12,7 @@ use std::{env, sync::Arc};
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::{runs::RunSearchFilters, Storage};
 use agentscope_trace::{
-    Artifact, ProjectInsight, Run, RunAnalysis, RunInsight, RunMetrics, RunRootCause, Span,
+    Artifact, Run, RunAnalysis, RunInsight, RunMetrics, RunRootCause, Span,
 };
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -456,7 +456,7 @@ async fn get_project_insights(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthenticatedUser>,
-) -> Result<Json<Vec<ProjectInsight>>, ApiError> {
+) -> Result<Json<Vec<analysis::insights_engine::InsightCard>>, ApiError> {
     ensure_project_access(&state, &id, &user.id).await?;
 
     let insights = match state.storage.get_project_insights(&id).await? {
@@ -466,7 +466,7 @@ async fn get_project_insights(
         existing => existing,
     };
 
-    Ok(Json(insights))
+    Ok(Json(analysis::insights_engine::to_insight_cards(&insights)))
 }
 
 async fn get_project_usage(
