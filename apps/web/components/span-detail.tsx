@@ -57,7 +57,7 @@ export function SpanDetail({ spans }: SpanDetailProps) {
           {details.map(([label, value]) => (
             <div key={label} className="rounded-xl border border-black/8 bg-neutral-50 p-3">
               <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{label}</div>
-              <div className="mt-2 text-sm font-medium text-neutral-950">{value}</div>
+              <div className="mt-2 text-sm font-medium text-neutral-950 dark:text-neutral-100">{value}</div>
             </div>
           ))}
         </div>

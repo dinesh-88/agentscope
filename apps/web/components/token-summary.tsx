@@ -26,7 +26,7 @@ export function TokenSummary({ metrics }: TokenSummaryProps) {
         {items.map(([label, value]) => (
           <div key={label} className="rounded-xl border border-black/8 bg-neutral-50 p-4">
             <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">{label}</div>
-            <div className="mt-2 text-lg font-semibold text-neutral-950">{value}</div>
+            <div className="mt-2 text-lg font-semibold text-neutral-950 dark:text-neutral-100">{value}</div>
           </div>
         ))}
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
@@ -34,7 +34,7 @@ export function TokenSummary({ metrics }: TokenSummaryProps) {
             <Coins className="size-3.5" />
             Cost
           </div>
-          <div className="mt-2 text-lg font-semibold text-neutral-950">
+          <div className="mt-2 text-lg font-semibold text-neutral-950 dark:text-neutral-100">
             ${(metrics?.estimated_cost ?? 0).toFixed(6)}
           </div>
         </div>

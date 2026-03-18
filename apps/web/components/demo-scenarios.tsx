@@ -35,7 +35,7 @@ export function DemoScenarios({ scenarios }: DemoScenariosProps) {
         <div key={scenario.id} className="rounded-3xl border border-black/8 bg-white p-6 shadow-none">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <div className="text-lg font-semibold text-neutral-950">{scenario.name}</div>
+              <div className="text-lg font-semibold text-neutral-950 dark:text-neutral-100">{scenario.name}</div>
               <div className="mt-1 text-sm text-neutral-500">{scenario.id}</div>
             </div>
             <Button disabled={pendingId === scenario.id} onClick={() => runScenario(scenario.id)} type="button">

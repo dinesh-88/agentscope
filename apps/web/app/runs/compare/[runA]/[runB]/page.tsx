@@ -26,7 +26,7 @@ export default async function RunComparePage({ params }: RunComparePageProps) {
           <Link href="/runs" className="text-sm font-medium text-blue-600 hover:text-blue-700">
             Back to runs
           </Link>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-950">Run Compare</h1>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-100">Run Compare</h1>
         </div>
         <RunCompareView comparison={comparison} />
       </section>

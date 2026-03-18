@@ -7,7 +7,7 @@ export function OnboardingWelcome({ name, projectId }: OnboardingWelcomeProps) {
   return (
     <section className="rounded-3xl border border-black/8 bg-white p-6 shadow-none">
       <div className="text-xs uppercase tracking-[0.24em] text-neutral-500">Welcome</div>
-      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-950">
+      <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-100">
         {name ? `Welcome, ${name}` : "Welcome to AgentScope"}
       </h1>
       <p className="mt-3 max-w-2xl text-sm text-neutral-600">

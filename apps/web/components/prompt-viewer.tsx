@@ -91,7 +91,7 @@ export function PromptViewer({ artifacts }: PromptViewerProps) {
               <MessagesSquare className="size-3.5" />
               Messages
           </div>
-          <div className="text-2xl font-semibold text-neutral-950">{messages.length}</div>
+          <div className="text-2xl font-semibold text-neutral-950 dark:text-neutral-100">{messages.length}</div>
           <div className="mt-1 text-xs text-neutral-500">{promptArtifact.kind}</div>
         </div>
 

@@ -2,7 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { mockTraceSpans } from "@/components/mock-trace-data";
 import { SystemFlowAnimation } from "@/components/system-flow-animation";
+import { TraceView } from "@/components/trace-view";
 import {
   Activity,
   ArrowRight,
@@ -258,27 +260,8 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50">
-              <div className="border-b border-red-500/30 bg-red-500/10 px-4 py-3">
-                <span className="text-sm font-medium text-red-400">Failed Run #1247</span>
-              </div>
-              <div className="space-y-2 p-4">
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-gray-400">Step 1: Init</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-green-500" />
-                  <span className="text-sm text-gray-400">Step 2: Fetch data</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="h-2 w-2 rounded-full bg-red-500" />
-                  <span className="text-sm text-red-400">Step 3: API call failed</span>
-                </div>
-                <div className="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3">
-                  <p className="font-mono text-xs text-red-400">Error: Timeout after 5000ms</p>
-                </div>
-              </div>
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-3">
+              <TraceView spans={mockTraceSpans} title="Failed Run #1247" />
             </div>
 
             <div className="overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50">

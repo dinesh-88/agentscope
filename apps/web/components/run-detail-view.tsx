@@ -1,27 +1,14 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { motion } from "framer-motion";
-import { Bot, Cpu, Sparkles, Wrench } from "lucide-react";
+import { Sparkles } from "lucide-react";
 
+import { TraceView, type TraceSpan } from "@/components/trace-view";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type Artifact, type Run, type RunInsight, type Span } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 type Tab = "prompt" | "response" | "metadata";
-
-function spanTypeTone(spanType: string) {
-  if (spanType.includes("llm")) return "bg-blue-500";
-  if (spanType.includes("tool")) return "bg-emerald-500";
-  if (spanType.includes("retrieval")) return "bg-amber-500";
-  return "bg-slate-400";
-}
-
-function spanTypeIcon(spanType: string) {
-  if (spanType.includes("llm")) return Cpu;
-  if (spanType.includes("tool")) return Wrench;
-  return Bot;
-}
 
 function durationMs(startedAt: string, endedAt: string | null) {
   const start = new Date(startedAt).getTime();
@@ -51,6 +38,12 @@ function roleBubbleTone(role: string) {
   return "bg-blue-50 text-blue-900 border-blue-100";
 }
 
+function artifactToText(payload: Record<string, unknown>) {
+  const text = payload.text ?? payload.content ?? payload.output ?? payload.response ?? payload.input ?? payload.prompt;
+  if (typeof text === "string") return text;
+  return JSON.stringify(text ?? payload, null, 2);
+}
+
 export function RunDetailView({
   run,
   spans,
@@ -73,6 +66,45 @@ export function RunDetailView({
     () => ordered.find((span) => span.id === selectedSpanId) ?? ordered[0] ?? null,
     [ordered, selectedSpanId],
   );
+  const runStarted = new Date(run.started_at).getTime();
+
+  const traceSpans = useMemo<TraceSpan[]>(() => {
+    const promptBySpan = new Map<string, string>();
+    const responseBySpan = new Map<string, string>();
+
+    for (const artifact of artifacts) {
+      if (!artifact.span_id) continue;
+      if (artifact.kind.includes("prompt") && !promptBySpan.has(artifact.span_id)) {
+        promptBySpan.set(artifact.span_id, artifactToText(artifact.payload));
+      }
+      if (artifact.kind.includes("response") && !responseBySpan.has(artifact.span_id)) {
+        responseBySpan.set(artifact.span_id, artifactToText(artifact.payload));
+      }
+    }
+
+    return ordered.map((span) => {
+      const latency = durationMs(span.started_at, span.ended_at);
+      const status: TraceSpan["status"] =
+        span.status === "error" || span.status === "failed"
+          ? "error"
+          : span.status === "running"
+            ? "running"
+            : "success";
+
+      return {
+        id: span.id,
+        name: span.name,
+        parentId: span.parent_span_id ?? undefined,
+        startMs: Math.max(0, new Date(span.started_at).getTime() - runStarted),
+        durationMs: latency,
+        status,
+        prompt: promptBySpan.get(span.id) ?? "No prompt captured",
+        response: responseBySpan.get(span.id) ?? "No response captured",
+        tokens: span.total_tokens ?? 0,
+        latencyMs: latency,
+      };
+    });
+  }, [artifacts, ordered, runStarted]);
 
   const selectedArtifacts = useMemo(() => {
     if (!selectedSpan) return [];
@@ -93,8 +125,6 @@ export function RunDetailView({
     [artifacts, selectedArtifacts],
   );
 
-  const runStarted = new Date(run.started_at).getTime();
-
   return (
     <section className="grid gap-4 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <Card className="border border-black/5 bg-white/85 py-0 shadow-sm">
@@ -102,40 +132,7 @@ export function RunDetailView({
           <CardTitle>Span Timeline</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2 pb-4">
-          {ordered.map((span, index) => {
-            const Icon = spanTypeIcon(span.span_type);
-            const offsetMs = Math.max(0, new Date(span.started_at).getTime() - runStarted);
-            const isSelected = span.id === selectedSpan?.id;
-            return (
-              <motion.button
-                key={span.id}
-                type="button"
-                onClick={() => setSelectedSpanId(span.id)}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.02 }}
-                className={cn(
-                  "flex w-full items-center justify-between rounded-xl border px-3 py-3 text-left transition",
-                  isSelected ? "border-blue-300 bg-blue-50" : "border-black/8 bg-white hover:bg-black/[0.02]",
-                )}
-              >
-                <div className="flex items-center gap-3">
-                  <span className={`size-2.5 rounded-full ${spanTypeTone(span.span_type)}`} />
-                  <div className="grid size-8 place-content-center rounded-lg bg-black/5 text-neutral-700">
-                    <Icon className="size-4" />
-                  </div>
-                  <div>
-                    <p className="font-medium text-neutral-900">{span.name}</p>
-                    <p className="text-xs text-neutral-500">{span.span_type}</p>
-                  </div>
-                </div>
-                <div className="text-right text-xs text-neutral-500">
-                  <p>{(span.total_tokens ?? 0).toLocaleString()} tokens</p>
-                  <p>{offsetMs} ms</p>
-                </div>
-              </motion.button>
-            );
-          })}
+          <TraceView spans={traceSpans} selectedSpanId={selectedSpan?.id ?? null} onSpanSelect={setSelectedSpanId} />
         </CardContent>
       </Card>
 

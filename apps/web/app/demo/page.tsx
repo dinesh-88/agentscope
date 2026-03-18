@@ -9,7 +9,7 @@ export default async function DemoPage() {
     <AppShell activePath="/demo">
       <section className="space-y-6 p-6 sm:p-8">
         <div>
-          <h1 className="text-3xl font-semibold tracking-tight text-neutral-950">Demo Mode</h1>
+          <h1 className="text-3xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-100">Demo Mode</h1>
           <p className="mt-2 max-w-2xl text-sm text-neutral-600">
             Replay pre-recorded traces into AgentScope without consuming live model tokens.
           </p>

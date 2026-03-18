@@ -28,7 +28,7 @@ export function RootCausePanel({ analysis, rootCause }: RootCausePanelProps) {
       <CardContent className="space-y-3">
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-4">
           <div className="text-xs uppercase tracking-[0.2em] text-rose-700">Root cause</div>
-          <div className="mt-2 text-lg font-semibold text-neutral-950">{rootCauseName}</div>
+          <div className="mt-2 text-lg font-semibold text-neutral-950 dark:text-neutral-100">{rootCauseName}</div>
           {confidence !== null && (
             <div className="mt-1 text-sm text-rose-800">Confidence {(confidence * 100).toFixed(0)}%</div>
           )}

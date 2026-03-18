@@ -49,7 +49,7 @@ export function RunSummary({ run }: RunSummaryProps) {
               <Icon className="size-3.5" />
               {label}
             </div>
-            <div className="text-sm font-medium text-neutral-950">{value}</div>
+            <div className="text-sm font-medium text-neutral-950 dark:text-neutral-100">{value}</div>
           </div>
         ))}
       </CardContent>

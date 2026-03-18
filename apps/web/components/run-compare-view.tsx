@@ -37,23 +37,23 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
         <CardContent className="grid gap-3 md:grid-cols-4">
           <div className="rounded-xl border border-black/8 bg-neutral-50 p-4">
             <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Status changed</div>
-            <div className="mt-2 text-lg font-semibold text-neutral-950">
+            <div className="mt-2 text-lg font-semibold text-neutral-950 dark:text-neutral-100">
               {comparison.summary.status_changed ? "Yes" : "No"}
             </div>
           </div>
           <div className="rounded-xl border border-black/8 bg-neutral-50 p-4">
             <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Token delta</div>
-            <div className="mt-2 text-lg font-semibold text-neutral-950">{comparison.summary.token_delta}</div>
+            <div className="mt-2 text-lg font-semibold text-neutral-950 dark:text-neutral-100">{comparison.summary.token_delta}</div>
           </div>
           <div className="rounded-xl border border-black/8 bg-neutral-50 p-4">
             <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Cost delta</div>
-            <div className="mt-2 text-lg font-semibold text-neutral-950">
+            <div className="mt-2 text-lg font-semibold text-neutral-950 dark:text-neutral-100">
               ${comparison.summary.cost_delta.toFixed(6)}
             </div>
           </div>
           <div className="rounded-xl border border-black/8 bg-neutral-50 p-4">
             <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Span count delta</div>
-            <div className="mt-2 text-lg font-semibold text-neutral-950">{comparison.summary.span_count_delta}</div>
+            <div className="mt-2 text-lg font-semibold text-neutral-950 dark:text-neutral-100">{comparison.summary.span_count_delta}</div>
           </div>
         </CardContent>
       </Card>
@@ -65,12 +65,12 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
         <CardContent className="grid gap-3 md:grid-cols-2">
           <Link href={`/runs/${comparison.run_a.id}`} className="rounded-xl border border-black/8 p-4 hover:bg-neutral-50">
             <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Run A</div>
-            <div className="mt-2 font-medium text-neutral-950">{comparison.run_a.workflow_name}</div>
+            <div className="mt-2 font-medium text-neutral-950 dark:text-neutral-100">{comparison.run_a.workflow_name}</div>
             <div className="text-sm text-neutral-600">{comparison.run_a.id}</div>
           </Link>
           <Link href={`/runs/${comparison.run_b.id}`} className="rounded-xl border border-black/8 p-4 hover:bg-neutral-50">
             <div className="text-xs uppercase tracking-[0.2em] text-neutral-500">Run B</div>
-            <div className="mt-2 font-medium text-neutral-950">{comparison.run_b.workflow_name}</div>
+            <div className="mt-2 font-medium text-neutral-950 dark:text-neutral-100">{comparison.run_b.workflow_name}</div>
             <div className="text-sm text-neutral-600">{comparison.run_b.id}</div>
           </Link>
         </CardContent>
