@@ -1,16 +1,74 @@
 "use client";
 
-import { useState } from "react";
-import { Bell, Database, Key, Save, Shield } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Bell, Copy, Database, Key, RefreshCcw, Save, Shield } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
+import { createProjectApiKey, getCurrentUser } from "@/lib/api";
 
 export default function SettingsPage() {
   const [saved, setSaved] = useState(false);
+  const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null);
+  const [canGenerateApiKey, setCanGenerateApiKey] = useState(false);
+  const [loadingApiKeyContext, setLoadingApiKeyContext] = useState(true);
+  const [generatedApiKey, setGeneratedApiKey] = useState<string | null>(null);
+  const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+  const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
+  const [copiedApiKey, setCopiedApiKey] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    void getCurrentUser()
+      .then((me) => {
+        if (cancelled) return;
+        setDefaultProjectId(me.onboarding.default_project_id);
+        const hasProjectManage = me.user.permissions.includes("project:manage");
+        const hasApiKeyCreate = me.user.permissions.includes("api_key:create");
+        setCanGenerateApiKey(hasProjectManage && hasApiKeyCreate);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setApiKeyError("Failed to load API key permissions.");
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoadingApiKeyContext(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   function handleSave() {
     setSaved(true);
     window.setTimeout(() => setSaved(false), 2000);
+  }
+
+  async function handleGenerateApiKey() {
+    if (!defaultProjectId || !canGenerateApiKey) return;
+
+    setIsGeneratingApiKey(true);
+    setApiKeyError(null);
+
+    try {
+      const response = await createProjectApiKey(defaultProjectId);
+      setGeneratedApiKey(response.api_key);
+      setCopiedApiKey(false);
+    } catch {
+      setApiKeyError("Unable to generate a new API key. Check your permissions and try again.");
+    } finally {
+      setIsGeneratingApiKey(false);
+    }
+  }
+
+  async function handleCopyApiKey() {
+    if (!generatedApiKey) return;
+    await navigator.clipboard.writeText(generatedApiKey);
+    setCopiedApiKey(true);
+    window.setTimeout(() => setCopiedApiKey(false), 1500);
   }
 
   return (
@@ -22,6 +80,60 @@ export default function SettingsPage() {
         </div>
 
         <div className="max-w-3xl space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-6">
+            <div className="mb-4 flex items-center gap-2">
+              <Key className="h-5 w-5 text-gray-600" />
+              <h2 className="text-base font-medium text-gray-900">Project API Keys</h2>
+            </div>
+
+            <div className="space-y-3">
+              {defaultProjectId ? (
+                <p className="text-sm text-gray-600">Default project: <span className="font-mono">{defaultProjectId}</span></p>
+              ) : (
+                <p className="text-sm text-gray-600">No default project found for this account.</p>
+              )}
+
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleGenerateApiKey}
+                  disabled={loadingApiKeyContext || isGeneratingApiKey || !defaultProjectId || !canGenerateApiKey}
+                  className="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RefreshCcw className="mr-2 h-4 w-4" />
+                  {isGeneratingApiKey ? "Generating..." : "Generate New API Key"}
+                </button>
+                {generatedApiKey ? (
+                  <button
+                    type="button"
+                    onClick={handleCopyApiKey}
+                    className="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+                  >
+                    <Copy className="mr-2 h-4 w-4" />
+                    {copiedApiKey ? "Copied" : "Copy Key"}
+                  </button>
+                ) : null}
+              </div>
+
+              {!loadingApiKeyContext && !canGenerateApiKey ? (
+                <p className="text-xs text-amber-700">
+                  You need <span className="font-mono">project:manage</span> and <span className="font-mono">api_key:create</span> permissions to generate keys.
+                </p>
+              ) : null}
+
+              {generatedApiKey ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs font-medium text-emerald-900">New key (shown once):</p>
+                  <p className="mt-1 break-all font-mono text-sm text-emerald-900">{generatedApiKey}</p>
+                </div>
+              ) : null}
+
+              {apiKeyError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{apiKeyError}</div>
+              ) : null}
+            </div>
+          </div>
+
           <div className="rounded-xl border border-gray-200 bg-white p-6">
             <div className="mb-4 flex items-center gap-2">
               <Key className="h-5 w-5 text-gray-600" />

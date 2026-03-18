@@ -231,6 +231,10 @@ export type DemoRunResponse = {
   run_id: string;
 };
 
+export type ProjectApiKeyResponse = {
+  api_key: string;
+};
+
 export type ProjectUsagePoint = {
   date: string;
   runs: number;
@@ -550,4 +554,8 @@ export async function getOrgMembers(organizationId: string): Promise<TeamMember[
 
 export async function removeOrgMember(organizationId: string, userId: string): Promise<void> {
   return deleteRequest(`/v1/orgs/${organizationId}/members/${userId}`);
+}
+
+export async function createProjectApiKey(projectId: string): Promise<ProjectApiKeyResponse> {
+  return postRequest<ProjectApiKeyResponse>(`/v1/projects/${projectId}/api-keys`);
 }
