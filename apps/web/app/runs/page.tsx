@@ -77,25 +77,30 @@ export default async function RunsPage() {
                       </td>
                     </tr>
                   ) : (
-                    runs.map((run) => (
-                      <tr key={run.id} className="hover:bg-gray-50">
-                        <td className="py-4">
-                          <Link href={`/runs/${run.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
-                            {run.workflow_name}
-                          </Link>
-                        </td>
-                        <td className="py-4 text-sm text-gray-600">{run.agent_name}</td>
-                        <td className="py-4">
-                          <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${getStatusColor(run.status)}`}>
-                            {run.status}
-                          </span>
-                        </td>
-                        <td className="py-4 text-sm text-gray-600">{formatDuration(run.started_at, run.ended_at)}</td>
-                        <td className="py-4 text-sm text-gray-600">{run.total_tokens > 0 ? run.total_tokens.toLocaleString() : "-"}</td>
-                        <td className="py-4 text-sm text-gray-600">{run.total_cost_usd > 0 ? `$${run.total_cost_usd.toFixed(3)}` : "-"}</td>
-                        <td className="py-4 text-sm text-gray-600">{formatDate(run.started_at)}</td>
-                      </tr>
-                    ))
+                    runs.map((run) => {
+                      const totalTokens = run.total_tokens ?? 0;
+                      const totalCostUsd = run.total_cost_usd ?? 0;
+
+                      return (
+                        <tr key={run.id} className="hover:bg-gray-50">
+                          <td className="py-4">
+                            <Link href={`/runs/${run.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
+                              {run.workflow_name}
+                            </Link>
+                          </td>
+                          <td className="py-4 text-sm text-gray-600">{run.agent_name}</td>
+                          <td className="py-4">
+                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${getStatusColor(run.status)}`}>
+                              {run.status}
+                            </span>
+                          </td>
+                          <td className="py-4 text-sm text-gray-600">{formatDuration(run.started_at, run.ended_at)}</td>
+                          <td className="py-4 text-sm text-gray-600">{totalTokens > 0 ? totalTokens.toLocaleString() : "-"}</td>
+                          <td className="py-4 text-sm text-gray-600">{totalCostUsd > 0 ? `$${totalCostUsd.toFixed(3)}` : "-"}</td>
+                          <td className="py-4 text-sm text-gray-600">{formatDate(run.started_at)}</td>
+                        </tr>
+                      );
+                    })
                   )}
                 </tbody>
               </table>
