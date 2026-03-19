@@ -9,7 +9,7 @@ impl Storage {
         sqlx::query(
             r#"
             INSERT INTO run_replays (id, original_run_id, current_step, state, created_at)
-            VALUES ($1::uuid, $2, $3, $4::jsonb, $5)
+            VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5)
             ON CONFLICT (id) DO UPDATE
             SET original_run_id = EXCLUDED.original_run_id,
                 current_step = EXCLUDED.current_step,

@@ -9,7 +9,7 @@ impl Storage {
         sqlx::query(
             r#"
             INSERT INTO artifacts (id, run_id, span_id, kind, payload)
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
             ON CONFLICT (id) DO UPDATE
             SET run_id = EXCLUDED.run_id,
                 span_id = EXCLUDED.span_id,
@@ -46,7 +46,7 @@ impl Storage {
                 kind,
                 payload
             FROM artifacts
-            WHERE run_id = $1 AND kind = $2
+            WHERE run_id = $1::uuid AND kind = $2
             ORDER BY id ASC
             "#,
         )
@@ -73,7 +73,7 @@ impl Storage {
                 kind,
                 payload
             FROM artifacts
-            WHERE run_id = $1
+            WHERE run_id = $1::uuid
             ORDER BY id ASC
             "#,
         )

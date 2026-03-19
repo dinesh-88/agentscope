@@ -22,7 +22,7 @@ impl Storage {
             )
             VALUES (
                 $1::uuid,
-                $2,
+                $2::uuid,
                 $3::uuid,
                 $4,
                 $5,
@@ -83,7 +83,7 @@ impl Storage {
                 created_at,
                 updated_at
             FROM run_analysis
-            WHERE run_id = $1
+            WHERE run_id = $1::uuid
             "#,
         )
         .bind(run_id)

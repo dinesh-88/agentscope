@@ -55,9 +55,9 @@ impl Storage {
                 metadata
             )
             VALUES (
-                $1,
-                $2,
-                $3,
+                $1::uuid,
+                $2::uuid,
+                $3::uuid,
                 $4,
                 $5,
                 $6,
@@ -216,7 +216,7 @@ impl Storage {
                    evaluation,
                    metadata
             FROM spans
-            WHERE run_id = $1
+            WHERE run_id = $1::uuid
             ORDER BY started_at ASC
             "#,
         )
@@ -240,7 +240,7 @@ impl Storage {
                 COALESCE(SUM(total_tokens), 0)::bigint AS total_tokens,
                 COALESCE(SUM(estimated_cost), 0.0)::double precision AS estimated_cost
             FROM spans
-            WHERE run_id = $1
+            WHERE run_id = $1::uuid
             "#,
         )
         .bind(run_id)

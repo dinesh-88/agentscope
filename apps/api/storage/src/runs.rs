@@ -68,7 +68,7 @@ impl Storage {
                 metadata
             )
             VALUES (
-                $1,
+                $1::uuid,
                 $2::uuid,
                 $3::uuid,
                 $4,
@@ -177,7 +177,7 @@ impl Storage {
                    variant,
                    metadata
             FROM runs
-            WHERE id = $1
+            WHERE id = $1::uuid
             "#,
         )
         .bind(id)
@@ -224,7 +224,7 @@ impl Storage {
                 ON projects.id = runs.project_id
             INNER JOIN memberships
                 ON memberships.organization_id = projects.organization_id
-            WHERE runs.id = $1
+            WHERE runs.id = $1::uuid
               AND memberships.user_id = $2::uuid
             "#,
         )
@@ -509,9 +509,9 @@ impl Storage {
                         ELSE BOOL_AND(status = 'success')
                     END AS success
                 FROM spans
-                WHERE run_id = $1
+                WHERE run_id = $1::uuid
             ) AS metrics
-            WHERE runs.id = $1
+            WHERE runs.id = $1::uuid
             "#,
         )
         .bind(run_id)

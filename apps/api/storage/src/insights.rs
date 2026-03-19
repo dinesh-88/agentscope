@@ -14,7 +14,7 @@ impl Storage {
             AgentScopeError::Storage(format!("failed to start insights transaction: {e}"))
         })?;
 
-        sqlx::query("DELETE FROM run_insights WHERE run_id = $1")
+        sqlx::query("DELETE FROM run_insights WHERE run_id = $1::uuid")
             .bind(run_id)
             .execute(&mut *tx)
             .await
@@ -28,7 +28,7 @@ impl Storage {
                 INSERT INTO run_insights
                     (id, run_id, insight_type, severity, message, recommendation, created_at)
                 VALUES
-                    ($1::uuid, $2, $3, $4, $5, $6, $7)
+                    ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
                 "#,
             )
             .bind(&insight.id)
@@ -68,7 +68,7 @@ impl Storage {
                 recommendation,
                 created_at
             FROM run_insights
-            WHERE run_id = $1
+            WHERE run_id = $1::uuid
             ORDER BY created_at ASC, insight_type ASC
             "#,
         )
