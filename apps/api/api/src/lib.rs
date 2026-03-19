@@ -11,13 +11,15 @@ use std::{env, sync::Arc};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::{
+    analysis::TrendRunFilters,
     retention::{ProjectStorageSettings, RetentionApplyResult},
     runs::RunSearchFilters,
     search::ArtifactSearchFilters,
     Storage,
 };
 use agentscope_trace::{
-    Artifact, ArtifactSearchResponse, Run, RunAnalysis, RunInsight, RunMetrics, RunRootCause, Span,
+    Artifact, ArtifactSearchResponse, Run, RunAnalysis, RunExplanation, RunInsight, RunMetrics,
+    RunRootCause, Span, TrendReport,
 };
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -27,7 +29,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tokio::sync::broadcast;
@@ -100,6 +102,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/search", get(search_artifacts))
         .route("/runs/:id", get(get_run))
         .route("/runs/:id/analysis", get(get_run_analysis))
+        .route("/runs/:id/explanation", get(get_run_explanation))
         .route("/runs/:id/spans", get(get_run_spans))
         .route("/runs/:id/artifacts", get(get_run_artifacts))
         .route("/runs/:id/metrics", get(get_run_metrics))
@@ -107,6 +110,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/runs/:id/root-cause", get(get_run_root_cause))
         .route("/runs/:id/compare/:other_id", get(compare_runs))
         .route("/projects/:id/insights", get(get_project_insights))
+        .route("/projects/:id/trends", get(get_project_trends))
         .route("/projects/:id/usage", get(get_project_usage))
         .route(
             "/projects/:id/storage-settings",
@@ -557,6 +561,18 @@ struct SearchArtifactsQuery {
     offset: Option<i64>,
 }
 
+#[derive(Debug, Deserialize)]
+struct ProjectTrendsQuery {
+    start: Option<String>,
+    end: Option<String>,
+    baseline_start: Option<String>,
+    baseline_end: Option<String>,
+    status: Option<String>,
+    model: Option<String>,
+    agent_name: Option<String>,
+    variant: Option<String>,
+}
+
 impl ListRunsQuery {
     fn into_storage_filters(self) -> Result<RunSearchFilters, ApiError> {
         Ok(RunSearchFilters {
@@ -718,6 +734,34 @@ async fn get_run_insights(
     Ok(Json(insights))
 }
 
+async fn get_run_explanation(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<RunExplanation>, ApiError> {
+    ensure_run_access(&state, &id, &user.id).await?;
+
+    if let Some(existing) = state.storage.get_run_explanation(&id).await? {
+        return Ok(Json(existing));
+    }
+
+    let run = state
+        .storage
+        .get_run(&id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("run {id} not found")))?;
+    let insights = match state.storage.get_run_insights(&id).await? {
+        existing if existing.is_empty() => {
+            analysis::run_insights_engine::analyze_run(&state.storage, &id).await?
+        }
+        existing => existing,
+    };
+
+    let explanation = analysis::llm_explanations::explain_run_insights(&run, &insights);
+    state.storage.upsert_run_explanation(&explanation).await?;
+    Ok(Json(explanation))
+}
+
 async fn get_run_root_cause(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
@@ -750,6 +794,55 @@ async fn get_project_insights(
     };
 
     Ok(Json(analysis::insights_engine::to_insight_cards(&insights)))
+}
+
+async fn get_project_trends(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Query(query): Query<ProjectTrendsQuery>,
+) -> Result<Json<TrendReport>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+
+    let end = parse_timestamp(query.end.as_deref(), "end")?.unwrap_or_else(Utc::now);
+    let start = parse_timestamp(query.start.as_deref(), "start")?
+        .unwrap_or_else(|| end - Duration::hours(24));
+    if start >= end {
+        return Err(ApiError::Validation(
+            "start must be earlier than end".to_string(),
+        ));
+    }
+
+    let window = end.signed_duration_since(start);
+    let baseline_end =
+        parse_timestamp(query.baseline_end.as_deref(), "baseline_end")?.unwrap_or(start);
+    let baseline_start = parse_timestamp(query.baseline_start.as_deref(), "baseline_start")?
+        .unwrap_or_else(|| baseline_end - window);
+    if baseline_start >= baseline_end {
+        return Err(ApiError::Validation(
+            "baseline_start must be earlier than baseline_end".to_string(),
+        ));
+    }
+
+    let report = analysis::trend_analysis::analyze_trends(
+        &state.storage,
+        analysis::trend_analysis::TrendQuery {
+            project_id: id,
+            start,
+            end,
+            baseline_start,
+            baseline_end,
+            filters: TrendRunFilters {
+                status: query.status,
+                model: query.model,
+                agent_name: query.agent_name,
+                variant: query.variant,
+            },
+        },
+    )
+    .await?;
+
+    Ok(Json(report))
 }
 
 async fn get_project_usage(

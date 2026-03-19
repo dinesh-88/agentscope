@@ -1,8 +1,18 @@
 use agentscope_common::errors::AgentScopeError;
-use agentscope_trace::{ProjectInsight, Run, RunAnalysis};
+use agentscope_trace::{ProjectInsight, Run, RunAnalysis, RunExplanation, TrendReport};
+use chrono::{DateTime, Utc};
+use sqlx::QueryBuilder;
 use tracing::info;
 
 use crate::Storage;
+
+#[derive(Debug, Clone, Default)]
+pub struct TrendRunFilters {
+    pub status: Option<String>,
+    pub model: Option<String>,
+    pub agent_name: Option<String>,
+    pub variant: Option<String>,
+}
 
 impl Storage {
     pub async fn upsert_run_analysis(&self, analysis: &RunAnalysis) -> Result<(), AgentScopeError> {
@@ -268,5 +278,187 @@ impl Storage {
                 "failed to list recent runs for project {project_id}: {error}"
             ))
         })
+    }
+
+    pub async fn upsert_run_explanation(
+        &self,
+        explanation: &RunExplanation,
+    ) -> Result<(), AgentScopeError> {
+        sqlx::query(
+            r#"
+            INSERT INTO run_explanations (
+                run_id,
+                summary,
+                top_issue,
+                why_it_matters,
+                next_action,
+                recommended_order,
+                created_at
+            )
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (run_id) DO UPDATE
+            SET summary = EXCLUDED.summary,
+                top_issue = EXCLUDED.top_issue,
+                why_it_matters = EXCLUDED.why_it_matters,
+                next_action = EXCLUDED.next_action,
+                recommended_order = EXCLUDED.recommended_order,
+                created_at = EXCLUDED.created_at
+            "#,
+        )
+        .bind(&explanation.run_id)
+        .bind(&explanation.summary)
+        .bind(&explanation.top_issue)
+        .bind(&explanation.why_it_matters)
+        .bind(&explanation.next_action)
+        .bind(&explanation.recommended_order)
+        .bind(explanation.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to upsert run explanation for run {}: {error}",
+                explanation.run_id
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    pub async fn get_run_explanation(
+        &self,
+        run_id: &str,
+    ) -> Result<Option<RunExplanation>, AgentScopeError> {
+        sqlx::query_as::<_, RunExplanation>(
+            r#"
+            SELECT
+                run_id::text AS run_id,
+                summary,
+                top_issue,
+                why_it_matters,
+                next_action,
+                recommended_order,
+                created_at
+            FROM run_explanations
+            WHERE run_id = $1::uuid
+            "#,
+        )
+        .bind(run_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to load run explanation for run {run_id}: {error}"
+            ))
+        })
+    }
+
+    pub async fn list_runs_for_window(
+        &self,
+        project_id: &str,
+        start: DateTime<Utc>,
+        end: DateTime<Utc>,
+        filters: &TrendRunFilters,
+    ) -> Result<Vec<Run>, AgentScopeError> {
+        let mut query = QueryBuilder::<sqlx::Postgres>::new(
+            r#"
+            SELECT
+                runs.id::text AS id,
+                runs.project_id::text AS project_id,
+                runs.organization_id::text AS organization_id,
+                runs.user_id,
+                runs.session_id,
+                runs.environment,
+                runs.workflow_name,
+                runs.agent_name,
+                runs.status,
+                runs.started_at,
+                runs.ended_at,
+                runs.total_input_tokens,
+                runs.total_output_tokens,
+                runs.total_tokens,
+                runs.total_cost_usd,
+                runs.success,
+                runs.error_count,
+                runs.avg_latency_ms,
+                runs.p95_latency_ms,
+                runs.success_rate,
+                runs.tags,
+                runs.experiment_id,
+                runs.variant,
+                runs.metadata
+            FROM runs
+            WHERE runs.project_id = "#,
+        );
+        query.push_bind(project_id).push("::uuid");
+        query.push(" AND runs.deleted_at IS NULL");
+        query.push(" AND runs.started_at >= ");
+        query.push_bind(start);
+        query.push(" AND runs.started_at <= ");
+        query.push_bind(end);
+
+        if let Some(status) = filters.status.as_deref().filter(|value| !value.is_empty()) {
+            query.push(" AND runs.status = ");
+            query.push_bind(status);
+        }
+        if let Some(agent_name) = filters
+            .agent_name
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            query.push(" AND runs.agent_name = ");
+            query.push_bind(agent_name);
+        }
+        if let Some(variant) = filters.variant.as_deref().filter(|value| !value.is_empty()) {
+            query.push(" AND runs.variant = ");
+            query.push_bind(variant);
+        }
+        if let Some(model) = filters.model.as_deref().filter(|value| !value.is_empty()) {
+            query.push(
+                r#" AND EXISTS (
+                    SELECT 1
+                    FROM spans
+                    WHERE spans.run_id = runs.id
+                      AND spans.model = "#,
+            );
+            query.push_bind(model);
+            query.push(")");
+        }
+
+        query.push(" ORDER BY runs.started_at DESC");
+
+        query
+            .build_query_as::<Run>()
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to load runs for trend window on project {project_id}: {error}"
+                ))
+            })
+    }
+
+    pub async fn insert_trend_report(&self, report: &TrendReport) -> Result<(), AgentScopeError> {
+        sqlx::query(
+            r#"
+            INSERT INTO trend_reports (id, project_id, window, summary, trends, created_at)
+            VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+            "#,
+        )
+        .bind(&report.id)
+        .bind(&report.project_id)
+        .bind(&report.window)
+        .bind(&report.summary)
+        .bind(&report.trends)
+        .bind(report.created_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to store trend report for project {}: {error}",
+                report.project_id
+            ))
+        })?;
+
+        Ok(())
     }
 }
