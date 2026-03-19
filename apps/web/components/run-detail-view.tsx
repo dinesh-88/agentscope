@@ -16,6 +16,13 @@ function durationMs(startedAt: string, endedAt: string | null) {
   return Math.max(0, end - start);
 }
 
+function formatUsd(value: number | null | undefined, fractionDigits: number = 6) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return "-";
+  }
+  return `$${value.toFixed(fractionDigits)}`;
+}
+
 function parseChatMessages(payload: Record<string, unknown>) {
   const raw = payload.messages;
   if (!Array.isArray(raw)) {
@@ -160,6 +167,18 @@ export function RunDetailView({
                   <div className="rounded-lg bg-slate-50 p-2">
                     <p className="text-neutral-500">Status</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">{selectedSpan.status}</p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2">
+                    <p className="text-neutral-500">LLM Cost</p>
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">
+                      {formatUsd(selectedSpan.estimated_cost, 6)}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2">
+                    <p className="text-neutral-500">Run Cost</p>
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">
+                      {formatUsd(run.total_cost_usd, 4)}
+                    </p>
                   </div>
                 </div>
 

@@ -32,6 +32,10 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
             Back to runs
           </Link>
           <h1 className="mt-3 text-3xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-100">{run.workflow_name}</h1>
+          <p className="mt-2 text-sm text-neutral-600">
+            Total cost: ${(run.total_cost_usd ?? 0).toFixed(4)} · Total tokens:{" "}
+            {(run.total_tokens ?? 0).toLocaleString()}
+          </p>
         </div>
         <RunDetailView run={run} spans={spans} artifacts={artifacts} insights={insights} />
       </section>
