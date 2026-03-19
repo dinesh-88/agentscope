@@ -37,7 +37,7 @@ export function SpanDetailsPanel({ spans, artifacts }: SpanDetailsPanelProps) {
   if (!selectedSpan) {
     return (
       <Card className="rounded-3xl border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-900">
-        <CardHeader>
+        <CardHeader className="pt-6">
           <CardTitle className="flex items-center gap-2">
             <Braces className="size-4 text-teal-600" />
             Span details
@@ -52,7 +52,7 @@ export function SpanDetailsPanel({ spans, artifacts }: SpanDetailsPanelProps) {
 
   return (
     <Card className="rounded-3xl border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)] dark:border-slate-700/80 dark:bg-slate-900">
-      <CardHeader>
+      <CardHeader className="pt-6">
         <CardTitle className="flex items-center gap-2">
           <Braces className="size-4 text-teal-600" />
           Span details
