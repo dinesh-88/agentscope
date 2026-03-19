@@ -89,7 +89,9 @@ impl Storage {
                 $19,
                 $20,
                 $21,
-                $22
+                $22,
+                $23,
+                $24
             )
             ON CONFLICT (id) DO UPDATE
             SET project_id = EXCLUDED.project_id,
