@@ -63,7 +63,7 @@ export default function AlertsPage() {
     <AppShell activePath="/alerts">
       <section className="space-y-5 p-4 sm:p-6">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Alerts</h1>
+          <h1 className="text-2xl font-semibold text-neutral-950 dark:text-neutral-100">Alerts</h1>
           <p className="text-sm text-neutral-600">Set simple safeguards and get notified when behavior drifts.</p>
         </div>
 
@@ -101,7 +101,7 @@ export default function AlertsPage() {
                   className="flex items-center justify-between rounded-xl border border-black/8 bg-white p-3"
                 >
                   <div>
-                    <p className="font-medium text-neutral-900">{alert.name}</p>
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">{alert.name}</p>
                     <p className="text-xs text-neutral-500">{alert.condition_type} &gt; {alert.threshold_value} in {alert.window_minutes}m</p>
                   </div>
                   <Button variant="outline" size="sm" onClick={() => void deleteAlert(alert.id).then(refresh)}>

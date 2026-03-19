@@ -53,7 +53,7 @@ export default function UsagePage() {
     <AppShell activePath="/usage">
       <section className="space-y-5 p-4 sm:p-6">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Usage</h1>
+          <h1 className="text-2xl font-semibold text-neutral-950 dark:text-neutral-100">Usage</h1>
           <p className="text-sm text-neutral-600">Token and cost trends over time.</p>
         </div>
 
@@ -62,7 +62,7 @@ export default function UsagePage() {
             <Card className="border border-black/5 bg-white/85 py-0 shadow-sm">
               <CardContent className="py-5">
                 <p className="text-xs text-neutral-500">Total Tokens</p>
-                <p className="mt-1 text-2xl font-semibold text-neutral-900">{totals.tokens.toLocaleString()}</p>
+                <p className="mt-1 text-2xl font-semibold text-neutral-950 dark:text-neutral-100">{totals.tokens.toLocaleString()}</p>
               </CardContent>
             </Card>
           </motion.div>
@@ -70,7 +70,7 @@ export default function UsagePage() {
             <Card className="border border-black/5 bg-white/85 py-0 shadow-sm">
               <CardContent className="py-5">
                 <p className="text-xs text-neutral-500">Total Cost</p>
-                <p className="mt-1 text-2xl font-semibold text-neutral-900">${totals.cost.toFixed(2)}</p>
+                <p className="mt-1 text-2xl font-semibold text-neutral-950 dark:text-neutral-100">${totals.cost.toFixed(2)}</p>
               </CardContent>
             </Card>
           </motion.div>
@@ -78,7 +78,7 @@ export default function UsagePage() {
             <Card className="border border-black/5 bg-white/85 py-0 shadow-sm">
               <CardContent className="py-5">
                 <p className="text-xs text-neutral-500">Errors</p>
-                <p className="mt-1 text-2xl font-semibold text-neutral-900">{totals.errors}</p>
+                <p className="mt-1 text-2xl font-semibold text-neutral-950 dark:text-neutral-100">{totals.errors}</p>
               </CardContent>
             </Card>
           </motion.div>

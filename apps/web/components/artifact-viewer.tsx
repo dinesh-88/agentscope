@@ -40,7 +40,7 @@ export function ArtifactViewer({ artifacts }: ArtifactViewerProps) {
               <div className="border-b border-black/8 bg-neutral-50 px-4 py-3 text-xs uppercase tracking-[0.2em] text-neutral-500">
                 {artifact.kind}
               </div>
-              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-4 text-xs leading-6 text-neutral-900">
+              <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words p-4 text-xs leading-6 text-neutral-950 dark:text-neutral-100">
                 {renderPayload(artifact)}
               </pre>
             </div>

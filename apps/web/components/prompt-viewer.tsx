@@ -99,7 +99,7 @@ export function PromptViewer({ artifacts }: PromptViewerProps) {
           {messages.map((message, index) => (
             <div key={`${message.role}-${index}`} className={`rounded-xl border p-4 ${roleTone(message.role)}`}>
               <div className="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-600">{message.role}</div>
-              <pre className="overflow-auto whitespace-pre-wrap break-words text-sm leading-6 text-neutral-900">
+              <pre className="overflow-auto whitespace-pre-wrap break-words text-sm leading-6 text-neutral-950 dark:text-neutral-100">
                 {message.content}
               </pre>
             </div>

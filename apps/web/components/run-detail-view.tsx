@@ -147,19 +147,19 @@ export function RunDetailView({
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="rounded-lg bg-slate-50 p-2">
                     <p className="text-neutral-500">Type</p>
-                    <p className="font-medium text-neutral-900">{selectedSpan.span_type}</p>
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">{selectedSpan.span_type}</p>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-2">
                     <p className="text-neutral-500">Latency</p>
-                    <p className="font-medium text-neutral-900">{durationMs(selectedSpan.started_at, selectedSpan.ended_at)} ms</p>
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">{durationMs(selectedSpan.started_at, selectedSpan.ended_at)} ms</p>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-2">
                     <p className="text-neutral-500">Tokens</p>
-                    <p className="font-medium text-neutral-900">{(selectedSpan.total_tokens ?? 0).toLocaleString()}</p>
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">{(selectedSpan.total_tokens ?? 0).toLocaleString()}</p>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-2">
                     <p className="text-neutral-500">Status</p>
-                    <p className="font-medium text-neutral-900">{selectedSpan.status}</p>
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">{selectedSpan.status}</p>
                   </div>
                 </div>
 
@@ -229,7 +229,7 @@ export function RunDetailView({
             ) : (
               insights.map((insight) => (
                 <div key={insight.id} className="rounded-xl border border-black/8 bg-white p-3 text-sm">
-                  <p className="font-medium text-neutral-900">{insight.message}</p>
+                  <p className="font-medium text-neutral-950 dark:text-neutral-100">{insight.message}</p>
                   <p className="mt-1 text-neutral-600">{insight.recommendation}</p>
                 </div>
               ))

@@ -109,7 +109,7 @@ export function RunsScreen({ runs, initialFilters }: RunsScreenProps) {
     <section className="space-y-5 p-4 sm:p-6">
       <div className="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-neutral-900">Runs</h1>
+          <h1 className="text-2xl font-semibold text-neutral-950 dark:text-neutral-100">Runs</h1>
           <p className="text-sm text-neutral-600">Search and monitor each agent execution in one place.</p>
         </div>
         <div className="flex gap-3 text-xs text-neutral-600">
@@ -237,7 +237,7 @@ export function RunsScreen({ runs, initialFilters }: RunsScreenProps) {
                   className="border-b border-black/5 text-sm hover:bg-black/[0.02]"
                 >
                   <td className="py-3">
-                    <div className="font-medium text-neutral-900">{run.workflow_name}</div>
+                    <div className="font-medium text-neutral-950 dark:text-neutral-100">{run.workflow_name}</div>
                     <div className="max-w-[260px] truncate text-xs text-neutral-500">{run.id}</div>
                   </td>
                   <td className="py-3">
