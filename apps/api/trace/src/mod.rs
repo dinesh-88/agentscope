@@ -7,6 +7,7 @@ pub mod run_analysis;
 pub mod run_insight;
 pub mod run_replay;
 pub mod run_root_cause;
+pub mod search;
 pub mod span;
 
 pub use artifact::Artifact;
@@ -18,4 +19,5 @@ pub use run_analysis::RunAnalysis;
 pub use run_insight::RunInsight;
 pub use run_replay::RunReplay;
 pub use run_root_cause::RunRootCause;
+pub use search::{ArtifactSearchResponse, ArtifactSearchResult};
 pub use span::Span;

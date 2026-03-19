@@ -2,6 +2,7 @@ import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 
 import { AppShell } from "@/components/app-shell";
+import { ArtifactSearchPanel } from "@/components/artifact-search-panel";
 import { RunsAutoRefresh } from "@/components/runs-auto-refresh";
 import { getRuns } from "@/lib/server-api";
 
@@ -60,6 +61,8 @@ export default async function RunsPage() {
             Compare runs
           </Link>
         </div>
+
+        <ArtifactSearchPanel />
 
         <div className="rounded-xl border border-gray-200 bg-white">
           <div className="p-6">

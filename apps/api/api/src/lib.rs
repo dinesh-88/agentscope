@@ -10,8 +10,10 @@ mod swagger;
 use std::{env, sync::Arc};
 
 use agentscope_common::errors::AgentScopeError;
-use agentscope_storage::{runs::RunSearchFilters, Storage};
-use agentscope_trace::{Artifact, Run, RunAnalysis, RunInsight, RunMetrics, RunRootCause, Span};
+use agentscope_storage::{runs::RunSearchFilters, search::ArtifactSearchFilters, Storage};
+use agentscope_trace::{
+    Artifact, ArtifactSearchResponse, Run, RunAnalysis, RunInsight, RunMetrics, RunRootCause, Span,
+};
 use axum::{
     extract::{Extension, Path, Query, State},
     http::{header, Method, StatusCode},
@@ -90,6 +92,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/events/stream", get(events::stream))
         .route("/runs", get(list_runs))
         .route("/runs/search", get(search_runs))
+        .route("/search", get(search_artifacts))
         .route("/runs/:id", get(get_run))
         .route("/runs/:id/analysis", get(get_run_analysis))
         .route("/runs/:id/spans", get(get_run_spans))
@@ -481,6 +484,19 @@ async fn search_runs(
     Ok(Json(runs))
 }
 
+async fn search_artifacts(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<SearchArtifactsQuery>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<ArtifactSearchResponse>, ApiError> {
+    let filters = query.into_storage_filters()?;
+    let results = state
+        .storage
+        .search_artifacts_for_user(&user.id, &filters)
+        .await?;
+    Ok(Json(results))
+}
+
 #[derive(Debug, Deserialize)]
 struct ListRunsQuery {
     query: Option<String>,
@@ -497,6 +513,20 @@ struct ListRunsQuery {
     time_to: Option<String>,
     project_id: Option<String>,
     limit: Option<i64>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SearchArtifactsQuery {
+    query: Option<String>,
+    error_type: Option<String>,
+    model: Option<String>,
+    span_type: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(rename = "tags[]", default)]
+    tags_bracketed: Vec<String>,
+    limit: Option<i64>,
+    offset: Option<i64>,
 }
 
 impl ListRunsQuery {
@@ -516,6 +546,53 @@ impl ListRunsQuery {
             time_to: parse_timestamp(self.time_to.as_deref(), "time_to")?,
             project_id: self.project_id,
             limit: self.limit,
+        })
+    }
+}
+
+impl SearchArtifactsQuery {
+    fn into_storage_filters(self) -> Result<ArtifactSearchFilters, ApiError> {
+        let query = self
+            .query
+            .unwrap_or_default()
+            .trim()
+            .chars()
+            .take(512)
+            .collect::<String>();
+        if query.is_empty() {
+            return Err(ApiError::Validation("query is required".to_string()));
+        }
+
+        let limit = self.limit.unwrap_or(25);
+        if !(1..=100).contains(&limit) {
+            return Err(ApiError::Validation(
+                "limit must be between 1 and 100".to_string(),
+            ));
+        }
+
+        let offset = self.offset.unwrap_or(0);
+        if offset < 0 {
+            return Err(ApiError::Validation(
+                "offset must be greater than or equal to 0".to_string(),
+            ));
+        }
+
+        let tags = self
+            .tags
+            .into_iter()
+            .chain(self.tags_bracketed)
+            .map(|value| value.trim().chars().take(64).collect::<String>())
+            .filter(|value| !value.is_empty())
+            .collect::<Vec<_>>();
+
+        Ok(ArtifactSearchFilters {
+            query,
+            error_type: self.error_type.filter(|value| !value.is_empty()),
+            model: self.model.filter(|value| !value.is_empty()),
+            span_type: self.span_type.filter(|value| !value.is_empty()),
+            tags: if tags.is_empty() { None } else { Some(tags) },
+            limit,
+            offset,
         })
     }
 }

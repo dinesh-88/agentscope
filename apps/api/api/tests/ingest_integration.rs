@@ -447,3 +447,120 @@ async fn ingest_normalizes_error_taxonomy_and_limits_tags(pool: PgPool) {
             .unwrap();
     assert_eq!(evaluation.unwrap()["score"], 1.0);
 }
+
+#[sqlx::test(migrations = "../storage/migrations")]
+async fn artifact_search_supports_fts_filters_and_validation(pool: PgPool) {
+    let project_id = seed_project(&pool, "search-v1-org", "search-v1-project").await;
+    let org_id: String =
+        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
+            .bind(&project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    seed_user_with_role(&pool, &org_id, "artifact-search@example.com", "viewer").await;
+    let router = app(Storage { pool: pool.clone() }, jwt_settings());
+    let token = login_token(&router, "artifact-search@example.com").await;
+
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let span_id = uuid::Uuid::new_v4().to_string();
+    let artifact_id = uuid::Uuid::new_v4().to_string();
+    let started_at = Utc::now() - chrono::Duration::minutes(1);
+
+    sqlx::query(
+        r#"
+        INSERT INTO runs (
+            id, project_id, organization_id, workflow_name, agent_name, status,
+            started_at, ended_at, tags, total_input_tokens, total_output_tokens, total_tokens, total_cost_usd
+        )
+        VALUES ($1::uuid, $2::uuid, $3::uuid, 'search_workflow', 'search_agent', 'failed', $4, $5, $6, 0, 0, 0, 0.0)
+        "#,
+    )
+    .bind(&run_id)
+    .bind(&project_id)
+    .bind(&org_id)
+    .bind(started_at)
+    .bind(Utc::now())
+    .bind(vec!["urgent".to_string(), "prod".to_string()])
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        INSERT INTO spans (
+            id, run_id, parent_span_id, span_type, name, status, started_at, ended_at,
+            model, error_type, provider, input_tokens, output_tokens, total_tokens, estimated_cost
+        )
+        VALUES ($1::uuid, $2::uuid, NULL, 'llm_call', 'response-parse', 'failed', $3, $4, 'gpt-4o', 'invalid_json', 'openai', 0, 0, 0, 0.0)
+        "#,
+    )
+    .bind(&span_id)
+    .bind(&run_id)
+    .bind(started_at)
+    .bind(Utc::now())
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    sqlx::query(
+        r#"
+        INSERT INTO artifacts (id, run_id, span_id, kind, payload)
+        VALUES (
+            $1::uuid,
+            $2::uuid,
+            $3::uuid,
+            'llm.response',
+            '{"content":"invalid JSON near line 1 column 42"}'::jsonb
+        )
+        "#,
+    )
+    .bind(&artifact_id)
+    .bind(&run_id)
+    .bind(&span_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let response = router
+        .clone()
+        .oneshot(with_bearer(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/search?query=invalid%20JSON&error_type=invalid_json&model=gpt-4o&span_type=llm_call&tags=urgent&limit=10&offset=0")
+                .body(Body::empty())
+                .unwrap(),
+            &token,
+        ))
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let payload: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(payload["total"], 1);
+    assert_eq!(payload["results"].as_array().unwrap().len(), 1);
+    assert_eq!(payload["results"][0]["run_id"], run_id);
+    assert_eq!(payload["results"][0]["span_id"], span_id);
+    assert_eq!(payload["results"][0]["artifact_id"], artifact_id);
+    assert_eq!(payload["results"][0]["span_type"], "llm_call");
+    assert_eq!(payload["results"][0]["error_type"], "invalid_json");
+    assert_eq!(payload["results"][0]["model"], "gpt-4o");
+    assert!(payload["results"][0]["snippet"]
+        .as_str()
+        .unwrap()
+        .to_lowercase()
+        .contains("invalid"));
+
+    let invalid_limit_response = router
+        .oneshot(with_bearer(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/search?query=invalid&limit=101")
+                .body(Body::empty())
+                .unwrap(),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(invalid_limit_response.status(), StatusCode::BAD_REQUEST);
+}

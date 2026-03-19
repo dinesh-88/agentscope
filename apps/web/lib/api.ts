@@ -81,6 +81,32 @@ export type Artifact = {
   payload: Record<string, unknown>;
 };
 
+export type ArtifactSearchResult = {
+  run_id: string;
+  span_id: string;
+  artifact_id: string;
+  span_type: string;
+  error_type?: string | null;
+  model?: string | null;
+  snippet: string;
+  rank: number;
+};
+
+export type ArtifactSearchResponse = {
+  results: ArtifactSearchResult[];
+  total: number;
+};
+
+export type ArtifactSearchFilters = {
+  query: string;
+  error_type?: string;
+  model?: string;
+  span_type?: string;
+  tags?: string[];
+  limit?: number;
+  offset?: number;
+};
+
 export type RunInsight = {
   id: string;
   run_id: string;
@@ -348,6 +374,24 @@ export async function getRunArtifacts(runId: string): Promise<Artifact[]> {
     }
     throw error;
   }
+}
+
+export async function searchArtifacts(filters: ArtifactSearchFilters): Promise<ArtifactSearchResponse> {
+  const params = new URLSearchParams();
+  params.set("query", filters.query);
+
+  if (filters.error_type) params.set("error_type", filters.error_type);
+  if (filters.model) params.set("model", filters.model);
+  if (filters.span_type) params.set("span_type", filters.span_type);
+  if (typeof filters.limit === "number") params.set("limit", String(filters.limit));
+  if (typeof filters.offset === "number") params.set("offset", String(filters.offset));
+
+  for (const tag of filters.tags ?? []) {
+    const trimmed = tag.trim();
+    if (trimmed) params.append("tags", trimmed);
+  }
+
+  return request<ArtifactSearchResponse>(`/v1/search?${params.toString()}`);
 }
 
 export async function getRunInsights(runId: string): Promise<RunInsight[]> {

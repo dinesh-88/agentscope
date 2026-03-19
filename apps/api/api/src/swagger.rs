@@ -262,6 +262,26 @@ fn spec() -> Value {
             }
           }
         },
+        "/v1/search": {
+          "get": {
+            "summary": "Search artifacts with full-text query and filters",
+            "security": [{ "bearerAuth": [] }],
+            "parameters": [
+              { "name": "query", "in": "query", "required": true, "schema": { "type": "string" } },
+              { "name": "error_type", "in": "query", "required": false, "schema": { "type": "string" } },
+              { "name": "model", "in": "query", "required": false, "schema": { "type": "string" } },
+              { "name": "span_type", "in": "query", "required": false, "schema": { "type": "string" } },
+              { "name": "tags", "in": "query", "required": false, "schema": { "type": "array", "items": { "type": "string" } } },
+              { "name": "limit", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 1, "maximum": 100 } },
+              { "name": "offset", "in": "query", "required": false, "schema": { "type": "integer", "minimum": 0 } }
+            ],
+            "responses": {
+              "200": {
+                "description": "Search results"
+              }
+            }
+          }
+        },
         "/v1/runs/{id}": {
           "get": {
             "summary": "Get run detail",

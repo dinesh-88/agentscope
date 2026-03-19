@@ -73,6 +73,7 @@ Or run directly:
 
 - `POST /v1/ingest`
 - `GET /v1/runs`
+- `GET /v1/search`
 - `GET /v1/runs/{id}`
 - `GET /v1/runs/{id}/spans`
 - `GET /v1/runs/{id}/metrics`
