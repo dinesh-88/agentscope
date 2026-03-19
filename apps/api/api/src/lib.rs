@@ -1,3 +1,5 @@
+#![recursion_limit = "512"]
+
 pub mod analysis;
 pub mod auth;
 pub mod demo;
@@ -11,9 +13,7 @@ use std::{env, sync::Arc};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::{runs::RunSearchFilters, Storage};
-use agentscope_trace::{
-    Artifact, Run, RunAnalysis, RunInsight, RunMetrics, RunRootCause, Span,
-};
+use agentscope_trace::{Artifact, Run, RunAnalysis, RunInsight, RunMetrics, RunRootCause, Span};
 use axum::{
     extract::{Extension, Path, Query, State},
     http::{header, Method, StatusCode},
@@ -24,6 +24,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
@@ -74,11 +75,9 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         })
         .filter(|origins| !origins.is_empty())
         .unwrap_or_else(|| {
-            vec![
-                "http://localhost:3000"
-                    .parse::<header::HeaderValue>()
-                    .expect("localhost origin must parse"),
-            ]
+            vec!["http://localhost:3000"
+                .parse::<header::HeaderValue>()
+                .expect("localhost origin must parse")]
         });
 
     let state = Arc::new(AppState {
@@ -168,6 +167,7 @@ async fn ingest(
 
     validate_payload(&payload)?;
     attach_project_context(&mut payload, &api_key);
+    normalize_run(&mut payload.run);
     normalize_spans(&mut payload.spans);
     limits::check_rate_limit(&state, &payload.run.project_id).await?;
     limits::check_token_quota(&state, &payload.run.project_id, payload.run.total_tokens).await?;
@@ -249,6 +249,27 @@ fn attach_project_context(payload: &mut IngestPayload, api_key: &ProjectApiKeyAu
 
 fn normalize_spans(spans: &mut [Span]) {
     for span in spans {
+        if let Some(error) = span.error.take() {
+            if span.error_type.is_none() {
+                span.error_type = error.error_type;
+            }
+            if span.error_source.is_none() {
+                span.error_source = error.error_source;
+            }
+            if span.retryable.is_none() {
+                span.retryable = error.retryable;
+            }
+            if let Some(raw_error_metadata) = error.metadata {
+                let mut metadata = span
+                    .metadata
+                    .take()
+                    .and_then(|value| value.as_object().cloned())
+                    .unwrap_or_default();
+                metadata.insert("error_metadata".to_string(), raw_error_metadata);
+                span.metadata = Some(Value::Object(metadata));
+            }
+        }
+
         if span.total_tokens.is_none() {
             span.total_tokens = match (span.input_tokens, span.output_tokens) {
                 (None, None) => None,
@@ -279,6 +300,134 @@ fn normalize_spans(spans: &mut [Span]) {
                 }
             }
         }
+
+        span.input_tokens = span.input_tokens.map(|value| value.max(0));
+        span.output_tokens = span.output_tokens.map(|value| value.max(0));
+        span.total_tokens = span.total_tokens.map(|value| value.max(0));
+        span.context_window = span.context_window.map(|value| value.max(0));
+        span.max_tokens = span.max_tokens.map(|value| value.max(0));
+        span.retry_attempt = span.retry_attempt.map(|value| value.max(0));
+        span.max_attempts = span.max_attempts.map(|value| value.max(0));
+        span.temperature = span.temperature.map(|value| value.clamp(0.0, 2.0));
+        span.top_p = span.top_p.map(|value| value.clamp(0.0, 1.0));
+        span.context_usage_percent = span
+            .context_usage_percent
+            .map(|value| value.clamp(0.0, 1000.0));
+        span.latency_ms = span.latency_ms.map(|value| value.max(0.0));
+        span.tool_latency_ms = span.tool_latency_ms.map(|value| value.max(0.0));
+
+        if span.latency_ms.is_none() {
+            if let Some(ended_at) = span.ended_at {
+                let delta = ended_at
+                    .signed_duration_since(span.started_at)
+                    .num_milliseconds();
+                span.latency_ms = Some(delta.max(0) as f64);
+            }
+        }
+
+        if span.success.is_none() {
+            span.success = Some(matches!(
+                span.status.as_str(),
+                "success" | "ok" | "completed"
+            ));
+        }
+
+        span.error_type = span.error_type.take().map(normalize_error_type);
+        span.error_source = span.error_source.take().map(normalize_error_source);
+        let span_failed = matches!(span.status.as_str(), "failed" | "error");
+        if span_failed && span.error_type.is_none() {
+            span.error_type = Some("unknown".to_string());
+        }
+        if span_failed && span.error_source.is_none() {
+            span.error_source = Some("system".to_string());
+        }
+
+        span.evaluation = normalize_evaluation(span.evaluation.take());
+    }
+}
+
+fn normalize_run(run: &mut Run) {
+    run.total_input_tokens = run.total_input_tokens.max(0);
+    run.total_output_tokens = run.total_output_tokens.max(0);
+    run.total_tokens = run.total_tokens.max(0);
+    run.total_cost_usd = run.total_cost_usd.max(0.0);
+
+    run.environment =
+        run.environment
+            .take()
+            .map(|value| match value.trim().to_lowercase().as_str() {
+                "prod" | "production" => "prod".to_string(),
+                "staging" => "staging".to_string(),
+                "dev" | "development" => "dev".to_string(),
+                _ => "dev".to_string(),
+            });
+
+    run.tags = run.tags.take().map(|tags| {
+        tags.into_iter()
+            .map(|tag| tag.trim().chars().take(64).collect::<String>())
+            .filter(|tag| !tag.is_empty())
+            .take(20)
+            .collect::<Vec<_>>()
+    });
+}
+
+fn normalize_error_type(value: String) -> String {
+    match value.trim().to_lowercase().as_str() {
+        "invalid_json" => "invalid_json".to_string(),
+        "rate_limit" => "rate_limit".to_string(),
+        "timeout" => "timeout".to_string(),
+        "tool_error" => "tool_error".to_string(),
+        _ => "unknown".to_string(),
+    }
+}
+
+fn normalize_error_source(value: String) -> String {
+    match value.trim().to_lowercase().as_str() {
+        "provider" => "provider".to_string(),
+        "tool" => "tool".to_string(),
+        "system" => "system".to_string(),
+        _ => "system".to_string(),
+    }
+}
+
+fn normalize_evaluation(evaluation: Option<Value>) -> Option<Value> {
+    let mut value = evaluation?;
+    let object = match value.as_object_mut() {
+        Some(object) => object,
+        None => return None,
+    };
+
+    clamp_score(object);
+    constrain_string_field(object, "reason", 2048);
+    constrain_string_field(object, "evaluator", 32);
+
+    if serde_json::to_vec(&value)
+        .map(|bytes| bytes.len() > 16 * 1024)
+        .unwrap_or(true)
+    {
+        return None;
+    }
+
+    Some(value)
+}
+
+fn clamp_score(object: &mut Map<String, Value>) {
+    let score = object
+        .get("score")
+        .and_then(|value| value.as_f64())
+        .map(|value| value.clamp(0.0, 1.0));
+    if let Some(score) = score {
+        object.insert("score".to_string(), Value::from(score));
+    }
+}
+
+fn constrain_string_field(object: &mut Map<String, Value>, key: &str, max_chars: usize) {
+    let value = object
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(|value| value.chars().take(max_chars).collect::<String>());
+    if let Some(value) = value {
+        object.insert(key.to_string(), Value::String(value));
     }
 }
 
@@ -549,7 +698,9 @@ async fn list_alert_events(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<Vec<agentscope_storage::alerts::AlertEvent>>, ApiError> {
-    Ok(Json(state.storage.list_alert_events_for_user(&user.id).await?))
+    Ok(Json(
+        state.storage.list_alert_events_for_user(&user.id).await?,
+    ))
 }
 
 async fn create_org_invite(
@@ -582,7 +733,9 @@ async fn accept_invite(
         .accept_invite(&payload.token, &user.id, &user.email)
         .await?;
     if accepted.is_none() {
-        return Err(ApiError::Validation("invalid or expired invite token".to_string()));
+        return Err(ApiError::Validation(
+            "invalid or expired invite token".to_string(),
+        ));
     }
     Ok(StatusCode::NO_CONTENT)
 }

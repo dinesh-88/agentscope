@@ -14,11 +14,21 @@ The ingestion payload for `POST /v1/ingest`:
 
 - `id`
 - `project_id`
+- `user_id` (optional)
+- `session_id` (optional)
+- `environment` (optional: `prod | staging | dev`)
 - `workflow_name`
 - `agent_name`
 - `status`
 - `started_at`
 - `ended_at`
+- `experiment_id` (optional)
+- `variant` (optional)
+- `tags` (optional `string[]`)
+- `success_rate` (computed)
+- `error_count` (computed)
+- `avg_latency_ms` (computed)
+- `p95_latency_ms` (computed)
 
 ## Span
 
@@ -36,6 +46,19 @@ The ingestion payload for `POST /v1/ingest`:
 - `output_tokens` (optional)
 - `total_tokens` (optional)
 - `estimated_cost` (optional)
+- `latency_ms` (optional, auto-derived)
+- `error_type` (optional: `invalid_json | rate_limit | timeout | tool_error | unknown`)
+- `error_source` (optional: `provider | tool | system`)
+- `retryable` (optional)
+- `prompt_hash` (optional SHA256)
+- `prompt_template_id` (optional)
+- `retry_attempt` (optional)
+- `max_attempts` (optional)
+- `tool_name` (optional)
+- `tool_version` (optional)
+- `tool_latency_ms` (optional)
+- `tool_success` (optional)
+- `evaluation` (optional JSON)
 
 ## Run Metrics
 

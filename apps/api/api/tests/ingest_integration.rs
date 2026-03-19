@@ -41,6 +41,9 @@ async fn ingest_and_query_runs(pool: PgPool) {
             id: run_id.clone(),
             project_id,
             organization_id: None,
+            user_id: None,
+            session_id: None,
+            environment: None,
             workflow_name: "customer_support".to_string(),
             agent_name: "assistant_agent".to_string(),
             status: "running".to_string(),
@@ -50,6 +53,15 @@ async fn ingest_and_query_runs(pool: PgPool) {
             total_output_tokens: 0,
             total_tokens: 0,
             total_cost_usd: 0.0,
+            success: None,
+            error_count: None,
+            avg_latency_ms: None,
+            p95_latency_ms: None,
+            success_rate: None,
+            tags: None,
+            experiment_id: None,
+            variant: None,
+            metadata: None,
         },
         spans: vec![Span {
             id: span_id,
@@ -68,7 +80,25 @@ async fn ingest_and_query_runs(pool: PgPool) {
             estimated_cost: None,
             context_window: None,
             context_usage_percent: None,
+            latency_ms: None,
+            success: None,
+            error_type: None,
+            error_source: None,
+            retryable: None,
+            prompt_hash: None,
+            prompt_template_id: None,
+            temperature: None,
+            top_p: None,
+            max_tokens: None,
+            retry_attempt: None,
+            max_attempts: None,
+            tool_name: None,
+            tool_version: None,
+            tool_latency_ms: None,
+            tool_success: None,
+            evaluation: None,
             metadata: Some(json!({"file_path": "/tmp/demo.txt"})),
+            error: None,
         }],
         artifacts: vec![Artifact {
             id: "artifact_008_prompt".to_string(),
@@ -311,4 +341,109 @@ async fn search_runs_supports_status_model_agent_tokens_duration_and_time(pool: 
     let runs: Vec<Run> = serde_json::from_slice(&body).unwrap();
     assert_eq!(runs.len(), 1);
     assert_eq!(runs[0].id, run_id);
+}
+
+#[sqlx::test(migrations = "../storage/migrations")]
+async fn ingest_normalizes_error_taxonomy_and_limits_tags(pool: PgPool) {
+    let project_id = seed_project(&pool, "normalize-org", "normalize-project").await;
+    let org_id: String =
+        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
+            .bind(&project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    seed_user_with_role(&pool, &org_id, "normalize@example.com", "member").await;
+    seed_project_api_key(&pool, &project_id, TEST_API_KEY).await;
+
+    let storage = Storage { pool: pool.clone() };
+    let router = app(storage, jwt_settings());
+
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let span_id = uuid::Uuid::new_v4().to_string();
+
+    let payload = serde_json::json!({
+        "run": {
+            "id": run_id,
+            "project_id": project_id,
+            "workflow_name": "normalize",
+            "agent_name": "normalize-agent",
+            "status": "failed",
+            "started_at": Utc::now(),
+            "ended_at": Utc::now(),
+            "environment": "production",
+            "tags": (0..30).map(|i| format!("tag-{i}-abcdefghijklmnopqrstuvwxyz")).collect::<Vec<_>>()
+        },
+        "spans": [{
+            "id": span_id,
+            "run_id": run_id,
+            "parent_span_id": null,
+            "span_type": "llm",
+            "name": "bad-json",
+            "status": "failed",
+            "started_at": Utc::now(),
+            "ended_at": Utc::now(),
+            "error": {
+                "error_type": "timeout",
+                "error_source": "provider",
+                "retryable": true,
+                "metadata": { "http_status": 504 }
+            },
+            "evaluation": {
+                "success": false,
+                "score": 5.0,
+                "reason": "x".repeat(3000),
+                "evaluator": "rule"
+            }
+        }],
+        "artifacts": []
+    });
+
+    let ingest_response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/ingest")
+                .header("content-type", "application/json")
+                .header("x-agentscope-api-key", TEST_API_KEY)
+                .body(Body::from(serde_json::to_vec(&payload).unwrap()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ingest_response.status(), StatusCode::OK);
+
+    let (environment, tags): (Option<String>, Option<Vec<String>>) =
+        sqlx::query_as("SELECT environment, tags FROM runs WHERE id = $1")
+            .bind(&run_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(environment.as_deref(), Some("prod"));
+    assert!(tags.as_ref().is_some_and(|values| values.len() == 20));
+
+    let (error_type, error_source, retryable, metadata): (
+        Option<String>,
+        Option<String>,
+        Option<bool>,
+        Option<serde_json::Value>,
+    ) = sqlx::query_as(
+        "SELECT error_type, error_source, retryable, metadata FROM spans WHERE id = $1",
+    )
+    .bind(&span_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(error_type.as_deref(), Some("timeout"));
+    assert_eq!(error_source.as_deref(), Some("provider"));
+    assert_eq!(retryable, Some(true));
+    assert_eq!(metadata.unwrap()["error_metadata"]["http_status"], 504);
+
+    let evaluation: Option<serde_json::Value> =
+        sqlx::query_scalar("SELECT evaluation FROM spans WHERE id = $1")
+            .bind(&span_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    assert_eq!(evaluation.unwrap()["score"], 1.0);
 }

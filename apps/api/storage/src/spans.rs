@@ -35,6 +35,23 @@ impl Storage {
                 estimated_cost,
                 context_window,
                 context_usage_percent,
+                latency_ms,
+                success,
+                error_type,
+                error_source,
+                retryable,
+                prompt_hash,
+                prompt_template_id,
+                temperature,
+                top_p,
+                max_tokens,
+                retry_attempt,
+                max_attempts,
+                tool_name,
+                tool_version,
+                tool_latency_ms,
+                tool_success,
+                evaluation,
                 metadata
             )
             VALUES (
@@ -54,10 +71,32 @@ impl Storage {
                 $14,
                 $15,
                 $16,
+                $17,
+                $18,
+                $19,
+                $20,
+                $21,
+                $22,
+                $23,
+                $24,
+                $25,
+                $26,
+                $27,
+                $28,
+                $29,
+                $30,
+                $31,
+                $32,
                 (
                     CASE
-                        WHEN $17::jsonb = 'null'::jsonb THEN NULL
-                        ELSE $17::jsonb
+                        WHEN $33::jsonb = 'null'::jsonb THEN NULL
+                        ELSE $33::jsonb
+                    END
+                ),
+                (
+                    CASE
+                        WHEN $34::jsonb = 'null'::jsonb THEN NULL
+                        ELSE $34::jsonb
                     END
                 )
             )
@@ -77,6 +116,23 @@ impl Storage {
                 estimated_cost = EXCLUDED.estimated_cost,
                 context_window = EXCLUDED.context_window,
                 context_usage_percent = EXCLUDED.context_usage_percent,
+                latency_ms = EXCLUDED.latency_ms,
+                success = EXCLUDED.success,
+                error_type = EXCLUDED.error_type,
+                error_source = EXCLUDED.error_source,
+                retryable = EXCLUDED.retryable,
+                prompt_hash = EXCLUDED.prompt_hash,
+                prompt_template_id = EXCLUDED.prompt_template_id,
+                temperature = EXCLUDED.temperature,
+                top_p = EXCLUDED.top_p,
+                max_tokens = EXCLUDED.max_tokens,
+                retry_attempt = EXCLUDED.retry_attempt,
+                max_attempts = EXCLUDED.max_attempts,
+                tool_name = EXCLUDED.tool_name,
+                tool_version = EXCLUDED.tool_version,
+                tool_latency_ms = EXCLUDED.tool_latency_ms,
+                tool_success = EXCLUDED.tool_success,
+                evaluation = EXCLUDED.evaluation,
                 metadata = EXCLUDED.metadata
             "#,
         )
@@ -96,6 +152,23 @@ impl Storage {
         .bind(span.estimated_cost)
         .bind(span.context_window)
         .bind(span.context_usage_percent)
+        .bind(span.latency_ms)
+        .bind(span.success)
+        .bind(&span.error_type)
+        .bind(&span.error_source)
+        .bind(span.retryable)
+        .bind(&span.prompt_hash)
+        .bind(&span.prompt_template_id)
+        .bind(span.temperature)
+        .bind(span.top_p)
+        .bind(span.max_tokens)
+        .bind(span.retry_attempt)
+        .bind(span.max_attempts)
+        .bind(&span.tool_name)
+        .bind(&span.tool_version)
+        .bind(span.tool_latency_ms)
+        .bind(span.tool_success)
+        .bind(&span.evaluation)
         .bind(&span.metadata)
         .execute(&self.pool)
         .await
@@ -124,6 +197,23 @@ impl Storage {
                    estimated_cost,
                    context_window,
                    context_usage_percent,
+                   latency_ms,
+                   success,
+                   error_type,
+                   error_source,
+                   retryable,
+                   prompt_hash,
+                   prompt_template_id,
+                   temperature,
+                   top_p,
+                   max_tokens,
+                   retry_attempt,
+                   max_attempts,
+                   tool_name,
+                   tool_version,
+                   tool_latency_ms,
+                   tool_success,
+                   evaluation,
                    metadata
             FROM spans
             WHERE run_id = $1
