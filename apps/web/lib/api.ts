@@ -265,6 +265,28 @@ export type ProjectUsagePoint = {
   errors: number;
 };
 
+export type ProjectStorageSettings = {
+  project_id: string;
+  retention_days: number | null;
+  store_prompts_responses: boolean;
+  compress_old_runs: boolean;
+  cleanup_mode: "soft_delete" | "hard_delete";
+  updated_at: string;
+};
+
+export type UpdateProjectStorageSettingsRequest = {
+  retention_days: number | null;
+  store_prompts_responses: boolean;
+  compress_old_runs: boolean;
+  cleanup_mode: "soft_delete" | "hard_delete";
+};
+
+export type RetentionApplyResult = {
+  affected_runs: number;
+  mode: "soft_delete" | "hard_delete";
+  cutoff_at: string | null;
+};
+
 export type Alert = {
   id: string;
   project_id: string;
@@ -322,6 +344,11 @@ async function postRequest<T>(path: string): Promise<T> {
 
 async function postRequestWithBody<T>(path: string, payload: unknown): Promise<T> {
   const response = await api.post<T>(path, payload);
+  return response.data;
+}
+
+async function putRequestWithBody<T>(path: string, payload: unknown): Promise<T> {
+  const response = await api.put<T>(path, payload);
   return response.data;
 }
 
@@ -519,6 +546,21 @@ export async function getProjectUsage(projectId: string): Promise<ProjectUsagePo
     }
     throw error;
   }
+}
+
+export async function getProjectStorageSettings(projectId: string): Promise<ProjectStorageSettings> {
+  return request<ProjectStorageSettings>(`/v1/projects/${projectId}/storage-settings`);
+}
+
+export async function updateProjectStorageSettings(
+  projectId: string,
+  payload: UpdateProjectStorageSettingsRequest,
+): Promise<ProjectStorageSettings> {
+  return putRequestWithBody<ProjectStorageSettings>(`/v1/projects/${projectId}/storage-settings`, payload);
+}
+
+export async function applyProjectRetention(projectId: string): Promise<RetentionApplyResult> {
+  return postRequestWithBody<RetentionApplyResult>(`/v1/projects/${projectId}/storage-settings/apply`, {});
 }
 
 export async function getAlerts(): Promise<Alert[]> {

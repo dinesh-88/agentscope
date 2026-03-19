@@ -6,6 +6,7 @@ pub mod insights;
 pub mod limits;
 pub mod postgres;
 pub mod replays;
+pub mod retention;
 pub mod root_causes;
 pub mod runs;
 pub mod search;

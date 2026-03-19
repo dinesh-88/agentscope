@@ -44,6 +44,7 @@ impl Storage {
                 COALESCE(SUM(CASE WHEN runs.status IN ('failed', 'error') THEN 1 ELSE 0 END), 0)::int AS error_count,
                 now()
             FROM runs
+            WHERE runs.deleted_at IS NULL
             GROUP BY runs.project_id, DATE(runs.started_at AT TIME ZONE 'UTC')
             ON CONFLICT (project_id, date) DO UPDATE
             SET run_count = EXCLUDED.run_count,

@@ -10,7 +10,12 @@ mod swagger;
 use std::{env, sync::Arc};
 
 use agentscope_common::errors::AgentScopeError;
-use agentscope_storage::{runs::RunSearchFilters, search::ArtifactSearchFilters, Storage};
+use agentscope_storage::{
+    retention::{ProjectStorageSettings, RetentionApplyResult},
+    runs::RunSearchFilters,
+    search::ArtifactSearchFilters,
+    Storage,
+};
 use agentscope_trace::{
     Artifact, ArtifactSearchResponse, Run, RunAnalysis, RunInsight, RunMetrics, RunRootCause, Span,
 };
@@ -103,6 +108,14 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/runs/:id/compare/:other_id", get(compare_runs))
         .route("/projects/:id/insights", get(get_project_insights))
         .route("/projects/:id/usage", get(get_project_usage))
+        .route(
+            "/projects/:id/storage-settings",
+            get(get_project_storage_settings).put(update_project_storage_settings),
+        )
+        .route(
+            "/projects/:id/storage-settings/apply",
+            post(apply_project_retention),
+        )
         .route("/alerts", post(create_alert).get(list_alerts))
         .route("/alerts/:id", axum::routing::delete(delete_alert))
         .route("/alerts/events", get(list_alert_events))
@@ -141,7 +154,13 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
                 .allow_origin(cors_allowed_origins)
                 .allow_credentials(true)
                 .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::COOKIE])
-                .allow_methods([Method::GET, Method::POST, Method::DELETE, Method::OPTIONS]),
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ]),
         )
         .with_state(state)
 }
@@ -159,6 +178,7 @@ async fn ingest(
     normalize_spans(&mut payload.spans);
     limits::check_rate_limit(&state, &payload.run.project_id).await?;
     limits::check_token_quota(&state, &payload.run.project_id, payload.run.total_tokens).await?;
+    apply_project_storage_policies(&state, &mut payload).await?;
 
     state.storage.insert_run(&payload.run).await?;
 
@@ -199,6 +219,14 @@ struct ProjectUsagePoint {
 struct CreateInviteRequest {
     email: String,
     role: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateStorageSettingsRequest {
+    retention_days: Option<i32>,
+    store_prompts_responses: bool,
+    compress_old_runs: bool,
+    cleanup_mode: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -745,6 +773,63 @@ async fn get_project_usage(
     Ok(Json(response))
 }
 
+async fn get_project_storage_settings(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<ProjectStorageSettings>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    let settings = state.storage.get_project_storage_settings(&id).await?;
+    Ok(Json(settings))
+}
+
+async fn update_project_storage_settings(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<UpdateStorageSettingsRequest>,
+) -> Result<Json<ProjectStorageSettings>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    ensure_project_manage_permission(&user)?;
+
+    if payload.cleanup_mode != "soft_delete" && payload.cleanup_mode != "hard_delete" {
+        return Err(ApiError::Validation(
+            "cleanup_mode must be soft_delete or hard_delete".to_string(),
+        ));
+    }
+
+    if let Some(retention_days) = payload.retention_days {
+        if retention_days < 1 {
+            return Err(ApiError::Validation(
+                "retention_days must be >= 1 or null".to_string(),
+            ));
+        }
+    }
+
+    let settings = state
+        .storage
+        .upsert_project_storage_settings(
+            &id,
+            payload.retention_days,
+            payload.store_prompts_responses,
+            payload.compress_old_runs,
+            &payload.cleanup_mode,
+        )
+        .await?;
+    Ok(Json(settings))
+}
+
+async fn apply_project_retention(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<RetentionApplyResult>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    ensure_project_manage_permission(&user)?;
+    let result = state.storage.apply_project_retention(&id).await?;
+    Ok(Json(result))
+}
+
 async fn create_alert(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthenticatedUser>,
@@ -1003,6 +1088,49 @@ async fn ensure_project_access(
     }
 
     Ok(())
+}
+
+fn ensure_project_manage_permission(user: &AuthenticatedUser) -> Result<(), ApiError> {
+    if user
+        .permissions
+        .iter()
+        .any(|permission| permission == Permission::ProjectManage.as_str())
+    {
+        return Ok(());
+    }
+
+    Err(ApiError::Forbidden(
+        "project changes require project:manage permission".to_string(),
+    ))
+}
+
+async fn apply_project_storage_policies(
+    state: &Arc<AppState>,
+    payload: &mut IngestPayload,
+) -> Result<(), ApiError> {
+    let settings = state
+        .storage
+        .get_project_storage_settings(&payload.run.project_id)
+        .await?;
+    if settings.store_prompts_responses {
+        return Ok(());
+    }
+
+    for artifact in &mut payload.artifacts {
+        if should_redact_artifact_payload(&artifact.kind) {
+            artifact.payload = serde_json::json!({
+                "redacted": true,
+                "reason": "store_prompts_responses_disabled",
+            });
+        }
+    }
+
+    Ok(())
+}
+
+fn should_redact_artifact_payload(kind: &str) -> bool {
+    let kind = kind.to_lowercase();
+    kind.contains("prompt") || kind.contains("response")
 }
 
 async fn ensure_org_member_access(

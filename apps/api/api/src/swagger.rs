@@ -358,6 +358,28 @@ fn spec() -> Value {
             "responses": { "200": { "description": "Run comparison diff" } }
           }
         },
+        "/v1/projects/{id}/storage-settings": {
+          "get": {
+            "summary": "Get project storage and retention settings",
+            "security": [{ "bearerAuth": [] }],
+            "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Storage settings" } }
+          },
+          "put": {
+            "summary": "Update project storage and retention settings",
+            "security": [{ "bearerAuth": [] }],
+            "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Updated storage settings" } }
+          }
+        },
+        "/v1/projects/{id}/storage-settings/apply": {
+          "post": {
+            "summary": "Apply retention policy immediately",
+            "security": [{ "bearerAuth": [] }],
+            "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string" } }],
+            "responses": { "200": { "description": "Retention apply summary" } }
+          }
+        },
         "/v1/projects/{id}/api-keys": {
           "post": {
             "summary": "Create a project API key",

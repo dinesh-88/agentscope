@@ -46,6 +46,7 @@ impl Storage {
             JOIN memberships m
                 ON m.organization_id = p.organization_id
             WHERE m.user_id = $2::uuid
+              AND r.deleted_at IS NULL
               AND a.tsv @@ plainto_tsquery('english', $1)
               AND ($3::text IS NULL OR s.error_type = $3)
               AND ($4::text IS NULL OR s.model = $4)
@@ -80,6 +81,7 @@ impl Storage {
             JOIN memberships m
                 ON m.organization_id = p.organization_id
             WHERE m.user_id = $1::uuid
+              AND r.deleted_at IS NULL
               AND a.tsv @@ plainto_tsquery('english', $2)
               AND ($3::text IS NULL OR s.error_type = $3)
               AND ($4::text IS NULL OR s.model = $4)

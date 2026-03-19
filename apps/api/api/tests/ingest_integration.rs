@@ -564,3 +564,112 @@ async fn artifact_search_supports_fts_filters_and_validation(pool: PgPool) {
         .unwrap();
     assert_eq!(invalid_limit_response.status(), StatusCode::BAD_REQUEST);
 }
+
+#[sqlx::test(migrations = "../storage/migrations")]
+async fn project_storage_retention_soft_delete_hides_old_runs(pool: PgPool) {
+    let project_id = seed_project(&pool, "retention-org", "retention-project").await;
+    let org_id: String =
+        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
+            .bind(&project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    seed_user_with_role(&pool, &org_id, "retention-admin@example.com", "admin").await;
+
+    let router = app(Storage { pool: pool.clone() }, jwt_settings());
+    let token = login_token(&router, "retention-admin@example.com").await;
+
+    let old_run_id = uuid::Uuid::new_v4().to_string();
+    let new_run_id = uuid::Uuid::new_v4().to_string();
+    let old_started = Utc::now() - chrono::Duration::days(60);
+    let new_started = Utc::now() - chrono::Duration::days(2);
+
+    for (run_id, started_at) in [(&old_run_id, old_started), (&new_run_id, new_started)] {
+        sqlx::query(
+            r#"
+            INSERT INTO runs (
+                id, project_id, organization_id, workflow_name, agent_name, status,
+                started_at, ended_at, total_input_tokens, total_output_tokens, total_tokens, total_cost_usd
+            )
+            VALUES ($1::uuid, $2::uuid, $3::uuid, 'retention-flow', 'retention-agent', 'completed', $4, $5, 0, 0, 0, 0.0)
+            "#,
+        )
+        .bind(run_id)
+        .bind(&project_id)
+        .bind(&org_id)
+        .bind(started_at)
+        .bind(started_at + chrono::Duration::minutes(1))
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+
+    let update_response = router
+        .clone()
+        .oneshot(with_bearer(
+            Request::builder()
+                .method("PUT")
+                .uri(format!("/v1/projects/{project_id}/storage-settings"))
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&serde_json::json!({
+                        "retention_days": 30,
+                        "store_prompts_responses": true,
+                        "compress_old_runs": false,
+                        "cleanup_mode": "soft_delete"
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(update_response.status(), StatusCode::OK);
+
+    let apply_response = router
+        .clone()
+        .oneshot(with_bearer(
+            Request::builder()
+                .method("POST")
+                .uri(format!("/v1/projects/{project_id}/storage-settings/apply"))
+                .body(Body::empty())
+                .unwrap(),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(apply_response.status(), StatusCode::OK);
+    let apply_body = apply_response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    let apply_payload: serde_json::Value = serde_json::from_slice(&apply_body).unwrap();
+    assert_eq!(apply_payload["mode"], "soft_delete");
+    assert_eq!(apply_payload["affected_runs"], 1);
+
+    let runs_response = router
+        .oneshot(with_bearer(
+            Request::builder()
+                .method("GET")
+                .uri("/v1/runs")
+                .body(Body::empty())
+                .unwrap(),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(runs_response.status(), StatusCode::OK);
+
+    let runs_body = runs_response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    let runs: Vec<Run> = serde_json::from_slice(&runs_body).unwrap();
+    assert!(runs.iter().any(|run| run.id == new_run_id));
+    assert!(!runs.iter().any(|run| run.id == old_run_id));
+}

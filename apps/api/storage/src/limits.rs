@@ -58,6 +58,7 @@ impl Storage {
             SELECT COUNT(*)
             FROM runs
             WHERE project_id = $1::uuid
+              AND deleted_at IS NULL
               AND started_at >= $2
             "#,
         )
@@ -80,6 +81,7 @@ impl Storage {
             SELECT COUNT(*)
             FROM runs
             WHERE project_id = $1::uuid
+              AND deleted_at IS NULL
               AND status = 'running'
             "#,
         )

@@ -1,51 +1,98 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, Copy, Database, Key, RefreshCcw, Save, Shield } from "lucide-react";
+import { Bell, Copy, Database, Key, Loader2, RefreshCcw, Shield } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
-import { createProjectApiKey, getCurrentUser } from "@/lib/api";
+import {
+  applyProjectRetention,
+  createProjectApiKey,
+  getCurrentUser,
+  getProjectStorageSettings,
+  updateProjectStorageSettings,
+  type RetentionApplyResult,
+  type UpdateProjectStorageSettingsRequest,
+} from "@/lib/api";
+
+function retentionValueToDays(value: string): number | null {
+  if (value === "forever") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 30;
+}
+
+function retentionDaysToValue(days: number | null): string {
+  if (days === null) return "forever";
+  if ([7, 30, 90, 365].includes(days)) return String(days);
+  return "30";
+}
 
 export default function SettingsPage() {
-  const [saved, setSaved] = useState(false);
   const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null);
   const [canGenerateApiKey, setCanGenerateApiKey] = useState(false);
+  const [canManageProject, setCanManageProject] = useState(false);
   const [loadingApiKeyContext, setLoadingApiKeyContext] = useState(true);
   const [generatedApiKey, setGeneratedApiKey] = useState<string | null>(null);
   const [apiKeyError, setApiKeyError] = useState<string | null>(null);
   const [isGeneratingApiKey, setIsGeneratingApiKey] = useState(false);
   const [copiedApiKey, setCopiedApiKey] = useState(false);
 
+  const [retention, setRetention] = useState("30");
+  const [storePromptsResponses, setStorePromptsResponses] = useState(true);
+  const [compressOldRuns, setCompressOldRuns] = useState(false);
+  const [cleanupMode, setCleanupMode] = useState<"soft_delete" | "hard_delete">("soft_delete");
+  const [storageLoading, setStorageLoading] = useState(true);
+  const [storageSaving, setStorageSaving] = useState(false);
+  const [storageApplying, setStorageApplying] = useState(false);
+  const [storageMessage, setStorageMessage] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [lastApplyResult, setLastApplyResult] = useState<RetentionApplyResult | null>(null);
+
   useEffect(() => {
     let cancelled = false;
 
-    void getCurrentUser()
-      .then((me) => {
+    async function load() {
+      try {
+        const me = await getCurrentUser();
         if (cancelled) return;
-        setDefaultProjectId(me.onboarding.default_project_id);
+
+        const projectId = me.onboarding.default_project_id;
+        setDefaultProjectId(projectId);
+
         const hasProjectManage = me.user.permissions.includes("project:manage");
         const hasApiKeyCreate = me.user.permissions.includes("api_key:create");
         setCanGenerateApiKey(hasProjectManage && hasApiKeyCreate);
-      })
-      .catch(() => {
+        setCanManageProject(hasProjectManage);
+
+        if (!projectId) {
+          setStorageLoading(false);
+          return;
+        }
+
+        const settings = await getProjectStorageSettings(projectId);
+        if (cancelled) return;
+
+        setRetention(retentionDaysToValue(settings.retention_days));
+        setStorePromptsResponses(settings.store_prompts_responses);
+        setCompressOldRuns(settings.compress_old_runs);
+        setCleanupMode(settings.cleanup_mode);
+      } catch {
         if (cancelled) return;
         setApiKeyError("Failed to load API key permissions.");
-      })
-      .finally(() => {
+        setStorageError("Failed to load storage settings.");
+      } finally {
         if (!cancelled) {
           setLoadingApiKeyContext(false);
+          setStorageLoading(false);
         }
-      });
+      }
+    }
+
+    void load();
 
     return () => {
       cancelled = true;
     };
   }, []);
-
-  function handleSave() {
-    setSaved(true);
-    window.setTimeout(() => setSaved(false), 2000);
-  }
 
   async function handleGenerateApiKey() {
     if (!defaultProjectId || !canGenerateApiKey) return;
@@ -69,6 +116,52 @@ export default function SettingsPage() {
     await navigator.clipboard.writeText(generatedApiKey);
     setCopiedApiKey(true);
     window.setTimeout(() => setCopiedApiKey(false), 1500);
+  }
+
+  async function handleSaveStorageSettings() {
+    if (!defaultProjectId || !canManageProject) return;
+
+    setStorageSaving(true);
+    setStorageError(null);
+    setStorageMessage(null);
+
+    const payload: UpdateProjectStorageSettingsRequest = {
+      retention_days: retentionValueToDays(retention),
+      store_prompts_responses: storePromptsResponses,
+      compress_old_runs: compressOldRuns,
+      cleanup_mode: cleanupMode,
+    };
+
+    try {
+      const updated = await updateProjectStorageSettings(defaultProjectId, payload);
+      setRetention(retentionDaysToValue(updated.retention_days));
+      setStorePromptsResponses(updated.store_prompts_responses);
+      setCompressOldRuns(updated.compress_old_runs);
+      setCleanupMode(updated.cleanup_mode);
+      setStorageMessage("Storage settings saved.");
+    } catch {
+      setStorageError("Failed to save storage settings.");
+    } finally {
+      setStorageSaving(false);
+    }
+  }
+
+  async function handleApplyRetention() {
+    if (!defaultProjectId || !canManageProject) return;
+
+    setStorageApplying(true);
+    setStorageError(null);
+    setStorageMessage(null);
+
+    try {
+      const result = await applyProjectRetention(defaultProjectId);
+      setLastApplyResult(result);
+      setStorageMessage(`Retention applied. ${result.affected_runs} run(s) processed via ${result.mode}.`);
+    } catch {
+      setStorageError("Failed to apply retention policy.");
+    } finally {
+      setStorageApplying(false);
+    }
   }
 
   return (
@@ -136,56 +229,6 @@ export default function SettingsPage() {
 
           <div className="rounded-xl border border-gray-200 bg-white p-6">
             <div className="mb-4 flex items-center gap-2">
-              <Key className="h-5 w-5 text-gray-600" />
-              <h2 className="text-base font-medium text-gray-900">API Configuration</h2>
-            </div>
-            <div className="space-y-4">
-              <div>
-                <label htmlFor="api-key" className="text-sm font-medium text-gray-900">
-                  API Key
-                </label>
-                <input
-                  id="api-key"
-                  type="password"
-                  placeholder="sk-..."
-                  defaultValue="sk-proj-xxxxxxxxxxxx"
-                  className="mt-2 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <p className="mt-1 text-xs text-gray-500">Your OpenAI API key for LLM calls</p>
-              </div>
-              <div>
-                <label htmlFor="api-endpoint" className="text-sm font-medium text-gray-900">
-                  API Endpoint
-                </label>
-                <input
-                  id="api-endpoint"
-                  type="url"
-                  placeholder="https://api.openai.com/v1"
-                  defaultValue="https://api.openai.com/v1"
-                  className="mt-2 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-              </div>
-              <div>
-                <label htmlFor="default-model" className="text-sm font-medium text-gray-900">
-                  Default Model
-                </label>
-                <select
-                  id="default-model"
-                  className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  defaultValue="gpt-4-turbo"
-                >
-                  <option value="gpt-4-turbo">GPT-4 Turbo</option>
-                  <option value="gpt-4">GPT-4</option>
-                  <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                  <option value="claude-3-opus">Claude 3 Opus</option>
-                  <option value="claude-3-sonnet">Claude 3 Sonnet</option>
-                </select>
-              </div>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            <div className="mb-4 flex items-center gap-2">
               <Bell className="h-5 w-5 text-gray-600" />
               <h2 className="text-base font-medium text-gray-900">Notifications</h2>
             </div>
@@ -220,7 +263,9 @@ export default function SettingsPage() {
                 <select
                   id="retention"
                   className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                  defaultValue="30"
+                  value={retention}
+                  onChange={(event) => setRetention(event.target.value)}
+                  disabled={storageLoading || !canManageProject}
                 >
                   <option value="7">7 days</option>
                   <option value="30">30 days</option>
@@ -229,20 +274,86 @@ export default function SettingsPage() {
                   <option value="forever">Forever</option>
                 </select>
               </div>
+
+              <div>
+                <label htmlFor="cleanup-mode" className="text-sm font-medium text-gray-900">
+                  Cleanup Mode
+                </label>
+                <select
+                  id="cleanup-mode"
+                  className="mt-2 w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={cleanupMode}
+                  onChange={(event) => setCleanupMode(event.target.value as "soft_delete" | "hard_delete")}
+                  disabled={storageLoading || !canManageProject}
+                >
+                  <option value="soft_delete">Soft delete (hide runs)</option>
+                  <option value="hard_delete">Hard delete (permanent)</option>
+                </select>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-gray-900">Store Prompts & Responses</p>
-                  <p className="text-sm text-gray-600">Save full LLM inputs and outputs</p>
+                  <p className="text-sm text-gray-600">When disabled, prompt/response payloads are redacted on ingest.</p>
                 </div>
-                <input defaultChecked type="checkbox" className="h-4 w-4" />
+                <input
+                  checked={storePromptsResponses}
+                  onChange={(event) => setStorePromptsResponses(event.target.checked)}
+                  type="checkbox"
+                  className="h-4 w-4"
+                  disabled={storageLoading || !canManageProject}
+                />
               </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-gray-900">Compress Old Runs</p>
-                  <p className="text-sm text-gray-600">Reduce storage for runs older than 90 days</p>
+                  <p className="text-sm text-gray-600">Reserved for future optimization workflows.</p>
                 </div>
-                <input defaultChecked type="checkbox" className="h-4 w-4" />
+                <input
+                  checked={compressOldRuns}
+                  onChange={(event) => setCompressOldRuns(event.target.checked)}
+                  type="checkbox"
+                  className="h-4 w-4"
+                  disabled={storageLoading || !canManageProject}
+                />
               </div>
+
+              {!canManageProject ? (
+                <p className="text-xs text-amber-700">You need <span className="font-mono">project:manage</span> permission to change retention settings.</p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={handleSaveStorageSettings}
+                  disabled={storageLoading || storageSaving || !defaultProjectId || !canManageProject}
+                  className="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {storageSaving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {storageSaving ? "Saving..." : "Save Storage Settings"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyRetention}
+                  disabled={storageLoading || storageApplying || !defaultProjectId || !canManageProject}
+                  className="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {storageApplying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {storageApplying ? "Applying..." : "Apply Retention Now"}
+                </button>
+              </div>
+
+              {storageMessage ? <p className="text-sm text-emerald-700">{storageMessage}</p> : null}
+              {storageError ? <p className="text-sm text-red-700">{storageError}</p> : null}
+
+              {lastApplyResult ? (
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700">
+                  <p>Mode: <span className="font-mono">{lastApplyResult.mode}</span></p>
+                  <p>Affected runs: <span className="font-mono">{lastApplyResult.affected_runs}</span></p>
+                  <p>Cutoff: <span className="font-mono">{lastApplyResult.cutoff_at ?? "none"}</span></p>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -280,20 +391,6 @@ export default function SettingsPage() {
                 />
               </div>
             </div>
-          </div>
-
-          <div className="flex justify-end gap-3">
-            <button type="button" className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50">
-              Reset to Defaults
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              className="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
-            >
-              <Save className="mr-2 h-4 w-4" />
-              {saved ? "Saved!" : "Save Changes"}
-            </button>
           </div>
         </div>
       </div>

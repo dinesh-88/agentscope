@@ -221,6 +221,7 @@ impl Storage {
                 total_tokens,
                 total_cost_usd
             FROM runs
+            WHERE deleted_at IS NULL
             ORDER BY started_at DESC
             LIMIT $1
             "#,
@@ -253,6 +254,7 @@ impl Storage {
                 total_cost_usd
             FROM runs
             WHERE project_id = $1::uuid
+              AND deleted_at IS NULL
             ORDER BY started_at DESC
             LIMIT $2
             "#,

@@ -27,7 +27,7 @@ impl Storage {
     pub async fn run_exists(&self, run_id: &str) -> Result<bool, AgentScopeError> {
         let exists = sqlx::query_scalar::<_, bool>(
             r#"
-            SELECT EXISTS (SELECT 1 FROM runs WHERE id = $1::uuid)
+            SELECT EXISTS (SELECT 1 FROM runs WHERE id = $1::uuid AND deleted_at IS NULL)
             "#,
         )
         .bind(run_id)
@@ -116,7 +116,8 @@ impl Storage {
                 tags = EXCLUDED.tags,
                 experiment_id = EXCLUDED.experiment_id,
                 variant = EXCLUDED.variant,
-                metadata = EXCLUDED.metadata
+                metadata = EXCLUDED.metadata,
+                deleted_at = NULL
             "#,
         )
         .bind(&run.id)
@@ -180,6 +181,7 @@ impl Storage {
                    metadata
             FROM runs
             WHERE id = $1::uuid
+              AND deleted_at IS NULL
             "#,
         )
         .bind(id)
@@ -228,6 +230,7 @@ impl Storage {
                 ON memberships.organization_id = projects.organization_id
             WHERE runs.id = $1::uuid
               AND memberships.user_id = $2::uuid
+              AND runs.deleted_at IS NULL
             "#,
         )
         .bind(id)
@@ -269,6 +272,7 @@ impl Storage {
                    variant,
                    metadata
             FROM runs
+            WHERE deleted_at IS NULL
             ORDER BY started_at DESC
             "#,
         )
@@ -323,6 +327,7 @@ impl Storage {
             WHERE memberships.user_id = "#,
         );
         builder.push_bind(user_id).push("::uuid");
+        builder.push(" AND runs.deleted_at IS NULL");
 
         if let Some(query) = filters.query.as_deref().filter(|value| !value.is_empty()) {
             builder.push(" AND (runs.workflow_name ILIKE ");
@@ -456,6 +461,7 @@ impl Storage {
                    metadata
             FROM runs
             WHERE status = $1
+              AND deleted_at IS NULL
             ORDER BY started_at DESC
             "#,
         )
