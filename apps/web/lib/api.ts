@@ -115,6 +115,8 @@ export type RunInsight = {
   message: string;
   recommendation: string;
   created_at: string;
+  evidence: Record<string, unknown>;
+  impact_score: number;
 };
 
 export type ProjectInsight = {

@@ -6,6 +6,8 @@ pub struct Detection {
     pub failure_type: &'static str,
     pub confidence: f64,
     pub summary: String,
+    pub span_count: usize,
+    pub affected_spans: Vec<String>,
     pub evidence: Value,
 }
 
@@ -47,6 +49,8 @@ fn detect_schema_validation_error(artifacts: &[Artifact]) -> Option<Detection> {
         failure_type: "SCHEMA_VALIDATION_ERROR",
         confidence: 0.97,
         summary: "The run produced output that could not be parsed or validated against the expected schema.".to_string(),
+        span_count: artifact.span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: artifact.span_id.clone().into_iter().collect(),
         evidence: artifact.payload.clone(),
     })
 }
@@ -75,6 +79,8 @@ fn detect_tool_failure(spans: &[Span], artifacts: &[Artifact]) -> Option<Detecti
         failure_type: "TOOL_FAILURE",
         confidence: 0.95,
         summary: format!("Tool span {} failed during execution.", span.name),
+        span_count: 1,
+        affected_spans: vec![span.id.clone()],
         evidence,
     })
 }
@@ -88,6 +94,8 @@ fn detect_timeout(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
             failure_type: "TIMEOUT",
             confidence: 0.94,
             summary: format!("Span {} timed out before completion.", span.name),
+            span_count: 1,
+            affected_spans: vec![span.id.clone()],
             evidence: json!({
                 "span_id": span.id,
                 "status": span.status,
@@ -104,6 +112,8 @@ fn detect_timeout(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
         failure_type: "TIMEOUT",
         confidence: 0.92,
         summary: "A timeout was detected in run artifacts.".to_string(),
+        span_count: artifact.span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: artifact.span_id.clone().into_iter().collect(),
         evidence: artifact.payload.clone(),
     })
 }
@@ -120,6 +130,8 @@ fn detect_api_error(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection>
         .span_id
         .as_ref()
         .and_then(|span_id| spans.iter().find(|span| span.id == *span_id));
+    let span_id = span.map(|value| value.id.clone());
+    let provider = span.and_then(|value| value.provider.clone());
 
     Some(Detection {
         failure_type: "API_ERROR",
@@ -132,10 +144,12 @@ fn detect_api_error(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection>
             Some(status) => format!("An upstream API request failed with status {status}."),
             None => "An upstream API request failed.".to_string(),
         },
+        span_count: span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: span_id.clone().into_iter().collect(),
         evidence: json!({
             "artifact": artifact.payload,
-            "span_id": span.map(|value| value.id.clone()),
-            "provider": span.and_then(|value| value.provider.clone())
+            "span_id": span_id,
+            "provider": provider
         }),
     })
 }
@@ -157,6 +171,8 @@ fn detect_token_overflow(spans: &[Span], artifacts: &[Artifact]) -> Option<Detec
                 "Span {} exceeded the estimated context window for model {}.",
                 span.name, model
             ),
+            span_count: 1,
+            affected_spans: vec![span.id.clone()],
             evidence: json!({
                 "span_id": span.id,
                 "model": model,
@@ -177,6 +193,8 @@ fn detect_token_overflow(spans: &[Span], artifacts: &[Artifact]) -> Option<Detec
         failure_type: "TOKEN_OVERFLOW",
         confidence: 0.95,
         summary: "The run exceeded the model token or context limit.".to_string(),
+        span_count: artifact.span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: artifact.span_id.clone().into_iter().collect(),
         evidence: artifact.payload.clone(),
     })
 }

@@ -3,18 +3,18 @@ use serde_json::json;
 use crate::analysis::detectors::Detection;
 
 #[derive(Debug, Clone)]
-pub struct ClassifiedRootCause {
+pub struct Classification {
     pub root_cause_category: &'static str,
     pub summary: String,
     pub suggested_fixes: Vec<String>,
     pub evidence: serde_json::Value,
 }
 
-pub fn classify_root_cause(detections: &[Detection]) -> ClassifiedRootCause {
+pub fn classify_root_cause(detections: &[Detection]) -> Classification {
     let primary = detections.first();
 
     match primary.map(|detection| detection.failure_type) {
-        Some("SCHEMA_VALIDATION_ERROR") => ClassifiedRootCause {
+        Some("SCHEMA_VALIDATION_ERROR") => Classification {
             root_cause_category: "LLM_OUTPUT_FORMAT_ERROR",
             summary: primary.unwrap().summary.clone(),
             suggested_fixes: vec![
@@ -24,7 +24,7 @@ pub fn classify_root_cause(detections: &[Detection]) -> ClassifiedRootCause {
             ],
             evidence: primary.unwrap().evidence.clone(),
         },
-        Some("TOOL_FAILURE") => ClassifiedRootCause {
+        Some("TOOL_FAILURE") => Classification {
             root_cause_category: "TOOL_EXECUTION_ERROR",
             summary: primary.unwrap().summary.clone(),
             suggested_fixes: vec![
@@ -34,7 +34,7 @@ pub fn classify_root_cause(detections: &[Detection]) -> ClassifiedRootCause {
             ],
             evidence: primary.unwrap().evidence.clone(),
         },
-        Some("TOKEN_OVERFLOW") => ClassifiedRootCause {
+        Some("TOKEN_OVERFLOW") => Classification {
             root_cause_category: "PROMPT_TOO_LARGE",
             summary: primary.unwrap().summary.clone(),
             suggested_fixes: vec![
@@ -44,7 +44,7 @@ pub fn classify_root_cause(detections: &[Detection]) -> ClassifiedRootCause {
             ],
             evidence: primary.unwrap().evidence.clone(),
         },
-        Some("TIMEOUT") => ClassifiedRootCause {
+        Some("TIMEOUT") => Classification {
             root_cause_category: "TIMEOUT",
             summary: primary.unwrap().summary.clone(),
             suggested_fixes: vec![
@@ -54,7 +54,7 @@ pub fn classify_root_cause(detections: &[Detection]) -> ClassifiedRootCause {
             ],
             evidence: primary.unwrap().evidence.clone(),
         },
-        Some("API_ERROR") => ClassifiedRootCause {
+        Some("API_ERROR") => Classification {
             root_cause_category: "API_FAILURE",
             summary: primary.unwrap().summary.clone(),
             suggested_fixes: vec![
@@ -64,7 +64,7 @@ pub fn classify_root_cause(detections: &[Detection]) -> ClassifiedRootCause {
             ],
             evidence: primary.unwrap().evidence.clone(),
         },
-        _ => ClassifiedRootCause {
+        _ => Classification {
             root_cause_category: "API_FAILURE",
             summary: "No specific failure pattern was detected from spans and artifacts.".to_string(),
             suggested_fixes: vec![

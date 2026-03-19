@@ -26,9 +26,9 @@ impl Storage {
             sqlx::query(
                 r#"
                 INSERT INTO run_insights
-                    (id, run_id, insight_type, severity, message, recommendation, created_at)
+                    (id, run_id, insight_type, severity, message, recommendation, created_at, evidence, impact_score)
                 VALUES
-                    ($1::uuid, $2::uuid, $3, $4, $5, $6, $7)
+                    ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9)
                 "#,
             )
             .bind(&insight.id)
@@ -38,6 +38,8 @@ impl Storage {
             .bind(&insight.message)
             .bind(&insight.recommendation)
             .bind(insight.created_at)
+            .bind(&insight.evidence)
+            .bind(insight.impact_score as f64)
             .execute(&mut *tx)
             .await
             .map_err(|e| {
@@ -66,10 +68,12 @@ impl Storage {
                 severity,
                 message,
                 recommendation,
-                created_at
+                created_at,
+                evidence,
+                impact_score::real AS impact_score
             FROM run_insights
             WHERE run_id = $1::uuid
-            ORDER BY created_at ASC, insight_type ASC
+            ORDER BY impact_score DESC, created_at ASC, insight_type ASC
             "#,
         )
         .bind(run_id)
