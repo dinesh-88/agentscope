@@ -85,10 +85,17 @@ async fn generate_project_insights(
     let mut insights = Vec::new();
     let run_count = runs.len() as i32;
 
-    let failed_runs = run_summaries.iter().filter(|summary| summary.failed).count() as i32;
+    let failed_runs = run_summaries
+        .iter()
+        .filter(|summary| summary.failed)
+        .count() as i32;
     let failure_rate = failed_runs as f64 / run_count as f64;
     if failure_rate >= HIGH_ERROR_RATE_THRESHOLD {
-        let impact = if failure_rate >= 0.5 { "high" } else { "medium" };
+        let impact = if failure_rate >= 0.5 {
+            "high"
+        } else {
+            "medium"
+        };
         insights.push(build_project_insight(
             project_id,
             InsightDraft {
@@ -208,7 +215,10 @@ async fn generate_project_insights(
         ));
     }
 
-    let total_tokens: i64 = run_summaries.iter().map(|summary| summary.total_tokens).sum();
+    let total_tokens: i64 = run_summaries
+        .iter()
+        .map(|summary| summary.total_tokens)
+        .sum();
     let average_tokens = total_tokens / run_count as i64;
     if average_tokens >= HIGH_TOKEN_AVERAGE_THRESHOLD {
         let impact = if average_tokens >= HIGH_TOKEN_AVERAGE_THRESHOLD * 2 {
@@ -240,10 +250,17 @@ async fn generate_project_insights(
         ));
     }
 
-    let total_retry_events: usize = run_summaries.iter().map(|summary| summary.retry_events).sum();
+    let total_retry_events: usize = run_summaries
+        .iter()
+        .map(|summary| summary.retry_events)
+        .sum();
     if total_retry_events >= HIGH_RETRY_EVENTS_THRESHOLD {
         let average_retries = total_retry_events as f64 / run_count as f64;
-        let impact = if average_retries >= 1.5 { "high" } else { "medium" };
+        let impact = if average_retries >= 1.5 {
+            "high"
+        } else {
+            "medium"
+        };
         insights.push(build_project_insight(
             project_id,
             InsightDraft {
@@ -311,7 +328,11 @@ async fn generate_project_insights(
             .max()
             .unwrap_or_default();
         if frequency >= 0.2 {
-            let impact = if slowest_ms >= 15_000 { "high" } else { "medium" };
+            let impact = if slowest_ms >= 15_000 {
+                "high"
+            } else {
+                "medium"
+            };
             insights.push(build_project_insight(
                 project_id,
                 InsightDraft {
@@ -347,7 +368,11 @@ async fn generate_project_insights(
     if tool_calls > 0 {
         let failure_rate = tool_failures as f64 / tool_calls as f64;
         if failure_rate >= TOOL_FAILURE_RATE_THRESHOLD {
-            let impact = if failure_rate >= 0.4 { "high" } else { "medium" };
+            let impact = if failure_rate >= 0.4 {
+                "high"
+            } else {
+                "medium"
+            };
             insights.push(build_project_insight(
                 project_id,
                 InsightDraft {

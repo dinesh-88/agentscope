@@ -74,7 +74,9 @@ pub(crate) async fn exchange_oidc_code(
         .map_err(|error| ApiError::Forbidden(format!("oidc token exchange rejected: {error}")))?
         .json::<OidcTokenResponse>()
         .await
-        .map_err(|error| ApiError::Storage(format!("failed to parse oidc token response: {error}")))?;
+        .map_err(|error| {
+            ApiError::Storage(format!("failed to parse oidc token response: {error}"))
+        })?;
 
     let userinfo_endpoint = discovery
         .userinfo_endpoint
@@ -90,7 +92,9 @@ pub(crate) async fn exchange_oidc_code(
         .map_err(|error| ApiError::Forbidden(format!("oidc userinfo request rejected: {error}")))?
         .json::<OidcProfile>()
         .await
-        .map_err(|error| ApiError::Storage(format!("failed to parse oidc userinfo response: {error}")))?;
+        .map_err(|error| {
+            ApiError::Storage(format!("failed to parse oidc userinfo response: {error}"))
+        })?;
 
     let email = profile
         .email

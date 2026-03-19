@@ -84,7 +84,7 @@ export default async function RunsPage() {
                   {runs.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-sm text-gray-500">
-                        No runs found
+                        No runs yet. Run the demo app to generate your first trace.
                       </td>
                     </tr>
                   ) : (

@@ -48,7 +48,10 @@ impl Storage {
         Ok(limits)
     }
 
-    pub async fn count_runs_in_last_minute(&self, project_id: &str) -> Result<i64, AgentScopeError> {
+    pub async fn count_runs_in_last_minute(
+        &self,
+        project_id: &str,
+    ) -> Result<i64, AgentScopeError> {
         let since = Utc::now() - Duration::minutes(1);
         let count = sqlx::query_scalar::<_, i64>(
             r#"

@@ -73,7 +73,9 @@ impl Storage {
         .fetch_one(&self.pool)
         .await
         .map_err(|error| {
-            AgentScopeError::Storage(format!("failed to create alert for project {project_id}: {error}"))
+            AgentScopeError::Storage(format!(
+                "failed to create alert for project {project_id}: {error}"
+            ))
         })?;
 
         Ok(alert)
@@ -124,7 +126,9 @@ impl Storage {
         )
         .fetch_all(&self.pool)
         .await
-        .map_err(|error| AgentScopeError::Storage(format!("failed to list enabled alerts: {error}")))?;
+        .map_err(|error| {
+            AgentScopeError::Storage(format!("failed to list enabled alerts: {error}"))
+        })?;
 
         Ok(alerts)
     }
@@ -179,7 +183,9 @@ impl Storage {
         .fetch_one(&self.pool)
         .await
         .map_err(|error| {
-            AgentScopeError::Storage(format!("failed to insert alert event for alert {alert_id}: {error}"))
+            AgentScopeError::Storage(format!(
+                "failed to insert alert event for alert {alert_id}: {error}"
+            ))
         })?;
 
         Ok(event)

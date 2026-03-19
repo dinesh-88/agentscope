@@ -187,12 +187,22 @@ pub async fn register(
 
     let account = state
         .storage
-        .register_account(email, &password, display_name, organization_name, project_name)
+        .register_account(
+            email,
+            &password,
+            display_name,
+            organization_name,
+            project_name,
+        )
         .await?;
 
-    let session =
-        create_user_session(&state, &headers, &account.user.id, Some(account.api_key.as_str()))
-            .await?;
+    let session = create_user_session(
+        &state,
+        &headers,
+        &account.user.id,
+        Some(account.api_key.as_str()),
+    )
+    .await?;
     let onboarding = state
         .storage
         .get_onboarding_state(&account.user.id, Some(&session.session_token))
@@ -350,7 +360,10 @@ pub async fn oauth_callback(
         let redirect_to = query.next.as_deref().unwrap_or("/onboarding");
         let response = Redirect::temporary(redirect_to).into_response();
         return Ok(with_cookie_header(
-            with_cookie_header(response, session_cookie_header(&state.jwt, &session.session_token)),
+            with_cookie_header(
+                response,
+                session_cookie_header(&state.jwt, &session.session_token),
+            ),
             clear_oauth_state_cookie(&state.jwt),
         ));
     };
@@ -371,7 +384,10 @@ pub async fn oauth_callback(
     let redirect_to = query.next.as_deref().unwrap_or("/dashboard");
     let response = Redirect::temporary(redirect_to).into_response();
     Ok(with_cookie_header(
-        with_cookie_header(response, session_cookie_header(&state.jwt, &session.session_token)),
+        with_cookie_header(
+            response,
+            session_cookie_header(&state.jwt, &session.session_token),
+        ),
         clear_oauth_state_cookie(&state.jwt),
     ))
 }
@@ -451,22 +467,6 @@ pub async fn require_jwt(
     Ok(next.run(request).await)
 }
 
-pub async fn require_admin_role(request: Request, next: Next) -> Result<Response, ApiError> {
-    let user = request
-        .extensions()
-        .get::<AuthenticatedUser>()
-        .cloned()
-        .ok_or_else(|| ApiError::Forbidden("missing authenticated user".to_string()))?;
-
-    if !user.permissions.iter().any(|permission| permission == Permission::SandboxRun.as_str()) {
-        return Err(ApiError::Forbidden(
-            "sandbox access requires sandbox:run permission".to_string(),
-        ));
-    }
-
-    Ok(next.run(request).await)
-}
-
 async fn build_authenticated_user(
     state: &Arc<AppState>,
     user_id: &str,
@@ -486,7 +486,7 @@ async fn build_authenticated_user(
     permissions.dedup();
     let is_admin = permissions
         .iter()
-        .any(|permission| permission == Permission::SandboxRun.as_str());
+        .any(|permission| permission == Permission::UserManage.as_str());
 
     Ok(AuthenticatedUser {
         id: user.id,
@@ -583,7 +583,11 @@ fn with_cookie_header(mut response: Response, value: String) -> Response {
 }
 
 fn session_cookie_header(settings: &JwtSettings, session_token: &str) -> String {
-    let secure = if settings.secure_cookies { "; Secure" } else { "" };
+    let secure = if settings.secure_cookies {
+        "; Secure"
+    } else {
+        ""
+    };
     let same_site = if settings.secure_cookies {
         "None"
     } else {
@@ -591,16 +595,16 @@ fn session_cookie_header(settings: &JwtSettings, session_token: &str) -> String 
     };
     format!(
         "{}={}; Path=/; HttpOnly; SameSite={}; Max-Age={}{}",
-        settings.cookie_name,
-        session_token,
-        same_site,
-        settings.expiry_seconds,
-        secure
+        settings.cookie_name, session_token, same_site, settings.expiry_seconds, secure
     )
 }
 
 fn clear_cookie_header(settings: &JwtSettings) -> String {
-    let secure = if settings.secure_cookies { "; Secure" } else { "" };
+    let secure = if settings.secure_cookies {
+        "; Secure"
+    } else {
+        ""
+    };
     let same_site = if settings.secure_cookies {
         "None"
     } else {
@@ -613,7 +617,11 @@ fn clear_cookie_header(settings: &JwtSettings) -> String {
 }
 
 fn oauth_state_cookie(settings: &JwtSettings, state: &str) -> String {
-    let secure = if settings.secure_cookies { "; Secure" } else { "" };
+    let secure = if settings.secure_cookies {
+        "; Secure"
+    } else {
+        ""
+    };
     format!(
         "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600{}",
         OAUTH_STATE_COOKIE_NAME, state, secure
@@ -621,7 +629,11 @@ fn oauth_state_cookie(settings: &JwtSettings, state: &str) -> String {
 }
 
 fn clear_oauth_state_cookie(settings: &JwtSettings) -> String {
-    let secure = if settings.secure_cookies { "; Secure" } else { "" };
+    let secure = if settings.secure_cookies {
+        "; Secure"
+    } else {
+        ""
+    };
     format!(
         "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}",
         OAUTH_STATE_COOKIE_NAME, secure
@@ -646,10 +658,11 @@ fn cookie_value_from_headers(headers: &HeaderMap, name: &str) -> Option<String> 
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok())
         .and_then(|header_value| {
-            header_value
-                .split(';')
-                .map(str::trim)
-                .find_map(|entry| entry.strip_prefix(&format!("{name}=")).map(ToString::to_string))
+            header_value.split(';').map(str::trim).find_map(|entry| {
+                entry
+                    .strip_prefix(&format!("{name}="))
+                    .map(ToString::to_string)
+            })
         })
 }
 
@@ -682,7 +695,9 @@ async fn load_oauth_provider(
         .get_oauth_provider(provider)
         .await?
         .filter(|record| record.enabled)
-        .ok_or_else(|| ApiError::Validation(format!("oauth provider {provider} is not configured")))?;
+        .ok_or_else(|| {
+            ApiError::Validation(format!("oauth provider {provider} is not configured"))
+        })?;
 
     Ok(provider_config)
 }
@@ -738,7 +753,9 @@ async fn exchange_google_code(
         .map_err(|error| ApiError::Forbidden(format!("google token exchange rejected: {error}")))?
         .json::<GoogleTokenResponse>()
         .await
-        .map_err(|error| ApiError::Storage(format!("failed to parse google token response: {error}")))?;
+        .map_err(|error| {
+            ApiError::Storage(format!("failed to parse google token response: {error}"))
+        })?;
 
     let profile = client
         .get("https://openidconnect.googleapis.com/v1/userinfo")
@@ -804,7 +821,9 @@ async fn exchange_github_code(
         .map_err(|error| ApiError::Forbidden(format!("github token exchange rejected: {error}")))?
         .json::<GithubTokenResponse>()
         .await
-        .map_err(|error| ApiError::Storage(format!("failed to parse github token response: {error}")))?;
+        .map_err(|error| {
+            ApiError::Storage(format!("failed to parse github token response: {error}"))
+        })?;
 
     let profile = client
         .get("https://api.github.com/user")
@@ -830,16 +849,22 @@ async fn exchange_github_code(
             .await
             .map_err(|error| ApiError::Storage(format!("github email request failed: {error}")))?
             .error_for_status()
-            .map_err(|error| ApiError::Forbidden(format!("github email request rejected: {error}")))?
+            .map_err(|error| {
+                ApiError::Forbidden(format!("github email request rejected: {error}"))
+            })?
             .json::<Vec<GithubEmail>>()
             .await
-            .map_err(|error| ApiError::Storage(format!("failed to parse github emails: {error}")))?;
+            .map_err(|error| {
+                ApiError::Storage(format!("failed to parse github emails: {error}"))
+            })?;
         emails
             .iter()
             .find(|email| email.primary && email.verified)
             .or_else(|| emails.iter().find(|email| email.verified))
             .map(|email| email.email.clone())
-            .ok_or_else(|| ApiError::Forbidden("github account has no verified email".to_string()))?
+            .ok_or_else(|| {
+                ApiError::Forbidden("github account has no verified email".to_string())
+            })?
     };
 
     Ok(OAuthUserInfo {

@@ -38,7 +38,6 @@ export const config = {
     "/dashboard",
     "/insights",
     "/runs/:path*",
-    "/sandbox",
     "/settings",
     "/demo",
     "/docs",

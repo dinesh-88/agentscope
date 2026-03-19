@@ -5,7 +5,6 @@ import {
   API_BASE_URL,
   UI_SESSION_COOKIE_NAME,
   type Artifact,
-  type DemoScenario,
   type MeResponse,
   type ProjectInsight,
   type Run,
@@ -168,8 +167,4 @@ export async function getCurrentUser(): Promise<MeResponse | null> {
     }
     throw error;
   }
-}
-
-export async function getDemoScenarios(): Promise<DemoScenario[]> {
-  return request<DemoScenario[]>("/v1/demo/scenarios");
 }

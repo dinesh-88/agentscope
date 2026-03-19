@@ -409,9 +409,7 @@ impl Storage {
         .fetch_optional(&self.pool)
         .await
         .map_err(|error| {
-            AgentScopeError::Storage(format!(
-                "failed to load oauth provider {provider}: {error}"
-            ))
+            AgentScopeError::Storage(format!("failed to load oauth provider {provider}: {error}"))
         })?;
 
         Ok(record)
@@ -471,7 +469,9 @@ impl Storage {
         .fetch_one(&self.pool)
         .await
         .map_err(|error| {
-            AgentScopeError::Storage(format!("failed to create session for user {user_id}: {error}"))
+            AgentScopeError::Storage(format!(
+                "failed to create session for user {user_id}: {error}"
+            ))
         })?;
 
         Ok(session)
@@ -499,9 +499,7 @@ impl Storage {
         .bind(session_token)
         .fetch_optional(&self.pool)
         .await
-        .map_err(|error| {
-            AgentScopeError::Storage(format!("failed to load session: {error}"))
-        })?;
+        .map_err(|error| AgentScopeError::Storage(format!("failed to load session: {error}")))?;
 
         Ok(session)
     }
@@ -773,7 +771,9 @@ impl Storage {
         let default_project = self.get_default_project_for_user(user_id).await?;
         let has_organization = default_project.is_some();
         let has_project = default_project.is_some();
-        let default_project_id = default_project.as_ref().map(|(_, _, project_id, _)| project_id.clone());
+        let default_project_id = default_project
+            .as_ref()
+            .map(|(_, _, project_id, _)| project_id.clone());
 
         let has_first_run = if let Some(project_id) = default_project_id.as_deref() {
             sqlx::query_scalar::<_, bool>(
@@ -925,7 +925,11 @@ impl Storage {
 }
 
 pub fn generate_session_token() -> String {
-    format!("sess_{}{}", Uuid::new_v4().simple(), Uuid::new_v4().simple())
+    format!(
+        "sess_{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    )
 }
 
 fn generate_project_api_key() -> String {

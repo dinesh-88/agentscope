@@ -12,7 +12,10 @@ use crate::analysis::{
 const SLOW_SPAN_THRESHOLD_MS: i64 = 8_000;
 const LARGE_PROMPT_THRESHOLD: i64 = 100_000;
 
-pub async fn analyze_run(storage: &Storage, run_id: &str) -> Result<Vec<RunInsight>, AgentScopeError> {
+pub async fn analyze_run(
+    storage: &Storage,
+    run_id: &str,
+) -> Result<Vec<RunInsight>, AgentScopeError> {
     let run = storage
         .get_run(run_id)
         .await?
@@ -77,7 +80,10 @@ pub async fn analyze_run(storage: &Storage, run_id: &str) -> Result<Vec<RunInsig
 
     let slowest_span_ms = spans
         .iter()
-        .filter_map(|span| span.ended_at.map(|ended| (ended - span.started_at).num_milliseconds()))
+        .filter_map(|span| {
+            span.ended_at
+                .map(|ended| (ended - span.started_at).num_milliseconds())
+        })
         .max()
         .unwrap_or_default();
     if slowest_span_ms >= SLOW_SPAN_THRESHOLD_MS {
@@ -91,8 +97,8 @@ pub async fn analyze_run(storage: &Storage, run_id: &str) -> Result<Vec<RunInsig
                 "medium".to_string()
             },
             message: format!("Slow span detected at {slowest_span_ms} ms."),
-            recommendation:
-                "Profile the slow span and reduce tool/model latency on that path.".to_string(),
+            recommendation: "Profile the slow span and reduce tool/model latency on that path."
+                .to_string(),
             created_at: Utc::now(),
         });
     }
@@ -123,9 +129,11 @@ pub async fn analyze_run(storage: &Storage, run_id: &str) -> Result<Vec<RunInsig
             run_id: run_id.to_string(),
             insight_type: "NO_MAJOR_ISSUES".to_string(),
             severity: "low".to_string(),
-            message: "No strong failure or performance issues were detected for this run.".to_string(),
-            recommendation: "Keep monitoring this workflow and collect more runs for stronger trends."
+            message: "No strong failure or performance issues were detected for this run."
                 .to_string(),
+            recommendation:
+                "Keep monitoring this workflow and collect more runs for stronger trends."
+                    .to_string(),
             created_at: Utc::now(),
         });
     }
@@ -157,7 +165,9 @@ fn recommendation_for_failure(failure_type: &str) -> &'static str {
         }
         "TOOL_FAILURE" => "Validate tool arguments and add retries for transient tool errors.",
         "TIMEOUT" => "Shorten long operations and add timeouts with controlled retry behavior.",
-        "API_ERROR" => "Handle upstream API rate limits and server errors with backoff and fallback.",
+        "API_ERROR" => {
+            "Handle upstream API rate limits and server errors with backoff and fallback."
+        }
         "TOKEN_OVERFLOW" => "Reduce prompt size and truncate low-value context before model calls.",
         _ => "Inspect span and artifact evidence to identify and fix the failing step.",
     }

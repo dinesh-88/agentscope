@@ -8,7 +8,6 @@ Dark, minimal SVG graphics for AgentScope landing pages and docs.
 - `run-trace-visualization.svg`
 - `root-cause-analysis.svg`
 - `cost-performance-chart.svg`
-- `sandbox-workflow.svg`
 
 ## Style Notes
 

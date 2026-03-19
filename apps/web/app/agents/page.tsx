@@ -101,7 +101,9 @@ export default async function AgentsPage() {
         </div>
 
         {agents.length === 0 ? (
-          <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">No runs yet for this account.</div>
+          <div className="rounded-xl border border-gray-200 bg-white p-6 text-sm text-gray-600">
+            No runs yet. Run the demo app to generate your first trace.
+          </div>
         ) : (
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
             {agents.map((agent) => (

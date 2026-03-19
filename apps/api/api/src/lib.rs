@@ -2,11 +2,9 @@
 
 pub mod analysis;
 pub mod auth;
-pub mod demo;
 mod engine;
 mod events;
 mod limits;
-mod routes;
 mod swagger;
 
 use std::{env, sync::Arc};
@@ -36,13 +34,11 @@ use crate::auth::{permissions::Permission, AuthenticatedUser, JwtSettings, Proje
 use crate::engine::replay::replay_engine::{
     ModifyReplayRequest, ReplayEngine, ReplayResponse, StartReplayRequest,
 };
-use crate::routes::sandbox::SandboxManager;
 
 #[derive(Clone)]
 pub struct AppState {
     pub storage: Storage,
     pub span_events: broadcast::Sender<events::SpanEvent>,
-    pub sandbox: SandboxManager,
     pub jwt: JwtSettings,
 }
 
@@ -83,20 +79,12 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
     let state = Arc::new(AppState {
         storage,
         span_events: events::span_event_channel(),
-        sandbox: SandboxManager::new(),
         jwt,
     });
 
     let sdk_routes = Router::new()
         .route("/ingest", post(ingest))
         .route_layer(from_fn_with_state(state.clone(), auth::require_api_key));
-
-    let sandbox_routes = Router::new()
-        .route("/python/run", post(routes::sandbox::run_python))
-        .route("/real/run", post(routes::sandbox::run_real))
-        .route("/ts/run", post(routes::sandbox::run_ts))
-        .route_layer(from_fn_with_state(state.clone(), auth::require_admin_role))
-        .route("/status", get(routes::sandbox::status));
 
     let ui_routes = Router::new()
         .route("/events/stream", get(events::stream))
@@ -110,8 +98,6 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/runs/:id/insights", get(get_run_insights))
         .route("/runs/:id/root-cause", get(get_run_root_cause))
         .route("/runs/:id/compare/:other_id", get(compare_runs))
-        .route("/demo/scenarios", get(routes::demo::list_scenarios))
-        .route("/demo/run", post(routes::demo::run_demo))
         .route("/projects/:id/insights", get(get_project_insights))
         .route("/projects/:id/usage", get(get_project_usage))
         .route("/alerts", post(create_alert).get(list_alerts))
@@ -130,7 +116,6 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/replay/:id/step", post(step_replay))
         .route("/replay/:id/modify", post(modify_replay))
         .route("/replay/:id/resume", post(resume_replay))
-        .nest("/sandbox", sandbox_routes)
         .route_layer(from_fn_with_state(state.clone(), auth::require_jwt));
 
     Router::new()

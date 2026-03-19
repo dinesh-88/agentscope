@@ -166,29 +166,6 @@ export type RunComparison = {
   };
 };
 
-export type SandboxTarget = "python" | "real" | "ts";
-
-export type SandboxStartResponse = {
-  status: string;
-  target: SandboxTarget;
-};
-
-export type SandboxTargetStatus = {
-  target: SandboxTarget;
-  status: string;
-  pid: number | null;
-  last_started_at: string | null;
-  last_finished_at: string | null;
-  last_exit_code: number | null;
-  last_error: string | null;
-};
-
-export type SandboxStatusResponse = {
-  python: SandboxTargetStatus;
-  real: SandboxTargetStatus;
-  ts: SandboxTargetStatus;
-};
-
 export type LoginResponse = {
   token: string;
   expires_at: string;
@@ -248,16 +225,6 @@ export type MeResponse = {
     is_admin: boolean;
   };
   onboarding: OnboardingState;
-};
-
-export type DemoScenario = {
-  id: string;
-  name: string;
-};
-
-export type DemoRunResponse = {
-  status: string;
-  run_id: string;
 };
 
 export type ProjectApiKeyResponse = {
@@ -442,14 +409,6 @@ export async function compareRuns(runA: string, runB: string): Promise<RunCompar
   return request<RunComparison>(`/v1/runs/${runA}/compare/${runB}`);
 }
 
-export async function runSandbox(target: SandboxTarget): Promise<SandboxStartResponse> {
-  return postRequest<SandboxStartResponse>(`/v1/sandbox/${target}/run`);
-}
-
-export async function getSandboxStatus(): Promise<SandboxStatusResponse> {
-  return request<SandboxStatusResponse>("/v1/sandbox/status");
-}
-
 export async function login(email: string, password: string): Promise<LoginResponse> {
   const response = await api.post<LoginResponse>("/v1/auth/login", {
     email,
@@ -505,17 +464,6 @@ export async function getCurrentUser(): Promise<MeResponse> {
 
 export async function getOnboardingState(): Promise<OnboardingState> {
   return request<OnboardingState>("/v1/onboarding/state");
-}
-
-export async function getDemoScenarios(): Promise<DemoScenario[]> {
-  return request<DemoScenario[]>("/v1/demo/scenarios");
-}
-
-export async function runDemoScenario(scenario: string): Promise<DemoRunResponse> {
-  const response = await api.post<DemoRunResponse>("/v1/demo/run", {
-    scenario,
-  });
-  return response.data;
 }
 
 export async function getProjectUsage(projectId: string): Promise<ProjectUsagePoint[]> {

@@ -19,7 +19,7 @@ export function OnboardingFirstRun({ hasFirstRun, firstRunId }: OnboardingFirstR
       ) : (
         <div className="mt-3 space-y-3">
           <p className="text-sm text-blue-900">
-            AgentScope is waiting for the first run from your SDK. Once a trace arrives, this flow can redirect you directly into that run.
+            No runs yet. Run the demo app locally to generate your first trace, then this page will jump directly to that run.
           </p>
           <Link className="inline-flex rounded-full border border-blue-300 px-4 py-2 text-sm font-medium text-blue-800" href="/onboarding">
             Check for first trace

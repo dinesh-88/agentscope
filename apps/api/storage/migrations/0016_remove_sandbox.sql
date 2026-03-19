@@ -1,0 +1,6 @@
+DROP TABLE IF EXISTS sandbox_runs;
+DROP TABLE IF EXISTS sandbox_jobs;
+DROP TABLE IF EXISTS sandbox_sessions;
+
+ALTER TABLE runs DROP COLUMN IF EXISTS sandbox_id;
+ALTER TABLE runs DROP COLUMN IF EXISTS is_sandbox;

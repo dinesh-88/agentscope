@@ -266,9 +266,9 @@ console.log("trace received: run_01H...");
               <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-orange-500/20">
                 <TestTube className="h-6 w-6 text-orange-400" />
               </div>
-              <h3 className="mb-3 text-xl font-semibold">Sandbox Workflows</h3>
+              <h3 className="mb-3 text-xl font-semibold">Demo Quickstart</h3>
               <p className="text-gray-400">
-                Test and iterate on agent workflows safely before deploying to production.
+                Copy your API key, run a local demo app, and inspect traces in under a minute.
               </p>
             </div>
           </div>

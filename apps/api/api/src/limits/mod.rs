@@ -2,10 +2,7 @@ use std::sync::Arc;
 
 use crate::{ApiError, AppState};
 
-pub async fn check_rate_limit(
-    state: &Arc<AppState>,
-    project_id: &str,
-) -> Result<(), ApiError> {
+pub async fn check_rate_limit(state: &Arc<AppState>, project_id: &str) -> Result<(), ApiError> {
     let Some(limits) = state.storage.get_project_limits(project_id).await? else {
         return Ok(());
     };

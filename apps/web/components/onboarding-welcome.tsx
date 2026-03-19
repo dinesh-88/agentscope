@@ -12,8 +12,8 @@ export function OnboardingWelcome({ name, projectId, hasFirstRun = false }: Onbo
         {name ? `Welcome, ${name}` : "Welcome to AgentScope"}
       </h1>
       <p className="mt-3 max-w-2xl text-sm text-neutral-600">
-        Your default workspace is ready. Use the generated API key below to send your first trace, then AgentScope will redirect you
-        straight into the first captured run.
+        Your default workspace is ready. Copy the API key, run the demo repo locally, and AgentScope will redirect you
+        into the first captured trace.
       </p>
       <div className="mt-5 rounded-2xl border border-neutral-200 bg-neutral-50 p-4">
         <div className="mb-2 text-xs uppercase tracking-[0.16em] text-neutral-500">Onboarding Progress</div>

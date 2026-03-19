@@ -77,13 +77,9 @@ async fn main() {
                 ticker.tick().await;
                 loop {
                     ticker.tick().await;
-                    run_analysis_cycle(
-                        &storage_clone,
-                        analyze_completed_runs,
-                        analyze_root_causes,
-                    )
-                    .await
-                    .expect("failed to run recurring analysis cycle");
+                    run_analysis_cycle(&storage_clone, analyze_completed_runs, analyze_root_causes)
+                        .await
+                        .expect("failed to run recurring analysis cycle");
                 }
             });
         }

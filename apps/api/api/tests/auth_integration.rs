@@ -180,62 +180,6 @@ async fn ui_requests_require_jwt(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../storage/migrations")]
-async fn sandbox_run_requires_admin_permission(pool: PgPool) {
-    let project_id = seed_project(&pool, "sandbox-org", "sandbox-project").await;
-    let org_id: String =
-        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
-            .bind(&project_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    seed_user_with_role(&pool, &org_id, "member@example.com", "member").await;
-
-    let router = app(Storage { pool }, jwt_settings());
-    let token = login_token(&router, "member@example.com").await;
-
-    let response = router
-        .oneshot(with_bearer(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/sandbox/python/run")
-                .body(Body::empty())
-                .unwrap(),
-            &token,
-        ))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::FORBIDDEN);
-}
-
-#[sqlx::test(migrations = "../storage/migrations")]
-async fn sandbox_run_allows_owner_permission(pool: PgPool) {
-    let project_id = seed_project(&pool, "sandbox-owner-org", "sandbox-owner-project").await;
-    let org_id: String =
-        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
-            .bind(&project_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    seed_user_with_role(&pool, &org_id, "owner@example.com", "owner").await;
-
-    let router = app(Storage { pool }, jwt_settings());
-    let token = login_token(&router, "owner@example.com").await;
-
-    let response = router
-        .oneshot(with_bearer(
-            Request::builder()
-                .method("POST")
-                .uri("/v1/sandbox/python/run")
-                .body(Body::empty())
-                .unwrap(),
-            &token,
-        ))
-        .await
-        .unwrap();
-    assert_ne!(response.status(), StatusCode::FORBIDDEN);
-}
-
-#[sqlx::test(migrations = "../storage/migrations")]
 async fn api_key_cannot_ingest_into_another_project(pool: PgPool) {
     let allowed_project = seed_project(&pool, "allowed-org", "allowed-project").await;
     let denied_project = seed_project(&pool, "denied-org", "denied-project").await;
