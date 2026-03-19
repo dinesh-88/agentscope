@@ -32,6 +32,10 @@ __pycache__/
 *.py[cod]
 *.egg-info/
 packages/python-sdk/dist/
+packages/python-sdk/dist-*/
+packages/python-sdk/build/
+*.whl
+*.tar.gz
 
 # Misc
 tmp/
