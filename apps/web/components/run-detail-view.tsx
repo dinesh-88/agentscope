@@ -144,7 +144,7 @@ export function RunDetailView({
       </Card>
 
       <div className="space-y-4">
-        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
+        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm dark:border-white/10 dark:bg-slate-900/90">
           <CardHeader>
             <CardTitle>Span Details</CardTitle>
           </CardHeader>
@@ -152,30 +152,30 @@ export function RunDetailView({
             {selectedSpan ? (
               <>
                 <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="text-neutral-500">Type</p>
+                  <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
+                    <p className="text-neutral-500 dark:text-neutral-400">Type</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">{selectedSpan.span_type}</p>
                   </div>
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="text-neutral-500">Latency</p>
+                  <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
+                    <p className="text-neutral-500 dark:text-neutral-400">Latency</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">{durationMs(selectedSpan.started_at, selectedSpan.ended_at)} ms</p>
                   </div>
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="text-neutral-500">Tokens</p>
+                  <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
+                    <p className="text-neutral-500 dark:text-neutral-400">Tokens</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">{(selectedSpan.total_tokens ?? 0).toLocaleString()}</p>
                   </div>
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="text-neutral-500">Status</p>
+                  <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
+                    <p className="text-neutral-500 dark:text-neutral-400">Status</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">{selectedSpan.status}</p>
                   </div>
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="text-neutral-500">LLM Cost</p>
+                  <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
+                    <p className="text-neutral-500 dark:text-neutral-400">LLM Cost</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">
                       {formatUsd(selectedSpan.estimated_cost, 6)}
                     </p>
                   </div>
-                  <div className="rounded-lg bg-slate-50 p-2">
-                    <p className="text-neutral-500">Run Cost</p>
+                  <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
+                    <p className="text-neutral-500 dark:text-neutral-400">Run Cost</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">
                       {formatUsd(run.total_cost_usd, 4)}
                     </p>
@@ -190,7 +190,9 @@ export function RunDetailView({
                       onClick={() => setTab(entry)}
                       className={cn(
                         "rounded-lg px-3 py-2 text-xs font-medium capitalize transition",
-                        tab === entry ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100",
+                        tab === entry
+                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                          : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
                       )}
                     >
                       {entry}
@@ -208,7 +210,7 @@ export function RunDetailView({
                         </div>
                       ))
                     ) : (
-                      <p className="rounded-lg bg-slate-50 p-3 text-sm text-neutral-500">No prompt content available.</p>
+                      <p className="rounded-lg bg-slate-50 p-3 text-sm text-neutral-500 dark:bg-slate-800/70 dark:text-neutral-400">No prompt content available.</p>
                     )}
                   </div>
                 ) : null}

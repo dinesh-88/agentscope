@@ -222,20 +222,59 @@ fn validate_payload(payload: &IngestPayload) -> Result<(), ApiError> {
     if payload.run.id.is_empty() {
         return Err(ApiError::Validation("run.id is required".to_string()));
     }
+    if Uuid::parse_str(&payload.run.id).is_err() {
+        return Err(ApiError::Validation(
+            "run.id must be a valid UUID".to_string(),
+        ));
+    }
 
     for span in &payload.spans {
+        if Uuid::parse_str(&span.id).is_err() {
+            return Err(ApiError::Validation(
+                "every span.id must be a valid UUID".to_string(),
+            ));
+        }
         if span.run_id != payload.run.id {
             return Err(ApiError::Validation(
                 "every span.run_id must match run.id".to_string(),
             ));
         }
+        if Uuid::parse_str(&span.run_id).is_err() {
+            return Err(ApiError::Validation(
+                "every span.run_id must be a valid UUID".to_string(),
+            ));
+        }
+        if let Some(parent_span_id) = &span.parent_span_id {
+            if Uuid::parse_str(parent_span_id).is_err() {
+                return Err(ApiError::Validation(
+                    "every span.parent_span_id must be a valid UUID".to_string(),
+                ));
+            }
+        }
     }
 
     for artifact in &payload.artifacts {
+        if Uuid::parse_str(&artifact.id).is_err() {
+            return Err(ApiError::Validation(
+                "every artifact.id must be a valid UUID".to_string(),
+            ));
+        }
         if artifact.run_id != payload.run.id {
             return Err(ApiError::Validation(
                 "every artifact.run_id must match run.id".to_string(),
             ));
+        }
+        if Uuid::parse_str(&artifact.run_id).is_err() {
+            return Err(ApiError::Validation(
+                "every artifact.run_id must be a valid UUID".to_string(),
+            ));
+        }
+        if let Some(span_id) = &artifact.span_id {
+            if Uuid::parse_str(span_id).is_err() {
+                return Err(ApiError::Validation(
+                    "every artifact.span_id must be a valid UUID".to_string(),
+                ));
+            }
         }
     }
 
