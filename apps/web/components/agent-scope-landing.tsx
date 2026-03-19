@@ -145,7 +145,7 @@ console.log("trace received: run_01H...");
         </div>
       </nav>
 
-      <section className="px-6 pt-20 pb-32">
+      <section className="px-6 pt-20 pb-16">
         <div className="mx-auto w-full max-w-[1368px]">
           <div className="mx-auto mb-16 max-w-4xl text-center">
             <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
@@ -186,7 +186,7 @@ console.log("trace received: run_01H...");
         </div>
       </section>
 
-      <section className="bg-gradient-to-b from-transparent to-purple-500/5 px-6 py-20">
+      <section className="bg-gradient-to-b from-transparent to-purple-500/5 px-6 pt-10 pb-20">
         <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-16 text-center text-3xl font-bold md:text-4xl">
             AI agents are powerful — but hard to debug

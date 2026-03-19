@@ -1,7 +1,8 @@
 "use client";
 
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { type MouseEvent, useMemo, useRef, useState } from "react";
+import { type MouseEvent, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 
 import { cn } from "@/lib/utils";
 
@@ -44,7 +45,6 @@ function clamp(value: number, min: number, max: number) {
 
 export function TraceView({ spans, className, title = "Run Trace", selectedSpanId, onSpanSelect }: TraceViewProps) {
   const shouldReduceMotion = useReducedMotion();
-  const rootRef = useRef<HTMLDivElement | null>(null);
   const [tooltip, setTooltip] = useState<{ span: TraceSpan; x: number; y: number } | null>(null);
   const [openRcaSpanId, setOpenRcaSpanId] = useState<string | null>(null);
 
@@ -86,9 +86,7 @@ export function TraceView({ spans, className, title = "Run Trace", selectedSpanI
   }, [spans]);
 
   const handleHover = (event: MouseEvent<HTMLDivElement>, span: TraceSpan) => {
-    if (!rootRef.current) return;
-    const rect = rootRef.current.getBoundingClientRect();
-    setTooltip({ span, x: event.clientX - rect.left, y: event.clientY - rect.top });
+    setTooltip({ span, x: event.clientX, y: event.clientY });
   };
 
   const axisTicks = useMemo(() => {
@@ -124,7 +122,6 @@ export function TraceView({ spans, className, title = "Run Trace", selectedSpanI
 
   return (
     <div
-      ref={rootRef}
       className={cn(
         "relative overflow-hidden rounded-xl border border-white/10 bg-[#0B0F14] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.35)]",
         className,
@@ -334,36 +331,43 @@ export function TraceView({ spans, className, title = "Run Trace", selectedSpanI
         })}
       </div>
 
-      <AnimatePresence>
-        {tooltip && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 4 }}
-            transition={{ duration: 0.14, ease: "easeOut" }}
-            className="pointer-events-none absolute z-20 w-80 rounded-lg border border-slate-600/60 bg-[#0E1520]/95 p-3 text-xs text-slate-200 shadow-[0_20px_48px_rgba(0,0,0,0.45)]"
-            style={{ left: clamp(tooltip.x + 14, 12, 940), top: clamp(tooltip.y - 18, 10, 420) }}
-          >
-            <div className="mb-2 text-[11px] uppercase tracking-[0.14em] text-slate-400">{tooltip.span.name}</div>
-            <div className="space-y-1.5">
-              <div>
-                <span className="text-slate-500">prompt:</span> {tooltip.span.prompt}
-              </div>
-              <div>
-                <span className="text-slate-500">response:</span> {tooltip.span.response}
-              </div>
-              <div className="flex gap-3 text-slate-300">
-                <span>
-                  <span className="text-slate-500">tokens:</span> {tooltip.span.tokens}
-                </span>
-                <span>
-                  <span className="text-slate-500">latency:</span> {tooltip.span.latencyMs}ms
-                </span>
-              </div>
-            </div>
-          </motion.div>
+      {typeof document !== "undefined" &&
+        createPortal(
+          <AnimatePresence>
+            {tooltip && (
+              <motion.div
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: 4 }}
+                transition={{ duration: 0.14, ease: "easeOut" }}
+                className="pointer-events-none fixed z-[9999] w-80 rounded-lg border border-slate-600/60 bg-[#0E1520]/95 p-3 text-xs text-slate-200 shadow-[0_20px_48px_rgba(0,0,0,0.45)]"
+                style={{
+                  left: clamp(tooltip.x + 14, 12, window.innerWidth - 340),
+                  top: clamp(tooltip.y - 18, 10, window.innerHeight - 180),
+                }}
+              >
+                <div className="mb-2 text-[11px] uppercase tracking-[0.14em] text-slate-400">{tooltip.span.name}</div>
+                <div className="space-y-1.5">
+                  <div>
+                    <span className="text-slate-500">prompt:</span> {tooltip.span.prompt}
+                  </div>
+                  <div>
+                    <span className="text-slate-500">response:</span> {tooltip.span.response}
+                  </div>
+                  <div className="flex gap-3 text-slate-300">
+                    <span>
+                      <span className="text-slate-500">tokens:</span> {tooltip.span.tokens}
+                    </span>
+                    <span>
+                      <span className="text-slate-500">latency:</span> {tooltip.span.latencyMs}ms
+                    </span>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>,
+          document.body,
         )}
-      </AnimatePresence>
     </div>
   );
 }

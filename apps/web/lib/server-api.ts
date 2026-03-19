@@ -44,6 +44,10 @@ function isNotFound(error: unknown) {
   return axios.isAxiosError(error) && error.response?.status === 404;
 }
 
+function isUnauthorized(error: unknown) {
+  return axios.isAxiosError(error) && error.response?.status === 401;
+}
+
 function isServerError(error: unknown) {
   const status = axios.isAxiosError(error) ? error.response?.status : undefined;
   return typeof status === "number" && status >= 500;
@@ -61,7 +65,7 @@ async function requestOptional<T>(path: string, fallback: T): Promise<T> {
   try {
     return await request<T>(path);
   } catch (error) {
-    if (isNotFound(error) || isServerError(error)) {
+    if (isNotFound(error) || isUnauthorized(error) || isServerError(error)) {
       logOptionalEndpointFailure(path, error);
       return fallback;
     }
@@ -71,7 +75,7 @@ async function requestOptional<T>(path: string, fallback: T): Promise<T> {
 }
 
 export async function getRuns(): Promise<Run[]> {
-  return request<Run[]>("/v1/runs");
+  return requestOptional<Run[]>("/v1/runs", []);
 }
 
 export type RunSearchFilters = {
@@ -100,7 +104,7 @@ export async function getRunsFiltered(filters: RunSearchFilters = {}): Promise<R
   }
 
   const suffix = params.size > 0 ? `?${params.toString()}` : "";
-  return request<Run[]>(`/v1/runs/search${suffix}`);
+  return requestOptional<Run[]>(`/v1/runs/search${suffix}`, []);
 }
 
 export async function getRun(runId: string): Promise<Run | null> {

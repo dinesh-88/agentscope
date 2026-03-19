@@ -169,6 +169,12 @@ export function RunDetailView({
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">{selectedSpan.status}</p>
                   </div>
                   <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
+                    <p className="text-neutral-500 dark:text-neutral-400">Tool Time</p>
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">
+                      {typeof selectedSpan.tool_latency_ms === "number" ? `${Math.max(selectedSpan.tool_latency_ms, 0).toFixed(0)} ms` : "n/a"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
                     <p className="text-neutral-500 dark:text-neutral-400">LLM Cost</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">
                       {formatUsd(selectedSpan.estimated_cost, 6)}
