@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 
 import { LiveLogPanel } from "@/components/live-log-panel";
+import { ReplayPanel } from "@/components/replay-panel";
 import { TraceView, type TraceSpan } from "@/components/trace-view";
 import { WorkflowGraph } from "@/components/workflow-graph";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -354,6 +355,8 @@ export function RunDetailView({
             <LiveLogPanel logs={liveLogs} />
           </CardContent>
         </Card>
+
+        <ReplayPanel runId={run.id} selectedArtifacts={selectedArtifacts} />
 
         <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
           <CardHeader>

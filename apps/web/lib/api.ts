@@ -328,6 +328,55 @@ export type FailureCluster = {
   created_at: string;
 };
 
+export type RunReplay = {
+  id: string;
+  original_run_id: string;
+  current_step: number;
+  state: Record<string, unknown>;
+  created_at: string;
+};
+
+export type ReplayStep = {
+  index: number;
+  span: Span;
+  artifacts: Artifact[];
+};
+
+export type ReplayArtifactDiff = {
+  artifact_id: string;
+  original_artifact_id: string | null;
+  span_id: string | null;
+  kind: string;
+  original_payload: Record<string, unknown>;
+  replay_payload: Record<string, unknown>;
+};
+
+export type ReplayDiff = {
+  original_run_id: string;
+  replay_run_id: string | null;
+  modified_artifacts: ReplayArtifactDiff[];
+};
+
+export type ReplayResponse = {
+  replay: RunReplay;
+  active_run_id: string;
+  total_steps: number;
+  next_step: ReplayStep | null;
+  forked_run: Run | null;
+  diff: ReplayDiff;
+};
+
+export type StartReplayRequest = {
+  original_run_id: string;
+};
+
+export type ModifyReplayRequest = {
+  artifact_id?: string;
+  span_id?: string;
+  kind?: string;
+  payload: Record<string, unknown>;
+};
+
 export type CreateAlertRequest = {
   project_id: string;
   name: string;
@@ -666,4 +715,20 @@ export async function removeOrgMember(organizationId: string, userId: string): P
 
 export async function createProjectApiKey(projectId: string): Promise<ProjectApiKeyResponse> {
   return postRequest<ProjectApiKeyResponse>(`/v1/projects/${projectId}/api-keys`);
+}
+
+export async function startReplay(payload: StartReplayRequest): Promise<ReplayResponse> {
+  return postRequestWithBody<ReplayResponse>("/v1/replay/start", payload);
+}
+
+export async function stepReplay(replayId: string): Promise<ReplayResponse> {
+  return postRequestWithBody<ReplayResponse>(`/v1/replay/${replayId}/step`, {});
+}
+
+export async function modifyReplay(replayId: string, payload: ModifyReplayRequest): Promise<ReplayResponse> {
+  return postRequestWithBody<ReplayResponse>(`/v1/replay/${replayId}/modify`, payload);
+}
+
+export async function resumeReplay(replayId: string): Promise<ReplayResponse> {
+  return postRequestWithBody<ReplayResponse>(`/v1/replay/${replayId}/resume`, {});
 }
