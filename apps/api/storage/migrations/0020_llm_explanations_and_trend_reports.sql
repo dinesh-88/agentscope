@@ -15,7 +15,7 @@ ON run_explanations (run_id);
 CREATE TABLE IF NOT EXISTS trend_reports (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    window TEXT NOT NULL,
+    "window" TEXT NOT NULL,
     summary TEXT NOT NULL,
     trends JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()

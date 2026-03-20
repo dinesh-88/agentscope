@@ -271,6 +271,78 @@ console.log("trace received: run_01H...");
                 Copy your API key, run a local demo app, and inspect traces in under a minute.
               </p>
             </div>
+
+            <div className="relative overflow-hidden rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 via-slate-900/70 to-blue-500/10 p-8 md:col-span-2">
+              <div className="pointer-events-none absolute -top-28 -right-28 h-56 w-56 rounded-full bg-cyan-400/20 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-blue-500/20 blur-3xl" />
+
+              <div className="relative grid gap-6 lg:grid-cols-[1fr_1.2fr]">
+                <div>
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-500/20">
+                    <Activity className="h-6 w-6 text-cyan-300" />
+                  </div>
+                  <h3 className="mb-3 text-xl font-semibold">Real-Time Status View</h3>
+                  <p className="mb-4 text-gray-300">
+                    Watch your run live with workflow graph updates, active spans, streaming logs, and
+                    artifacts as they happen.
+                  </p>
+                  <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-200">
+                    <span className="relative inline-flex h-2 w-2">
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
+                    </span>
+                    Sub-200ms live updates
+                  </div>
+                </div>
+
+                <div className="grid gap-3">
+                  <div className="rounded-xl border border-white/10 bg-slate-950/80 p-3">
+                    <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
+                      <span>Workflow Graph</span>
+                      <span className="text-cyan-300">running</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2 rounded bg-slate-900 px-2 py-1.5">
+                        <span className="h-2 w-2 rounded-full bg-slate-500" />
+                        <span className="text-xs text-slate-300">input.parse</span>
+                      </div>
+                      <div className="flex items-center gap-2 rounded bg-slate-900 px-2 py-1.5">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+                        <span className="text-xs text-amber-200">planner.llm_call</span>
+                      </div>
+                      <div className="flex items-center gap-2 rounded bg-slate-900 px-2 py-1.5">
+                        <span className="h-2 w-2 rounded-full bg-emerald-400" />
+                        <span className="text-xs text-emerald-200">tool.search</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-slate-950/80 p-3">
+                    <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
+                      <span>Active Span Timeline</span>
+                      <span className="font-mono text-slate-300">00:01.27</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-2 overflow-hidden rounded bg-slate-800">
+                        <div className="h-full w-2/3 animate-pulse rounded bg-cyan-400/80" />
+                      </div>
+                      <div className="h-2 overflow-hidden rounded bg-slate-800">
+                        <div className="h-full w-1/2 rounded bg-emerald-400/70" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-slate-950/80 p-3">
+                    <div className="mb-2 text-xs text-slate-400">Live Logs</div>
+                    <div className="space-y-1.5 font-mono text-[11px]">
+                      <p className="text-slate-400">[10:24:41] span_started planner.llm_call</p>
+                      <p className="text-cyan-200 motion-safe:animate-pulse">[10:24:41] token_stream +42</p>
+                      <p className="text-slate-400">[10:24:42] artifact_created prompt.rendered</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

@@ -657,7 +657,7 @@ impl Storage {
     pub async fn insert_trend_report(&self, report: &TrendReport) -> Result<(), AgentScopeError> {
         sqlx::query(
             r#"
-            INSERT INTO trend_reports (id, project_id, window, summary, trends, created_at)
+            INSERT INTO trend_reports (id, project_id, "window", summary, trends, created_at)
             VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
             "#,
         )
