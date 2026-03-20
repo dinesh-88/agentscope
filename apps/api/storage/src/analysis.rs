@@ -1,5 +1,7 @@
 use agentscope_common::errors::AgentScopeError;
-use agentscope_trace::{ProjectInsight, Run, RunAnalysis, RunExplanation, TrendReport};
+use agentscope_trace::{
+    ActiveAlert, FailureCluster, ProjectInsight, Run, RunAnalysis, RunExplanation, TrendReport,
+};
 use chrono::{DateTime, Utc};
 use sqlx::QueryBuilder;
 use tracing::info;
@@ -15,6 +17,221 @@ pub struct TrendRunFilters {
 }
 
 impl Storage {
+    pub async fn replace_active_alerts(
+        &self,
+        project_id: &str,
+        alerts: &[ActiveAlert],
+    ) -> Result<(), AgentScopeError> {
+        let mut tx = self.pool.begin().await.map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to start active alerts transaction for project {project_id}: {error}"
+            ))
+        })?;
+
+        sqlx::query("DELETE FROM active_alerts WHERE project_id = $1::uuid")
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to clear active alerts for project {project_id}: {error}"
+                ))
+            })?;
+
+        for alert in alerts {
+            sqlx::query(
+                r#"
+                INSERT INTO active_alerts (
+                    id,
+                    project_id,
+                    alert_type,
+                    severity,
+                    message,
+                    evidence,
+                    created_at
+                )
+                VALUES (
+                    $1::uuid,
+                    $2::uuid,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7
+                )
+                "#,
+            )
+            .bind(&alert.id)
+            .bind(&alert.project_id)
+            .bind(&alert.alert_type)
+            .bind(&alert.severity)
+            .bind(&alert.message)
+            .bind(&alert.evidence)
+            .bind(alert.created_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to insert active alert {} for project {}: {error}",
+                    alert.id, alert.project_id
+                ))
+            })?;
+        }
+
+        tx.commit().await.map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to commit active alerts for project {project_id}: {error}"
+            ))
+        })?;
+
+        info!(%project_id, alert_count = alerts.len(), "active alerts replaced");
+        Ok(())
+    }
+
+    pub async fn get_active_alerts(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<ActiveAlert>, AgentScopeError> {
+        sqlx::query_as::<_, ActiveAlert>(
+            r#"
+            SELECT
+                id::text AS id,
+                project_id::text AS project_id,
+                alert_type,
+                severity,
+                message,
+                evidence,
+                created_at
+            FROM active_alerts
+            WHERE project_id = $1::uuid
+            ORDER BY
+                CASE
+                    WHEN lower(severity) = 'critical' THEN 4
+                    WHEN lower(severity) = 'high' THEN 3
+                    WHEN lower(severity) = 'medium' THEN 2
+                    ELSE 1
+                END DESC,
+                created_at DESC
+            "#,
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to load active alerts for project {project_id}: {error}"
+            ))
+        })
+    }
+
+    pub async fn replace_failure_clusters(
+        &self,
+        project_id: &str,
+        clusters: &[FailureCluster],
+    ) -> Result<(), AgentScopeError> {
+        let mut tx = self.pool.begin().await.map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to start failure clusters transaction for project {project_id}: {error}"
+            ))
+        })?;
+
+        sqlx::query("DELETE FROM failure_clusters WHERE project_id = $1::uuid")
+            .bind(project_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to clear failure clusters for project {project_id}: {error}"
+                ))
+            })?;
+
+        for cluster in clusters {
+            sqlx::query(
+                r#"
+                INSERT INTO failure_clusters (
+                    id,
+                    project_id,
+                    cluster_key,
+                    error_type,
+                    count,
+                    sample_run_ids,
+                    common_span,
+                    created_at
+                )
+                VALUES (
+                    $1::uuid,
+                    $2::uuid,
+                    $3,
+                    $4,
+                    $5,
+                    $6,
+                    $7,
+                    $8
+                )
+                "#,
+            )
+            .bind(&cluster.id)
+            .bind(&cluster.project_id)
+            .bind(&cluster.cluster_key)
+            .bind(&cluster.error_type)
+            .bind(cluster.count)
+            .bind(&cluster.sample_run_ids)
+            .bind(&cluster.common_span)
+            .bind(cluster.created_at)
+            .execute(&mut *tx)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to insert failure cluster {} for project {}: {error}",
+                    cluster.id, cluster.project_id
+                ))
+            })?;
+        }
+
+        tx.commit().await.map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to commit failure clusters for project {project_id}: {error}"
+            ))
+        })?;
+
+        info!(
+            %project_id,
+            cluster_count = clusters.len(),
+            "failure clusters replaced"
+        );
+        Ok(())
+    }
+
+    pub async fn get_failure_clusters(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<FailureCluster>, AgentScopeError> {
+        sqlx::query_as::<_, FailureCluster>(
+            r#"
+            SELECT
+                id::text AS id,
+                project_id::text AS project_id,
+                cluster_key,
+                error_type,
+                count,
+                sample_run_ids,
+                common_span,
+                created_at
+            FROM failure_clusters
+            WHERE project_id = $1::uuid
+            ORDER BY count DESC, created_at DESC
+            "#,
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to load failure clusters for project {project_id}: {error}"
+            ))
+        })
+    }
+
     pub async fn upsert_run_analysis(&self, analysis: &RunAnalysis) -> Result<(), AgentScopeError> {
         sqlx::query(
             r#"

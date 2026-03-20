@@ -2,6 +2,7 @@
 
 import { createContext, type ReactNode, useContext, useEffect, useState } from "react";
 
+import { AlertsTopbar } from "@/components/alerts-topbar";
 import { Sidebar } from "@/components/sidebar";
 import { cn } from "@/lib/utils";
 
@@ -55,6 +56,7 @@ export function AppShell({ activePath = "/dashboard", children, mainClassName, t
         <div className="flex min-h-screen w-full">
           <Sidebar activePath={activePath} theme={resolvedTheme} onToggleTheme={toggleTheme} />
           <main className={cn("min-w-0 flex-1", mainClassName)}>
+            <AlertsTopbar />
             {children}
           </main>
         </div>

@@ -300,11 +300,32 @@ export type Alert = {
   created_at: string;
 };
 
+export type ActiveAlert = {
+  id: string;
+  project_id: string;
+  alert_type: string;
+  severity: string;
+  message: string;
+  evidence: Record<string, unknown>;
+  created_at: string;
+};
+
 export type AlertEvent = {
   id: string;
   alert_id: string;
   triggered_at: string;
   payload: Record<string, unknown>;
+};
+
+export type FailureCluster = {
+  id: string;
+  project_id: string;
+  cluster_key: string;
+  error_type: string;
+  count: number;
+  sample_run_ids: string[];
+  common_span: string | null;
+  created_at: string;
 };
 
 export type CreateAlertRequest = {
@@ -587,6 +608,28 @@ export async function deleteAlert(alertId: string): Promise<void> {
 export async function getAlertEvents(): Promise<AlertEvent[]> {
   try {
     return await request<AlertEvent[]>("/v1/alerts/events");
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function getActiveAlerts(projectId: string): Promise<ActiveAlert[]> {
+  try {
+    return await request<ActiveAlert[]>(`/v1/projects/${projectId}/alerts/active`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function getFailureClusters(projectId: string): Promise<FailureCluster[]> {
+  try {
+    return await request<FailureCluster[]>(`/v1/projects/${projectId}/failure-clusters`);
   } catch (error) {
     if (isNotFound(error)) {
       return [];

@@ -1,11 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 
+import { LiveLogPanel } from "@/components/live-log-panel";
 import { TraceView, type TraceSpan } from "@/components/trace-view";
+import { WorkflowGraph } from "@/components/workflow-graph";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { type Artifact, type Run, type RunInsight, type Span } from "@/lib/api";
+import { useRunDetailStore } from "@/lib/run-detail-store";
+import { useRunStream } from "@/lib/use-run-stream";
 import { cn } from "@/lib/utils";
 
 type Tab = "prompt" | "response" | "metadata";
@@ -62,24 +66,67 @@ export function RunDetailView({
   artifacts: Artifact[];
   insights: RunInsight[];
 }) {
-  const ordered = useMemo(() => {
-    return [...spans].sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
-  }, [spans]);
+  const initialLogs = useMemo(
+    () =>
+      artifacts
+        .filter((artifact) => artifact.kind === "log")
+        .map((artifact) => ({
+          id: artifact.id,
+          run_id: artifact.run_id,
+          span_id: artifact.span_id,
+          level: typeof artifact.payload.level === "string" ? artifact.payload.level : "info",
+          message:
+            typeof artifact.payload.message === "string"
+              ? artifact.payload.message
+              : JSON.stringify(artifact.payload),
+          timestamp: typeof artifact.payload.timestamp === "string" ? artifact.payload.timestamp : null,
+          metadata:
+            artifact.payload.metadata && typeof artifact.payload.metadata === "object"
+              ? (artifact.payload.metadata as Record<string, unknown>)
+              : null,
+        })),
+    [artifacts],
+  );
 
-  const [selectedSpanId, setSelectedSpanId] = useState<string | null>(ordered[0]?.id ?? null);
+  useRunStream({
+    runId: run.id,
+    initialRun: run,
+    initialSpans: spans,
+    initialArtifacts: artifacts,
+    initialLogs,
+  });
+  const liveRun = useRunDetailStore((state) => state.run) ?? run;
+  const liveSpans = useRunDetailStore((state) => state.spans);
+  const liveArtifacts = useRunDetailStore((state) => state.artifacts);
+  const liveLogs = useRunDetailStore((state) => state.logs);
+  const activeSpanId = useRunDetailStore((state) => state.activeSpanId);
+  const selectedSpanId = useRunDetailStore((state) => state.selectedSpanId);
+  const setSelectedSpanId = useRunDetailStore((state) => state.setSelectedSpanId);
+
+  const ordered = useMemo(() => {
+    const source = liveSpans.length > 0 ? liveSpans : spans;
+    return [...source].sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
+  }, [liveSpans, spans]);
+
+  useEffect(() => {
+    if (!selectedSpanId && ordered[0]) {
+      setSelectedSpanId(ordered[0].id);
+    }
+  }, [ordered, selectedSpanId, setSelectedSpanId]);
+
   const [tab, setTab] = useState<Tab>("prompt");
 
   const selectedSpan = useMemo(
     () => ordered.find((span) => span.id === selectedSpanId) ?? ordered[0] ?? null,
     [ordered, selectedSpanId],
   );
-  const runStarted = new Date(run.started_at).getTime();
+  const runStarted = new Date(liveRun.started_at).getTime();
 
   const traceSpans = useMemo<TraceSpan[]>(() => {
     const promptBySpan = new Map<string, string>();
     const responseBySpan = new Map<string, string>();
 
-    for (const artifact of artifacts) {
+    for (const artifact of liveArtifacts) {
       if (!artifact.span_id) continue;
       if (artifact.kind.includes("prompt") && !promptBySpan.has(artifact.span_id)) {
         promptBySpan.set(artifact.span_id, artifactToText(artifact.payload));
@@ -111,25 +158,25 @@ export function RunDetailView({
         latencyMs: latency,
       };
     });
-  }, [artifacts, ordered, runStarted]);
+  }, [liveArtifacts, ordered, runStarted]);
 
   const selectedArtifacts = useMemo(() => {
     if (!selectedSpan) return [];
-    return artifacts.filter((artifact) => artifact.span_id === selectedSpan.id);
-  }, [artifacts, selectedSpan]);
+    return liveArtifacts.filter((artifact) => artifact.span_id === selectedSpan.id);
+  }, [liveArtifacts, selectedSpan]);
 
   const promptArtifact = useMemo(
     () =>
       selectedArtifacts.find((artifact) => artifact.kind.includes("prompt")) ??
-      artifacts.find((artifact) => artifact.kind.includes("prompt")),
-    [artifacts, selectedArtifacts],
+      liveArtifacts.find((artifact) => artifact.kind.includes("prompt")),
+    [liveArtifacts, selectedArtifacts],
   );
 
   const responseArtifact = useMemo(
     () =>
       selectedArtifacts.find((artifact) => artifact.kind.includes("response")) ??
-      artifacts.find((artifact) => artifact.kind.includes("response")),
-    [artifacts, selectedArtifacts],
+      liveArtifacts.find((artifact) => artifact.kind.includes("response")),
+    [liveArtifacts, selectedArtifacts],
   );
 
   return (
@@ -183,7 +230,7 @@ export function RunDetailView({
                   <div className="rounded-lg bg-slate-50 p-2 dark:bg-slate-800/70">
                     <p className="text-neutral-500 dark:text-neutral-400">Run Cost</p>
                     <p className="font-medium text-neutral-950 dark:text-neutral-100">
-                      {formatUsd(run.total_cost_usd, 4)}
+                      {formatUsd(liveRun.total_cost_usd, 4)}
                     </p>
                   </div>
                 </div>
@@ -240,6 +287,29 @@ export function RunDetailView({
             ) : (
               <p className="text-sm text-neutral-500">No spans found for this run.</p>
             )}
+          </CardContent>
+        </Card>
+
+        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
+          <CardHeader>
+            <CardTitle>Workflow Graph</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <WorkflowGraph
+              spans={ordered}
+              activeSpanId={activeSpanId}
+              selectedSpanId={selectedSpan?.id ?? null}
+              onSelectSpan={setSelectedSpanId}
+            />
+          </CardContent>
+        </Card>
+
+        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
+          <CardHeader>
+            <CardTitle>Live Logs</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <LiveLogPanel logs={liveLogs} />
           </CardContent>
         </Card>
 

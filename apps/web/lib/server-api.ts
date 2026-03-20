@@ -4,7 +4,9 @@ import { cookies } from "next/headers";
 import {
   API_BASE_URL,
   UI_SESSION_COOKIE_NAME,
+  type ActiveAlert,
   type Artifact,
+  type FailureCluster,
   type MeResponse,
   type ProjectInsight,
   type Run,
@@ -133,6 +135,14 @@ export async function getRunInsights(runId: string): Promise<RunInsight[]> {
 
 export async function getProjectInsights(projectId: string): Promise<ProjectInsight[]> {
   return requestOptional<ProjectInsight[]>(`/v1/projects/${projectId}/insights`, []);
+}
+
+export async function getProjectActiveAlerts(projectId: string): Promise<ActiveAlert[]> {
+  return requestOptional<ActiveAlert[]>(`/v1/projects/${projectId}/alerts/active`, []);
+}
+
+export async function getProjectFailureClusters(projectId: string): Promise<FailureCluster[]> {
+  return requestOptional<FailureCluster[]>(`/v1/projects/${projectId}/failure-clusters`, []);
 }
 
 export async function getRunRootCause(runId: string): Promise<RunRootCause | null> {

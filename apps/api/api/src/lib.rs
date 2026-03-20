@@ -18,8 +18,8 @@ use agentscope_storage::{
     Storage,
 };
 use agentscope_trace::{
-    Artifact, ArtifactSearchResponse, Run, RunAnalysis, RunExplanation, RunInsight, RunMetrics,
-    RunRootCause, Span, TrendReport,
+    ActiveAlert, Artifact, ArtifactSearchResponse, FailureCluster, Run, RunAnalysis,
+    RunExplanation, RunInsight, RunMetrics, RunRootCause, Span, TrendReport,
 };
 use axum::{
     extract::{Extension, Path, Query, State},
@@ -48,6 +48,7 @@ use crate::engine::replay::replay_engine::{
 pub struct AppState {
     pub storage: Storage,
     pub span_events: broadcast::Sender<events::SpanEvent>,
+    pub run_events: events::RunEventHub,
     pub jwt: JwtSettings,
 }
 
@@ -88,6 +89,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
     let state = Arc::new(AppState {
         storage,
         span_events: events::span_event_channel(),
+        run_events: events::RunEventHub::default(),
         jwt,
     });
 
@@ -97,6 +99,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
 
     let ui_routes = Router::new()
         .route("/events/stream", get(events::stream))
+        .route("/runs/:id/stream", get(events::run_stream))
         .route("/runs", get(list_runs))
         .route("/runs/search", get(search_runs))
         .route("/search", get(search_artifacts))
@@ -110,6 +113,14 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/runs/:id/root-cause", get(get_run_root_cause))
         .route("/runs/:id/compare/:other_id", get(compare_runs))
         .route("/projects/:id/insights", get(get_project_insights))
+        .route(
+            "/projects/:id/alerts/active",
+            get(get_project_active_alerts),
+        )
+        .route(
+            "/projects/:id/failure-clusters",
+            get(get_project_failure_clusters),
+        )
         .route("/projects/:id/trends", get(get_project_trends))
         .route("/projects/:id/usage", get(get_project_usage))
         .route(
@@ -189,10 +200,27 @@ async fn ingest(
     for span in &payload.spans {
         state.storage.insert_span(span).await?;
         events::publish_span_created(&state.span_events, span);
+        let event = events::span_lifecycle_event(span);
+        events::publish_event(&state.run_events, &payload.run.id, event).await;
     }
 
     for artifact in &payload.artifacts {
         state.storage.insert_artifact(artifact).await?;
+        let event = if artifact.kind == "log" {
+            events::log_event(artifact)
+        } else {
+            events::artifact_created_event(artifact)
+        };
+        events::publish_event(&state.run_events, &payload.run.id, event).await;
+    }
+
+    if matches!(payload.run.status.as_str(), "success" | "completed" | "failed" | "error") {
+        events::publish_event(
+            &state.run_events,
+            &payload.run.id,
+            events::run_completed_event(&payload.run),
+        )
+        .await;
     }
 
     state.storage.update_run_metrics(&payload.run.id).await?;
@@ -843,6 +871,38 @@ async fn get_project_trends(
     .await?;
 
     Ok(Json(report))
+}
+
+async fn get_project_active_alerts(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<ActiveAlert>>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    let alerts = match state.storage.get_active_alerts(&id).await? {
+        existing if existing.is_empty() => {
+            analysis::insights_engine::analyze_project(&state.storage, &id).await?;
+            state.storage.get_active_alerts(&id).await?
+        }
+        existing => existing,
+    };
+    Ok(Json(alerts))
+}
+
+async fn get_project_failure_clusters(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<FailureCluster>>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    let clusters = match state.storage.get_failure_clusters(&id).await? {
+        existing if existing.is_empty() => {
+            analysis::insights_engine::analyze_project(&state.storage, &id).await?;
+            state.storage.get_failure_clusters(&id).await?
+        }
+        existing => existing,
+    };
+    Ok(Json(clusters))
 }
 
 async fn get_project_usage(

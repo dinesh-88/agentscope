@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::Storage;
-use agentscope_trace::{ProjectInsight, Run, RunRootCause, Span};
+use agentscope_trace::{ActiveAlert, FailureCluster, ProjectInsight, Run, RunRootCause, Span};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -18,6 +18,13 @@ const HIGH_TOKEN_AVERAGE_THRESHOLD: i64 = 60_000;
 const HIGH_RETRY_EVENTS_THRESHOLD: usize = 15;
 const SLOW_SPAN_MS_THRESHOLD: i64 = 8_000;
 const INVALID_OUTPUT_RATE_THRESHOLD: f64 = 0.15;
+const ALERT_FAILURE_RATE_THRESHOLD: f64 = 0.30;
+const ALERT_RELATIVE_INCREASE_THRESHOLD: f64 = 0.25;
+const ALERT_P95_LATENCY_MS_THRESHOLD: f64 = 12_000.0;
+const ALERT_TOTAL_COST_USD_THRESHOLD: f64 = 5.0;
+const ALERT_ERROR_SPIKE_MIN_COUNT: usize = 3;
+const ALERT_ERROR_SPIKE_RATIO_THRESHOLD: f64 = 2.0;
+const CLUSTER_SAMPLE_RUNS: usize = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InsightCard {
@@ -59,6 +66,22 @@ pub async fn analyze_project(
         .await?;
 
     let insights = generate_project_insights(project_id, &runs, storage).await?;
+    let spans_by_run = load_project_spans_by_run(storage, &runs).await?;
+    let alert_inputs = build_alert_metrics_inputs(&runs, &spans_by_run);
+    let alert_insights = evaluate_alert_conditions(&alert_inputs);
+    let active_alerts = alert_insights
+        .into_iter()
+        .map(|insight| create_alert(project_id, insight))
+        .collect::<Vec<_>>();
+    storage
+        .replace_active_alerts(project_id, &active_alerts)
+        .await?;
+
+    let failure_events = collect_failure_events(&spans_by_run);
+    let grouped_failures = group_failures(&failure_events);
+    let clusters = build_clusters(project_id, grouped_failures);
+    store_clusters(storage, project_id, &clusters).await?;
+
     storage
         .replace_project_insights(project_id, &insights)
         .await?;
@@ -438,6 +461,457 @@ async fn generate_project_insights(
     Ok(insights)
 }
 
+async fn load_project_spans_by_run(
+    storage: &Storage,
+    runs: &[Run],
+) -> Result<HashMap<String, Vec<Span>>, AgentScopeError> {
+    let mut spans_by_run = HashMap::new();
+    for run in runs {
+        let spans = storage.get_spans(&run.id).await?;
+        spans_by_run.insert(run.id.clone(), spans);
+    }
+    Ok(spans_by_run)
+}
+
+#[derive(Debug, Clone)]
+struct AlertWindowMetrics {
+    run_count: usize,
+    failure_rate: f64,
+    avg_latency_ms: f64,
+    p95_latency_ms: f64,
+    avg_cost_usd: f64,
+    total_cost_usd: f64,
+    error_counts: HashMap<String, usize>,
+}
+
+#[derive(Debug, Clone)]
+struct AlertMetricsInput {
+    current: AlertWindowMetrics,
+    previous: AlertWindowMetrics,
+    run_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AlertInsightDraft {
+    alert_type: String,
+    severity: String,
+    message: String,
+    evidence: serde_json::Value,
+}
+
+fn build_alert_metrics_inputs(
+    runs: &[Run],
+    spans_by_run: &HashMap<String, Vec<Span>>,
+) -> AlertMetricsInput {
+    let split = (runs.len() / 2).max(1).min(runs.len());
+    let current_runs = &runs[..split];
+    let previous_runs = &runs[split..];
+    let run_ids = current_runs
+        .iter()
+        .map(|run| run.id.clone())
+        .collect::<Vec<_>>();
+
+    AlertMetricsInput {
+        current: compute_alert_window_metrics(current_runs, spans_by_run),
+        previous: if previous_runs.is_empty() {
+            AlertWindowMetrics {
+                run_count: 0,
+                failure_rate: 0.0,
+                avg_latency_ms: 0.0,
+                p95_latency_ms: 0.0,
+                avg_cost_usd: 0.0,
+                total_cost_usd: 0.0,
+                error_counts: HashMap::new(),
+            }
+        } else {
+            compute_alert_window_metrics(previous_runs, spans_by_run)
+        },
+        run_ids,
+    }
+}
+
+fn compute_alert_window_metrics(
+    runs: &[Run],
+    spans_by_run: &HashMap<String, Vec<Span>>,
+) -> AlertWindowMetrics {
+    let run_count = runs.len();
+    if run_count == 0 {
+        return AlertWindowMetrics {
+            run_count: 0,
+            failure_rate: 0.0,
+            avg_latency_ms: 0.0,
+            p95_latency_ms: 0.0,
+            avg_cost_usd: 0.0,
+            total_cost_usd: 0.0,
+            error_counts: HashMap::new(),
+        };
+    }
+
+    let failed_runs = runs
+        .iter()
+        .filter(|run| is_failed_status(&run.status))
+        .count();
+    let mut latencies = Vec::with_capacity(run_count);
+    let mut total_cost_usd = 0.0;
+    let mut error_counts = HashMap::new();
+
+    for run in runs {
+        if let Some(duration_ms) = run_duration_ms(run) {
+            latencies.push(duration_ms);
+        }
+        total_cost_usd += run.total_cost_usd;
+
+        if let Some(spans) = spans_by_run.get(&run.id) {
+            for span in spans {
+                if !is_failure_span(span) {
+                    continue;
+                }
+
+                let error_type = span
+                    .error_type
+                    .as_deref()
+                    .map(normalize_key)
+                    .filter(|value| !value.is_empty())
+                    .unwrap_or_else(|| "unknown_error".to_string());
+                *error_counts.entry(error_type).or_insert(0) += 1;
+            }
+        }
+    }
+
+    latencies.sort_by(|left, right| left.total_cmp(right));
+    let avg_latency_ms = if latencies.is_empty() {
+        0.0
+    } else {
+        latencies.iter().sum::<f64>() / latencies.len() as f64
+    };
+    let p95_latency_ms = percentile(&latencies, 0.95);
+
+    AlertWindowMetrics {
+        run_count,
+        failure_rate: failed_runs as f64 / run_count as f64,
+        avg_latency_ms,
+        p95_latency_ms,
+        avg_cost_usd: total_cost_usd / run_count as f64,
+        total_cost_usd,
+        error_counts,
+    }
+}
+
+fn evaluate_alert_conditions(metrics: &AlertMetricsInput) -> Vec<AlertInsightDraft> {
+    let mut alerts = Vec::new();
+
+    if metrics.current.failure_rate > ALERT_FAILURE_RATE_THRESHOLD {
+        alerts.push(AlertInsightDraft {
+            alert_type: "FAILURE_RATE_SPIKE".to_string(),
+            severity: if metrics.current.failure_rate >= 0.50 {
+                "critical".to_string()
+            } else {
+                "high".to_string()
+            },
+            message: format!(
+                "Failure rate increased to {:.0}% in recent runs.",
+                metrics.current.failure_rate * 100.0
+            ),
+            evidence: json!({
+                "previous": metrics.previous.failure_rate,
+                "current": metrics.current.failure_rate,
+                "run_count": metrics.current.run_count,
+                "run_ids": metrics.run_ids
+            }),
+        });
+    }
+
+    let latency_increase = relative_increase(
+        metrics.previous.avg_latency_ms,
+        metrics.current.avg_latency_ms,
+    );
+    if latency_increase > ALERT_RELATIVE_INCREASE_THRESHOLD
+        || metrics.current.p95_latency_ms > ALERT_P95_LATENCY_MS_THRESHOLD
+    {
+        alerts.push(AlertInsightDraft {
+            alert_type: "LATENCY_REGRESSION".to_string(),
+            severity: if metrics.current.p95_latency_ms > ALERT_P95_LATENCY_MS_THRESHOLD * 1.5 {
+                "critical".to_string()
+            } else {
+                "high".to_string()
+            },
+            message: format!(
+                "Latency regression detected: avg latency {:.0}% higher and p95 at {:.0} ms.",
+                (latency_increase * 100.0).max(0.0),
+                metrics.current.p95_latency_ms
+            ),
+            evidence: json!({
+                "previous_avg_latency_ms": metrics.previous.avg_latency_ms,
+                "current_avg_latency_ms": metrics.current.avg_latency_ms,
+                "avg_latency_change_ratio": latency_increase,
+                "current_p95_latency_ms": metrics.current.p95_latency_ms,
+                "p95_threshold_ms": ALERT_P95_LATENCY_MS_THRESHOLD,
+                "run_ids": metrics.run_ids
+            }),
+        });
+    }
+
+    let cost_increase =
+        relative_increase(metrics.previous.avg_cost_usd, metrics.current.avg_cost_usd);
+    if cost_increase > ALERT_RELATIVE_INCREASE_THRESHOLD
+        || metrics.current.total_cost_usd > ALERT_TOTAL_COST_USD_THRESHOLD
+    {
+        alerts.push(AlertInsightDraft {
+            alert_type: "COST_REGRESSION".to_string(),
+            severity: if metrics.current.total_cost_usd > ALERT_TOTAL_COST_USD_THRESHOLD * 2.0 {
+                "critical".to_string()
+            } else {
+                "high".to_string()
+            },
+            message: format!(
+                "Cost increased: avg cost changed by {:.0}% and total cost reached ${:.2}.",
+                (cost_increase * 100.0).max(0.0),
+                metrics.current.total_cost_usd
+            ),
+            evidence: json!({
+                "previous_avg_cost_usd": metrics.previous.avg_cost_usd,
+                "current_avg_cost_usd": metrics.current.avg_cost_usd,
+                "avg_cost_change_ratio": cost_increase,
+                "current_total_cost_usd": metrics.current.total_cost_usd,
+                "total_cost_threshold_usd": ALERT_TOTAL_COST_USD_THRESHOLD,
+                "run_ids": metrics.run_ids
+            }),
+        });
+    }
+
+    for (error_type, current_count) in &metrics.current.error_counts {
+        let previous_count = metrics
+            .previous
+            .error_counts
+            .get(error_type)
+            .copied()
+            .unwrap_or(0);
+        let ratio = if previous_count == 0 {
+            if *current_count > 0 {
+                f64::INFINITY
+            } else {
+                0.0
+            }
+        } else {
+            *current_count as f64 / previous_count as f64
+        };
+
+        if *current_count >= ALERT_ERROR_SPIKE_MIN_COUNT
+            && ratio >= ALERT_ERROR_SPIKE_RATIO_THRESHOLD
+        {
+            alerts.push(AlertInsightDraft {
+                alert_type: "ERROR_SPIKE".to_string(),
+                severity: if ratio >= 3.0 {
+                    "critical".to_string()
+                } else {
+                    "high".to_string()
+                },
+                message: format!(
+                    "Error spike detected for `{error_type}`: {current_count} recent occurrences."
+                ),
+                evidence: json!({
+                    "error_type": error_type,
+                    "previous_count": previous_count,
+                    "current_count": current_count,
+                    "spike_ratio": ratio,
+                    "run_ids": metrics.run_ids
+                }),
+            });
+        }
+    }
+
+    alerts
+}
+
+fn create_alert(project_id: &str, insight: AlertInsightDraft) -> ActiveAlert {
+    ActiveAlert {
+        id: Uuid::new_v4().to_string(),
+        project_id: project_id.to_string(),
+        alert_type: insight.alert_type,
+        severity: insight.severity,
+        message: insight.message,
+        evidence: insight.evidence,
+        created_at: Utc::now(),
+    }
+}
+
+#[derive(Debug, Clone)]
+struct FailureEvent {
+    run_id: String,
+    signature: String,
+    error_type: String,
+    span_name: Option<String>,
+}
+
+fn collect_failure_events(spans_by_run: &HashMap<String, Vec<Span>>) -> Vec<FailureEvent> {
+    let mut events = Vec::new();
+    for (run_id, spans) in spans_by_run {
+        for span in spans {
+            if !is_failure_span(span) {
+                continue;
+            }
+
+            let signature = generate_failure_signature(span);
+            let error_type = span
+                .error_type
+                .as_deref()
+                .map(normalize_key)
+                .filter(|value| !value.is_empty())
+                .unwrap_or_else(|| "unknown_error".to_string());
+            events.push(FailureEvent {
+                run_id: run_id.clone(),
+                signature,
+                error_type,
+                span_name: Some(span.name.clone()),
+            });
+        }
+    }
+    events
+}
+
+fn generate_failure_signature(span: &Span) -> String {
+    let status = normalize_key(&span.status);
+    let error_type = span
+        .error_type
+        .as_deref()
+        .map(normalize_key)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "error".to_string());
+    let tool_name = span
+        .tool_name
+        .as_deref()
+        .map(normalize_key)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| normalize_key(&span.name));
+    let prompt_hash = span
+        .prompt_hash
+        .as_deref()
+        .map(normalize_key)
+        .unwrap_or_default();
+
+    if status.contains("timeout") || error_type.contains("timeout") {
+        return format!(
+            "timeout_on_{}",
+            if tool_name.is_empty() {
+                "operation"
+            } else {
+                &tool_name
+            }
+        );
+    }
+
+    let message = span
+        .metadata
+        .as_ref()
+        .and_then(|value| value.get("message"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase();
+
+    if message.contains("invalid json") || error_type.contains("json") {
+        if !tool_name.is_empty() {
+            return format!("invalid_json_after_{}", tool_name);
+        }
+        return "invalid_json_after_tool_call".to_string();
+    }
+
+    if error_type.contains("rate_limit") {
+        let provider = span
+            .provider
+            .as_deref()
+            .map(normalize_key)
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| "provider".to_string());
+        return format!("api_error_{}_rate_limit", provider);
+    }
+
+    let mut signature_parts = vec![error_type];
+    if !tool_name.is_empty() {
+        signature_parts.push(tool_name);
+    }
+    if !prompt_hash.is_empty() {
+        signature_parts.push(prompt_hash.chars().take(8).collect::<String>());
+    }
+    signature_parts.join("_")
+}
+
+fn group_failures(spans: &[FailureEvent]) -> HashMap<String, Vec<FailureEvent>> {
+    let mut groups = HashMap::new();
+    for event in spans {
+        groups
+            .entry(event.signature.clone())
+            .or_insert_with(Vec::new)
+            .push(event.clone());
+    }
+    groups
+}
+
+fn build_clusters(
+    project_id: &str,
+    groups: HashMap<String, Vec<FailureEvent>>,
+) -> Vec<FailureCluster> {
+    let mut clusters = groups
+        .into_iter()
+        .map(|(cluster_key, events)| {
+            let count = events.len() as i32;
+            let error_type = events
+                .first()
+                .map(|event| event.error_type.clone())
+                .unwrap_or_else(|| "unknown_error".to_string());
+            let common_span = events
+                .iter()
+                .filter_map(|event| event.span_name.clone())
+                .fold(HashMap::<String, usize>::new(), |mut acc, span_name| {
+                    *acc.entry(span_name).or_insert(0) += 1;
+                    acc
+                })
+                .into_iter()
+                .max_by(|left, right| left.1.cmp(&right.1).then_with(|| left.0.cmp(&right.0)))
+                .map(|(name, _)| name);
+
+            let mut seen = HashSet::new();
+            let sample_run_ids = events
+                .iter()
+                .filter_map(|event| {
+                    if seen.insert(event.run_id.clone()) {
+                        Some(event.run_id.clone())
+                    } else {
+                        None
+                    }
+                })
+                .take(CLUSTER_SAMPLE_RUNS)
+                .collect::<Vec<_>>();
+
+            FailureCluster {
+                id: Uuid::new_v4().to_string(),
+                project_id: project_id.to_string(),
+                cluster_key,
+                error_type,
+                count,
+                sample_run_ids,
+                common_span,
+                created_at: Utc::now(),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    clusters.sort_by(|left, right| {
+        right
+            .count
+            .cmp(&left.count)
+            .then_with(|| left.cluster_key.cmp(&right.cluster_key))
+    });
+    clusters
+}
+
+async fn store_clusters(
+    storage: &Storage,
+    project_id: &str,
+    clusters: &[FailureCluster],
+) -> Result<(), AgentScopeError> {
+    storage.replace_failure_clusters(project_id, clusters).await
+}
+
 fn build_project_insight(
     project_id: &str,
     draft: InsightDraft<'_>,
@@ -620,6 +1094,61 @@ fn looks_like_invalid_output(span: &Span) -> bool {
     message.contains("invalid json")
         || message.contains("schema validation")
         || message.contains("parse error")
+}
+
+fn run_duration_ms(run: &Run) -> Option<f64> {
+    run.ended_at.and_then(|ended_at| {
+        let ms = (ended_at - run.started_at).num_milliseconds();
+        if ms > 0 {
+            Some(ms as f64)
+        } else {
+            None
+        }
+    })
+}
+
+fn is_failure_span(span: &Span) -> bool {
+    let status = span.status.to_ascii_lowercase();
+    if matches!(
+        status.as_str(),
+        "error" | "failed" | "timeout" | "cancelled"
+    ) {
+        return true;
+    }
+    span.error_type.is_some()
+}
+
+fn normalize_key(value: &str) -> String {
+    let mut normalized = String::with_capacity(value.len());
+    let mut previous_was_separator = false;
+
+    for ch in value.chars() {
+        if ch.is_ascii_alphanumeric() {
+            normalized.push(ch.to_ascii_lowercase());
+            previous_was_separator = false;
+        } else if !previous_was_separator {
+            normalized.push('_');
+            previous_was_separator = true;
+        }
+    }
+
+    normalized.trim_matches('_').to_string()
+}
+
+fn percentile(sorted: &[f64], q: f64) -> f64 {
+    if sorted.is_empty() {
+        return 0.0;
+    }
+    let clamped_q = q.clamp(0.0, 1.0);
+    let index = ((sorted.len() - 1) as f64 * clamped_q).ceil() as usize;
+    sorted[index.min(sorted.len() - 1)]
+}
+
+fn relative_increase(previous: f64, current: f64) -> f64 {
+    if previous <= 0.0 {
+        return if current > 0.0 { 1.0 } else { 0.0 };
+    }
+    (current - previous) / previous
 }
 
 pub fn to_insight_cards(insights: &[ProjectInsight]) -> Vec<InsightCard> {

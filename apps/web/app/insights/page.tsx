@@ -1,8 +1,8 @@
 import { AlertTriangle, Gauge, Lightbulb, ShieldAlert, Sparkles } from "lucide-react";
 
 import { AppShell } from "@/components/app-shell";
-import { getCurrentUser, getProjectInsights } from "@/lib/server-api";
-import { type ProjectInsight } from "@/lib/api";
+import { getCurrentUser, getProjectFailureClusters, getProjectInsights } from "@/lib/server-api";
+import { type FailureCluster, type ProjectInsight } from "@/lib/api";
 
 export const dynamic = "force-dynamic";
 
@@ -55,10 +55,19 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function shortRunId(runId: string) {
+  return runId.slice(0, 8);
+}
+
 export default async function InsightsPage() {
   const me = await getCurrentUser();
   const defaultProjectId = me?.onboarding.default_project_id ?? null;
-  const insights = defaultProjectId ? await getProjectInsights(defaultProjectId) : [];
+  const [insights, clusters] = defaultProjectId
+    ? await Promise.all([
+        getProjectInsights(defaultProjectId),
+        getProjectFailureClusters(defaultProjectId),
+      ])
+    : [[], [] as FailureCluster[]];
 
   const issuesByImpact = {
     high: insights.filter((item) => item.impact === "high").length,
@@ -170,6 +179,47 @@ export default async function InsightsPage() {
                       </div>
                     );
                   })}
+                </div>
+              )}
+            </div>
+
+            <div className="rounded-xl border border-slate-800 bg-slate-950/50 p-6">
+              <h2 className="mb-4 text-base font-medium text-white">
+                Failure Clusters ({clusters.length})
+              </h2>
+              {clusters.length === 0 ? (
+                <p className="text-sm text-slate-400">No recurring failure clusters detected.</p>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                  {clusters.map((cluster) => (
+                    <div key={cluster.id} className="rounded-xl border border-slate-800 bg-slate-900/70 p-4">
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <h3 className="text-sm font-semibold text-white">{cluster.cluster_key}</h3>
+                        <span className="rounded-md border border-red-500/40 bg-red-500/10 px-2 py-1 text-xs text-red-200">
+                          {cluster.count} occurrences
+                        </span>
+                      </div>
+                      <p className="text-xs uppercase tracking-wide text-slate-400">
+                        Error Type: {cluster.error_type}
+                      </p>
+                      {cluster.common_span ? (
+                        <p className="mt-2 text-xs text-slate-300">
+                          Common Span: <span className="font-medium text-slate-100">{cluster.common_span}</span>
+                        </p>
+                      ) : null}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {cluster.sample_run_ids.map((runId) => (
+                          <a
+                            key={runId}
+                            href={`/runs/${runId}`}
+                            className="rounded-md border border-slate-700 bg-slate-950/60 px-2 py-1 text-xs font-mono text-blue-300 hover:text-blue-200"
+                          >
+                            {shortRunId(runId)}
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

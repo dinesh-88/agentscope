@@ -1,5 +1,7 @@
+pub mod active_alert;
 pub mod artifact;
 pub mod error;
+pub mod failure_cluster;
 pub mod metrics;
 pub mod project_insight;
 pub mod run;
@@ -12,8 +14,10 @@ pub mod search;
 pub mod span;
 pub mod trend;
 
+pub use active_alert::ActiveAlert;
 pub use artifact::Artifact;
 pub use error::{ErrorEvent, TelemetryError};
+pub use failure_cluster::FailureCluster;
 pub use metrics::RunMetrics;
 pub use project_insight::ProjectInsight;
 pub use run::Run;
