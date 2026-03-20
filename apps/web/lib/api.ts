@@ -192,6 +192,13 @@ export type RunComparison = {
     };
     spans: string[];
   };
+  insights: {
+    summary: string;
+    key_changes: string[];
+    verdict: string;
+    recommendation: string;
+    winner: "run_a" | "run_b" | "tie";
+  };
 };
 
 export type LoginResponse = {

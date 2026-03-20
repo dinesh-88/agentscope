@@ -51,6 +51,12 @@ function TrendBadge({ trend }: { trend: Trend }) {
   return <span className={cn("rounded-full border px-2 py-0.5 text-xs", metricTone(trend))}>{label}</span>;
 }
 
+function verdictTone(winner: "run_a" | "run_b" | "tie") {
+  if (winner === "run_b") return "border-emerald-400/40 bg-emerald-500/10 text-emerald-200";
+  if (winner === "run_a") return "border-rose-400/40 bg-rose-500/10 text-rose-200";
+  return "border-amber-400/30 bg-amber-500/10 text-amber-200";
+}
+
 function DiffBlock({ title, left, right }: { title: string; left: string[]; right: string[] }) {
   const leftText = left.join("\n\n").trim();
   const rightText = right.join("\n\n").trim();
@@ -129,9 +135,75 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
 
   const versionA = parseRunVersion(comparison.run_a);
   const versionB = parseRunVersion(comparison.run_b);
+  const winnerLabel = comparison.insights.winner === "run_b" ? "Run B" : comparison.insights.winner === "run_a" ? "Run A" : "Tie";
+  const winnerHref =
+    comparison.insights.winner === "run_a"
+      ? `/runs/${comparison.run_a.id}`
+      : comparison.insights.winner === "run_b"
+        ? `/runs/${comparison.run_b.id}`
+        : "/runs/compare";
 
   return (
     <div className="space-y-6">
+      <Card className="border border-white/10 bg-[#101722] shadow-none">
+        <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <CardTitle className="text-gray-100">Comparison Insights</CardTitle>
+            <p className="mt-2 text-sm text-gray-300">{comparison.insights.summary}</p>
+          </div>
+          <div className={cn("inline-flex rounded-full border px-3 py-1 text-xs font-medium", verdictTone(comparison.insights.winner))}>
+            {comparison.insights.winner === "tie" ? "⚖️ No winner" : `🏆 ${winnerLabel}`}
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+              <div className="text-xs uppercase tracking-[0.18em] text-gray-400">Key Changes</div>
+              <ul className="mt-3 space-y-2 text-sm text-gray-200">
+                {comparison.insights.key_changes.map((change) => (
+                  <li
+                    key={change}
+                    className={cn(
+                      "rounded-md border border-white/10 bg-white/[0.03] px-3 py-2",
+                      (change.includes("improved") || change.includes("reduced") || change.includes("decreased") || change.includes("resolved")) &&
+                        "border-emerald-400/40 bg-emerald-500/10 text-emerald-100",
+                    )}
+                  >
+                    {change}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-gray-400">Verdict</div>
+                <div className={cn("mt-2 inline-flex rounded-full border px-2.5 py-1 text-sm font-medium", verdictTone(comparison.insights.winner))}>
+                  {comparison.insights.verdict}
+                </div>
+              </div>
+              <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                <div className="text-xs uppercase tracking-[0.18em] text-gray-400">Recommendation</div>
+                <p className="mt-2 text-sm text-gray-200">{comparison.insights.recommendation}</p>
+                <Link
+                  href={winnerHref}
+                  className={cn(
+                    "mt-4 inline-flex h-8 items-center rounded-lg border px-3 text-sm font-medium transition-colors",
+                    comparison.insights.winner === "run_a"
+                      ? "border-rose-400/40 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20"
+                      : comparison.insights.winner === "run_b"
+                        ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20"
+                        : "border-amber-400/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20",
+                  )}
+                >
+                  {comparison.insights.winner === "tie" ? "Review both versions" : "Use this version"}
+                </Link>
+              </div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <Card className="border border-white/10 bg-[#101722] shadow-none">
         <CardHeader>
           <CardTitle className="text-gray-100">Comparison Summary</CardTitle>

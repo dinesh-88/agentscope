@@ -84,7 +84,7 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
             type="button"
             disabled={busy || !replay}
             onClick={() => replay && withAction(() => stepReplay(replay.replay.id))}
-            className="rounded-md border border-black/10 px-3 py-1.5 text-xs font-medium text-neutral-900 disabled:opacity-60"
+            className="rounded-md border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 disabled:opacity-60 dark:border-white/20 dark:bg-slate-900 dark:text-neutral-100"
           >
             Step
           </button>
@@ -92,7 +92,7 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
             type="button"
             disabled={busy || !replay}
             onClick={() => replay && withAction(() => resumeReplay(replay.replay.id))}
-            className="rounded-md border border-black/10 px-3 py-1.5 text-xs font-medium text-neutral-900 disabled:opacity-60"
+            className="rounded-md border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 disabled:opacity-60 dark:border-white/20 dark:bg-slate-900 dark:text-neutral-100"
           >
             Resume
           </button>
@@ -205,4 +205,3 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
     </Card>
   );
 }
-

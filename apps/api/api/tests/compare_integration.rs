@@ -173,6 +173,10 @@ async fn compare_endpoint_returns_prompt_response_and_metric_diffs(pool: PgPool)
     let compare: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(compare["summary"]["status_changed"], false);
     assert!(compare["summary"]["token_delta"].as_i64().unwrap() > 0);
+    assert!(compare["insights"]["summary"].as_str().is_some());
+    assert!(compare["insights"]["verdict"].as_str().is_some());
+    assert!(compare["insights"]["recommendation"].as_str().is_some());
+    assert!(compare["insights"]["winner"].as_str().is_some());
     assert_eq!(
         compare["diffs"]["prompts"][0]["run_a"][0],
         "{\"role\":\"user\",\"content\":\"Summarize the outage\"}"

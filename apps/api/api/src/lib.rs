@@ -214,7 +214,10 @@ async fn ingest(
         events::publish_event(&state.run_events, &payload.run.id, event).await;
     }
 
-    if matches!(payload.run.status.as_str(), "success" | "completed" | "failed" | "error") {
+    if matches!(
+        payload.run.status.as_str(),
+        "success" | "completed" | "failed" | "error"
+    ) {
         events::publish_event(
             &state.run_events,
             &payload.run.id,

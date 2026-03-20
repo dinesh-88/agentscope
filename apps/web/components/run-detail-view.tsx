@@ -163,6 +163,7 @@ export function RunDetailView({
 
     return map;
   }, [insights, rootCause]);
+  const failingSpanIds = useMemo(() => [...rcaBySpan.keys()], [rcaBySpan]);
 
   const traceSpans = useMemo<TraceSpan[]>(() => {
     const promptBySpan = new Map<string, string>();
@@ -180,8 +181,9 @@ export function RunDetailView({
 
     return ordered.map((span) => {
       const latency = durationMs(span.started_at, span.ended_at);
+      const isRcaFailingSpan = rcaBySpan.has(span.id);
       const status: TraceSpan["status"] =
-        span.status === "error" || span.status === "failed"
+        span.status === "error" || span.status === "failed" || isRcaFailingSpan
           ? "error"
           : span.status === "running"
             ? "running"
@@ -342,6 +344,7 @@ export function RunDetailView({
               spans={ordered}
               activeSpanId={activeSpanId}
               selectedSpanId={selectedSpan?.id ?? null}
+              failingSpanIds={failingSpanIds}
               onSelectSpan={setSelectedSpanId}
             />
           </CardContent>

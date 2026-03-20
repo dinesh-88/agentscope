@@ -9,10 +9,12 @@ type WorkflowGraphProps = {
   spans: Span[];
   activeSpanId: string | null;
   selectedSpanId: string | null;
+  failingSpanIds?: string[];
   onSelectSpan: (spanId: string) => void;
 };
 
-function spanState(span: Span): "pending" | "running" | "success" | "error" {
+function spanState(span: Span, failingSpanIds: Set<string>): "pending" | "running" | "success" | "error" {
+  if (failingSpanIds.has(span.id)) return "error";
   if (span.status === "running" || span.status === "pending") return "running";
   if (span.status === "success" || span.status === "completed" || span.status === "ok") return "success";
   if (span.status === "failed" || span.status === "error") return "error";
@@ -26,7 +28,13 @@ const toneByState: Record<ReturnType<typeof spanState>, string> = {
   error: "bg-red-200 text-red-900",
 };
 
-export function WorkflowGraph({ spans, activeSpanId, selectedSpanId, onSelectSpan }: WorkflowGraphProps) {
+export function WorkflowGraph({
+  spans,
+  activeSpanId,
+  selectedSpanId,
+  failingSpanIds = [],
+  onSelectSpan,
+}: WorkflowGraphProps) {
   const nodes = useMemo(() => {
     const byParent = new Map<string | null, Span[]>();
     for (const span of spans) {
@@ -52,6 +60,7 @@ export function WorkflowGraph({ spans, activeSpanId, selectedSpanId, onSelectSpa
 
     return ordered;
   }, [spans]);
+  const failingSet = useMemo(() => new Set(failingSpanIds), [failingSpanIds]);
 
   return (
     <div className="space-y-2 rounded-xl border border-black/10 bg-white p-3">
@@ -59,7 +68,7 @@ export function WorkflowGraph({ spans, activeSpanId, selectedSpanId, onSelectSpa
         <p className="text-sm text-neutral-500">No spans yet.</p>
       ) : (
         nodes.map(({ span, depth }) => {
-          const state = spanState(span);
+          const state = spanState(span, failingSet);
           const isSelected = selectedSpanId === span.id;
           const isActive = activeSpanId === span.id;
           return (
@@ -85,4 +94,3 @@ export function WorkflowGraph({ spans, activeSpanId, selectedSpanId, onSelectSpa
     </div>
   );
 }
-

@@ -6,8 +6,8 @@ use axum::{
         ws::{Message, WebSocket},
         Path, State, WebSocketUpgrade,
     },
-    response::IntoResponse,
     response::sse::{Event, KeepAlive, Sse},
+    response::IntoResponse,
 };
 use futures_util::stream;
 use serde::{Deserialize, Serialize};
@@ -128,7 +128,9 @@ pub async fn run_stream(
     axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
 ) -> Result<impl IntoResponse, ApiError> {
     if Uuid::parse_str(&run_id).is_err() {
-        return Err(ApiError::Validation("run_id must be a valid UUID".to_string()));
+        return Err(ApiError::Validation(
+            "run_id must be a valid UUID".to_string(),
+        ));
     }
 
     state
@@ -144,7 +146,11 @@ async fn stream_run_socket(socket: WebSocket, state: Arc<AppState>, run_id: Stri
     let mut receiver = state.run_events.subscribe(&run_id).await;
     let initial_run = state.storage.get_run(&run_id).await.ok().flatten();
     let initial_spans = state.storage.get_spans(&run_id).await.unwrap_or_default();
-    let initial_artifacts = state.storage.get_artifacts(&run_id).await.unwrap_or_default();
+    let initial_artifacts = state
+        .storage
+        .get_artifacts(&run_id)
+        .await
+        .unwrap_or_default();
 
     let logs = initial_artifacts
         .iter()
