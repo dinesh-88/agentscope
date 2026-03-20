@@ -110,13 +110,29 @@ export function TraceView({ spans, className, title = "Run Trace", selectedSpanI
     return path;
   }, [rows, openRcaSpanId]);
 
+  const inferFallbackFix = (text: string) => {
+    const normalized = text.toLowerCase();
+    if (normalized.includes("timeout")) return "Increase timeout, add retry with backoff, and monitor upstream latency.";
+    if (normalized.includes("401") || normalized.includes("403") || normalized.includes("auth")) {
+      return "Verify credentials/token scope and refresh auth before this call.";
+    }
+    if (normalized.includes("429") || normalized.includes("rate")) {
+      return "Add rate limiting and backoff, and reduce burst concurrency for this step.";
+    }
+    if (normalized.includes("json") || normalized.includes("parse")) {
+      return "Validate response schema and add strict parsing with fallback handling.";
+    }
+    return "Inspect the failing span inputs/outputs and apply the run-level RCA recommendation.";
+  };
+
   const getRca = (span: TraceSpan) => {
     if (span.rca) return span.rca;
+    const fallbackRootCause = span.response || "A dependency/tool call failed during execution.";
     return {
       summary: "Failure detected during span execution.",
-      rootCause: span.response || "A dependency/tool call failed during execution.",
+      rootCause: fallbackRootCause,
       location: span.name,
-      suggestedFix: "Validate inputs and credentials, add retries, and add fallback behavior for this step.",
+      suggestedFix: inferFallbackFix(fallbackRootCause),
     };
   };
 

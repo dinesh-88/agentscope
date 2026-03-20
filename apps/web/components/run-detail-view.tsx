@@ -7,7 +7,7 @@ import { LiveLogPanel } from "@/components/live-log-panel";
 import { TraceView, type TraceSpan } from "@/components/trace-view";
 import { WorkflowGraph } from "@/components/workflow-graph";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { type Artifact, type Run, type RunInsight, type Span } from "@/lib/api";
+import { type Artifact, type Run, type RunInsight, type RunRootCause, type Span } from "@/lib/api";
 import { useRunDetailStore } from "@/lib/run-detail-store";
 import { useRunStream } from "@/lib/use-run-stream";
 import { cn } from "@/lib/utils";
@@ -60,11 +60,13 @@ export function RunDetailView({
   spans,
   artifacts,
   insights,
+  rootCause,
 }: {
   run: Run;
   spans: Span[];
   artifacts: Artifact[];
   insights: RunInsight[];
+  rootCause: RunRootCause | null;
 }) {
   const initialLogs = useMemo(
     () =>
@@ -122,6 +124,45 @@ export function RunDetailView({
   );
   const runStarted = new Date(liveRun.started_at).getTime();
 
+  const rcaBySpan = useMemo(() => {
+    const map = new Map<string, TraceSpan["rca"]>();
+    const findSpanId = (evidence: Record<string, unknown> | null | undefined) => {
+      if (!evidence) return null;
+      const direct =
+        evidence.span_id ??
+        evidence.spanId ??
+        evidence.primary_span_id ??
+        evidence.primarySpanId;
+      return typeof direct === "string" ? direct : null;
+    };
+
+    if (rootCause) {
+      const spanId = findSpanId(rootCause.evidence);
+      if (spanId) {
+        map.set(spanId, {
+          summary: rootCause.message,
+          rootCause: rootCause.root_cause_type,
+          location: spanId,
+          suggestedFix: rootCause.suggested_fix,
+          confidence: rootCause.confidence,
+        });
+      }
+    }
+
+    for (const insight of insights) {
+      const spanId = findSpanId(insight.evidence);
+      if (!spanId || map.has(spanId)) continue;
+      map.set(spanId, {
+        summary: insight.message,
+        rootCause: insight.insight_type,
+        location: spanId,
+        suggestedFix: insight.recommendation,
+      });
+    }
+
+    return map;
+  }, [insights, rootCause]);
+
   const traceSpans = useMemo<TraceSpan[]>(() => {
     const promptBySpan = new Map<string, string>();
     const responseBySpan = new Map<string, string>();
@@ -156,9 +197,10 @@ export function RunDetailView({
         response: responseBySpan.get(span.id) ?? "No response captured",
         tokens: span.total_tokens ?? 0,
         latencyMs: latency,
+        rca: rcaBySpan.get(span.id),
       };
     });
-  }, [liveArtifacts, ordered, runStarted]);
+  }, [liveArtifacts, ordered, rcaBySpan, runStarted]);
 
   const selectedArtifacts = useMemo(() => {
     if (!selectedSpan) return [];

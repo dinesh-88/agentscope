@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { RunDetailView } from "@/components/run-detail-view";
-import { getRun, getRunArtifacts, getRunInsights, getRunSpans } from "@/lib/server-api";
+import { getRun, getRunArtifacts, getRunInsights, getRunRootCause, getRunSpans } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
@@ -13,11 +13,12 @@ type RunDetailPageProps = {
 
 export default async function RunDetailPage({ params }: RunDetailPageProps) {
   const { runId } = await params;
-  const [run, spans, artifacts, insights] = await Promise.all([
+  const [run, spans, artifacts, insights, rootCause] = await Promise.all([
     getRun(runId),
     getRunSpans(runId),
     getRunArtifacts(runId),
     getRunInsights(runId),
+    getRunRootCause(runId),
   ]);
 
   if (!run) {
@@ -37,7 +38,7 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
             {(run.total_tokens ?? 0).toLocaleString()}
           </p>
         </div>
-        <RunDetailView run={run} spans={spans} artifacts={artifacts} insights={insights} />
+        <RunDetailView run={run} spans={spans} artifacts={artifacts} insights={insights} rootCause={rootCause} />
       </section>
     </AppShell>
   );
