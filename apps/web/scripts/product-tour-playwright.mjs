@@ -5,7 +5,6 @@ import { chromium } from "playwright";
 const BASE_URL = process.env.PRODUCT_TOUR_URL ?? "https://agentscope-chi.vercel.app";
 const HEADLESS = process.env.HEADLESS === "1";
 const SLOW_MO = 500;
-const ENABLE_RECORDING_MODE = process.env.RECORDING_MODE !== "0";
 const SESSION_COOKIE = process.env.SESSION_COOKIE;
 const SESSION_COOKIE_NAME = process.env.SESSION_COOKIE_NAME ?? "agentscope_session";
 
@@ -124,10 +123,6 @@ async function run() {
         },
       ]);
       log(`applied session cookie ${SESSION_COOKIE_NAME} for ${startUrl.hostname}`);
-    }
-
-    if (ENABLE_RECORDING_MODE) {
-      startUrl.searchParams.set("recording", "1");
     }
 
     log(`scene 1: open app -> ${startUrl.toString()}`);

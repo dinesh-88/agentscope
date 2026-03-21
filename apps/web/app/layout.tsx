@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 
-import { RecordingModeController } from "@/components/recording-mode-controller";
-
 import "./globals.css";
 
 const inter = Inter({
@@ -25,7 +23,6 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} antialiased`}>
         {children}
-        <RecordingModeController />
       </body>
     </html>
   );
