@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { Sparkles } from "lucide-react";
 
 import { LiveLogPanel } from "@/components/live-log-panel";
@@ -118,6 +119,7 @@ export function RunDetailView({
   }, [ordered, selectedSpanId, setSelectedSpanId]);
 
   const [tab, setTab] = useState<Tab>("prompt");
+  const [activeRightPanel, setActiveRightPanel] = useState<"trace" | "insights">("trace");
 
   const selectedSpan = useMemo(
     () => ordered.find((span) => span.id === selectedSpanId) ?? ordered[0] ?? null,
@@ -236,6 +238,28 @@ export function RunDetailView({
       </Card>
 
       <div className="space-y-4">
+        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
+          <CardContent className="flex items-center gap-2 pb-4 pt-4">
+            <button
+              type="button"
+              onClick={() => {
+                setActiveRightPanel("insights");
+                document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+            >
+              Insights
+            </button>
+            <Link
+              href="/runs/compare"
+              data-testid="compare-button"
+              className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+            >
+              Compare
+            </Link>
+          </CardContent>
+        </Card>
+
         <Card className="border border-black/5 bg-white/90 py-0 shadow-sm dark:border-white/10 dark:bg-slate-900/90">
           <CardHeader>
             <CardTitle>Span Details</CardTitle>
@@ -361,7 +385,14 @@ export function RunDetailView({
 
         <ReplayPanel runId={run.id} selectedArtifacts={selectedArtifacts} />
 
-        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
+        <Card
+          id="insights-panel"
+          data-testid="insights-panel"
+          className={cn(
+            "border border-black/5 bg-white/90 py-0 shadow-sm",
+            activeRightPanel === "insights" && "ring-2 ring-amber-300/70 ring-offset-2 ring-offset-transparent",
+          )}
+        >
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="size-4 text-amber-600" />

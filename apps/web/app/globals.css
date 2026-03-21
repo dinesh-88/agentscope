@@ -146,6 +146,25 @@
 }
 
 @layer utilities {
+  html[data-recording-mode="true"] {
+    scroll-behavior: auto !important;
+  }
+
+  html[data-recording-mode="true"] *,
+  html[data-recording-mode="true"] *::before,
+  html[data-recording-mode="true"] *::after {
+    animation-duration: 0ms !important;
+    animation-delay: 0ms !important;
+    transition-duration: 0ms !important;
+  }
+
+  html[data-recording-mode="true"] [data-testid="run-item"],
+  html[data-recording-mode="true"] [data-testid="span-item"],
+  html[data-recording-mode="true"] [data-testid="insights-panel"],
+  html[data-recording-mode="true"] [data-testid="compare-button"] {
+    box-shadow: inset 0 0 0 1px rgb(34 197 94 / 0.4);
+  }
+
   .text-balance {
     text-wrap: balance;
   }

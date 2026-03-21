@@ -57,7 +57,11 @@ export default async function RunsPage() {
             <h1 className="mb-2 text-2xl font-semibold text-gray-900">Runs</h1>
             <p className="text-gray-600">Browse all workflow runs from production data</p>
           </div>
-          <Link href="/runs/compare" className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50">
+          <Link
+            href="/runs/compare"
+            data-testid="compare-button"
+            className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+          >
             Compare runs
           </Link>
         </div>
@@ -96,7 +100,7 @@ export default async function RunsPage() {
                       const totalCostUsd = run.total_cost_usd ?? 0;
 
                       return (
-                        <tr key={run.id} className="hover:bg-gray-50">
+                        <tr key={run.id} data-testid="run-item" className="hover:bg-gray-50">
                           <td className="py-4">
                             <Link href={`/runs/${run.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
                               {run.workflow_name}

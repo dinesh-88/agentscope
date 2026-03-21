@@ -185,6 +185,7 @@ export function TraceView({ spans, className, title = "Run Trace", selectedSpanI
                 initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
                 animate={{ opacity: isDimmed ? 0.38 : 1, y: 0 }}
                 transition={{ duration: 0.28, delay: revealDelay, ease: "easeOut" }}
+                data-testid="span-item"
                 className={cn("grid grid-cols-[280px_minmax(0,1fr)] items-center gap-3", onSpanSelect ? "cursor-pointer" : undefined)}
                 onClick={onSpanSelect ? () => onSpanSelect(span.id) : undefined}
               >

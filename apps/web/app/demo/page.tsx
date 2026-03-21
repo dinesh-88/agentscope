@@ -36,6 +36,14 @@ python main.py`}</code>
 
           <div className="mt-8 flex flex-wrap items-center gap-4">
             <Link
+              href="/runs"
+              data-testid="run-demo-button"
+              className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-6 py-3 font-medium text-emerald-100 transition-colors hover:bg-emerald-500/30"
+            >
+              Run Demo
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+            <Link
               href="/signup"
               className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-6 py-3 font-medium transition-opacity hover:opacity-90"
             >

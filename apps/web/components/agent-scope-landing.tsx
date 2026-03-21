@@ -155,6 +155,14 @@ console.log("trace received: run_01H...");
               Trace every step, get root-cause explanations, and cut token cost with actionable fixes.
             </p>
             <div className="flex items-center justify-center gap-4">
+              <Link
+                href={isAuthenticated ? "/runs" : "/demo"}
+                data-testid="run-demo-button"
+                className="flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-6 py-3 font-medium text-emerald-100 transition-colors hover:bg-emerald-500/30"
+              >
+                <Play className="h-4 w-4" />
+                Run Demo
+              </Link>
               {isAuthenticated ? (
                 <Link
                   href="/dashboard"
