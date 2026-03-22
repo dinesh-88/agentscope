@@ -227,7 +227,7 @@ export function RunDetailView({
   );
 
   return (
-    <section className="grid gap-4 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_380px] xl:items-start">
+    <section className="grid gap-4 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_380px]">
       <Card className="border border-black/5 bg-white/85 py-0 shadow-sm">
         <CardHeader>
           <CardTitle>Span Timeline</CardTitle>
@@ -237,7 +237,7 @@ export function RunDetailView({
         </CardContent>
       </Card>
 
-      <div className="space-y-4 xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:overflow-y-auto xl:pr-1">
+      <div className="space-y-4">
         <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
           <CardContent className="flex items-center gap-2 pb-4 pt-4">
             <button
