@@ -10,8 +10,26 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "AgentScope UI",
-  description: "Frontend console for AgentScope telemetry, insights, and root cause analysis.",
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  title: {
+    default: "AgentScope",
+    template: "%s | AgentScope",
+  },
+  description: "Observe, debug, and optimize AI agents with traces, root-cause analysis, and cost insights.",
+  alternates: {
+    canonical: "/",
+  },
+  openGraph: {
+    title: "AgentScope",
+    description: "Observe, debug, and optimize AI agents with traces, root-cause analysis, and cost insights.",
+    url: "/",
+    siteName: "AgentScope",
+    type: "website",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({

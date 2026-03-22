@@ -363,6 +363,7 @@ async function runProductTour() {
 
     // 1. Open homepage
     await page.goto(BASE_URL, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(10000);
     await page.waitForTimeout(2000);
 
     // 2. Run demo
@@ -407,33 +408,38 @@ async function runProductTour() {
       }
       throw new Error(`Could not reach /runs. Current URL: ${page.url()}`);
     }
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1200);
 
-    // 4. Open latest run
-    const latestRun = page.locator('[data-testid="run-item"]').first();
-    await latestRun.waitFor({ state: "visible", timeout: 30000 });
-    await latestRun.click();
+    // 0–3s (HOOK): show failed run in runs list
+    const failedRunRow =
+      (await firstVisible([page.locator('[data-testid="run-item"]').filter({ hasText: /failed|error/i })])) ??
+      page.locator('[data-testid="run-item"]').first();
+    await failedRunRow.waitFor({ state: "visible", timeout: 30000 });
+    await highlightElement(page, failedRunRow, 2200);
+
+    // 3–8s: open failed run and zoom to failure
+    await failedRunRow.click();
     if (!/\/runs\/[^/?#]+/.test(page.url())) {
-      const latestRunLink = latestRun.locator('a[href*="/runs/"]').first();
-      if (await latestRunLink.count()) {
-        await latestRunLink.click();
+      const failedRunLink = failedRunRow.locator('a[href*="/runs/"]').first();
+      if (await failedRunLink.count()) {
+        await failedRunLink.click();
       }
     }
     await waitForUrlContains(page, "/runs/", 12000);
-    await page.waitForTimeout(3000);
-    const runContainer = page.getByText(/^span timeline$/i).first();
-    if (await runContainer.count()) {
-      await zoomInto(page, runContainer, 2200, 1.12);
-      await page.waitForTimeout(1700);
-    }
+    await page.waitForTimeout(1600);
 
-    // 5. Focus on spans
+    // 8–15s: briefly show span timeline
+    const runContainer = page.getByText(/^span timeline$/i).first();
+    await runContainer.waitFor({ state: "visible", timeout: 30000 });
+    await zoomInto(page, runContainer, 1800, 1.07);
+    await page.waitForTimeout(1700);
+
     const firstSpan = page.locator('[data-testid="span-item"]').first();
     await firstSpan.waitFor({ state: "visible", timeout: 30000 });
     await firstSpan.click();
-    await page.waitForTimeout(2000);
+    await page.waitForTimeout(1500);
 
-    // 6. Highlight failure
+    // Failure moment: zoom + highlight
     await clickFirstVisible([page.getByRole("button", { name: /^response$/i })]);
     await page.waitForTimeout(1500);
     const failureTarget = await firstVisible([
@@ -444,71 +450,75 @@ async function runProductTour() {
     ]);
     if (failureTarget) {
       await failureTarget.click({ timeout: 2500 }).catch(() => {});
-      await highlightElement(page, failureTarget, 2300);
-      await page.waitForTimeout(1600);
-    } else {
-      console.warn('Failure marker text not found (e.g. "invalid json"). Continuing tour.');
+      await zoomInto(page, failureTarget, 1800, 1.08);
+      await highlightElement(page, failureTarget, 2000);
     }
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(1800);
 
-    // 7. Open insights panel
+    // 15–25s: open insights and hold
     const insightsButton = page.getByRole("button", { name: /^insights$/i });
     await insightsButton.waitFor({ state: "visible", timeout: 30000 });
     await insightsButton.click();
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(1800);
     const insightsPanel = page.locator('[data-testid="insights-panel"]').first();
     if (await insightsPanel.count()) {
-      await highlightElement(page, insightsPanel, 2300);
-      await page.waitForTimeout(1700);
+      await highlightElement(page, insightsPanel, 2600);
     }
+    await page.waitForTimeout(2200);
 
-    // 8. Scroll insights
-    await page.evaluate(() => window.scrollBy(0, 500));
-    await page.waitForTimeout(2000);
-    await page.evaluate(() => window.scrollBy(0, 500));
-    await page.waitForTimeout(2000);
+    // 25–40s: scroll insights (2–3 items)
+    await page.evaluate(() => window.scrollBy({ top: 320, left: 0, behavior: "smooth" }));
+    await page.waitForTimeout(2400);
+    await page.evaluate(() => window.scrollBy({ top: 320, left: 0, behavior: "smooth" }));
+    await page.waitForTimeout(2400);
+    await page.evaluate(() => window.scrollBy({ top: 280, left: 0, behavior: "smooth" }));
+    await page.waitForTimeout(2400);
 
-    // 9. Open comparison view
+    // 40–60s: comparison, summary zoom, hover latency + tokens
     const compareButton = page.getByRole("button", { name: /compare/i }).first();
     const compareLink = page.getByRole("link", { name: /compare/i }).first();
-
     if (await compareButton.count()) {
       await compareButton.click();
     } else {
       await compareLink.click();
     }
-    await page.waitForTimeout(3000);
+    await page.waitForTimeout(2200);
     await ensureComparisonResultPage(page);
-    const metricsSection = page.getByText(/^comparison summary$/i).first();
-    if (await metricsSection.count()) {
-      await zoomInto(page, metricsSection, 2200, 1.13);
-      await page.waitForTimeout(1700);
-    }
+    await page.waitForTimeout(1800);
 
-    // 10. Highlight metrics
+    const metricsSection = page.getByText(/^comparison summary$/i).first();
+    await metricsSection.waitFor({ state: "visible", timeout: 30000 });
+    await zoomInto(page, metricsSection, 2200, 1.08);
+    await page.waitForTimeout(1700);
+
     const latency = page.getByText(/^latency$/i).first();
     await latency.waitFor({ state: "visible", timeout: 30000 });
     await slowHover(page, latency, 1000);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1700);
 
     const tokenUsage = page.getByText(/token usage/i).first();
     await tokenUsage.waitFor({ state: "visible", timeout: 30000 });
     await slowHover(page, tokenUsage, 1000);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1700);
 
-    const estimatedCost = page.getByText(/estimated cost/i).first();
-    await estimatedCost.waitFor({ state: "visible", timeout: 30000 });
-    await slowHover(page, estimatedCost, 1000);
-    await page.waitForTimeout(1500);
+    // 60–70s: verdict money shot
+    const verdictText = await firstVisible([
+      page.getByText(/run b is better/i),
+      page.getByText(/better/i),
+    ]);
+    const useVersionCta = await firstVisible([
+      page.getByRole("link", { name: /use this version/i }),
+      page.getByText(/use this version/i),
+    ]);
 
-    // 11. Show prompt diff
-    const promptDiffs = page.getByText(/prompt diffs/i).first();
-    await promptDiffs.waitFor({ state: "visible", timeout: 30000 });
-    await promptDiffs.scrollIntoViewIfNeeded();
-    await page.waitForTimeout(2000);
-
-    // 12. Final pause
-    await page.waitForTimeout(5000);
+    if (verdictText) {
+      await highlightElement(page, verdictText, 2200);
+      await page.waitForTimeout(1800);
+    }
+    if (useVersionCta) {
+      await slowHover(page, useVersionCta, 1000);
+    }
+    await page.waitForTimeout(9000);
   } finally {
     await context.close();
     await browser.close();

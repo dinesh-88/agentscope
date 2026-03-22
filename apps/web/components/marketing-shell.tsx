@@ -26,7 +26,7 @@ export async function MarketingShell({ children }: MarketingShellProps) {
 
           <div className="ml-auto flex items-center gap-4">
             <div className="hidden items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 text-sm md:flex">
-              <Link href="/#features" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
+              <Link href="/features" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Features
               </Link>
               <Link href="/demo" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
@@ -81,7 +81,7 @@ export async function MarketingShell({ children }: MarketingShellProps) {
             <div>
               <h4 className="mb-3 text-sm font-semibold">Product</h4>
               <ul className="space-y-2 text-sm text-gray-400">
-                <li><Link href="/#features" className="transition-colors hover:text-white">Features</Link></li>
+                <li><Link href="/features" className="transition-colors hover:text-white">Features</Link></li>
                 <li><Link href="/pricing" className="transition-colors hover:text-white">Pricing</Link></li>
                 <li><Link href="/docs" className="transition-colors hover:text-white">Docs</Link></li>
               </ul>

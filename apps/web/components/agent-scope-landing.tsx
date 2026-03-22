@@ -105,9 +105,9 @@ console.log("trace received: run_01H...");
 
           <div className="ml-auto flex items-center gap-4">
             <div className="hidden items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 text-sm md:flex">
-              <a href="#features" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
+              <Link href="/features" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Features
-              </a>
+              </Link>
               <Link href="/demo" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Demo
               </Link>
@@ -622,9 +622,9 @@ console.log("trace received: run_01H...");
               <h4 className="mb-3 text-sm font-semibold">Product</h4>
               <ul className="space-y-2 text-sm text-gray-400">
                 <li>
-                  <a href="#features" className="transition-colors hover:text-white">
+                  <Link href="/features" className="transition-colors hover:text-white">
                     Features
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   <Link href="/pricing" className="transition-colors hover:text-white">
