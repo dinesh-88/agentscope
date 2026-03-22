@@ -225,13 +225,13 @@ export function RunDetailView({
   );
 
   return (
-    <section className="grid gap-6 p-4 sm:p-6 lg:grid-cols-3">
+    <section className="grid gap-6 lg:grid-cols-3">
       <div className="space-y-6 lg:col-span-2">
         <Card className="border border-black/5 bg-white/85 py-0 shadow-sm">
-          <CardHeader>
+          <CardHeader className="px-2 pt-3 sm:px-3 sm:pt-4">
             <CardTitle>Span Timeline</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2 pb-4">
+          <CardContent className="space-y-2 px-2 pb-3 sm:px-3 sm:pb-4">
             <TraceView spans={traceSpans} selectedSpanId={selectedSpan?.id ?? null} onSpanSelect={setSelectedSpanId} />
           </CardContent>
         </Card>
@@ -279,10 +279,10 @@ export function RunDetailView({
 
       <div className="space-y-6">
         <Card className="border border-black/5 bg-white/90 py-0 shadow-sm dark:border-white/10 dark:bg-slate-900/90">
-          <CardHeader>
+          <CardHeader className="px-2 pt-3 sm:px-3 sm:pt-4">
             <CardTitle>Span Details</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3 pb-4">
+          <CardContent className="space-y-3 px-2 pb-3 sm:px-3 sm:pb-4">
             {selectedSpan ? (
               <>
                 <div className="grid grid-cols-2 gap-2 text-xs">
