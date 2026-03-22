@@ -357,8 +357,8 @@ pub async fn oauth_callback(
         let session =
             create_user_session(&state, &headers, &user.id, Some(bootstrap.api_key.as_str()))
                 .await?;
-        let redirect_to = query.next.as_deref().unwrap_or("/onboarding");
-        let response = Redirect::temporary(redirect_to).into_response();
+        let redirect_to = oauth_redirect_target(query.next.as_deref(), "/onboarding");
+        let response = Redirect::temporary(&redirect_to).into_response();
         return Ok(with_cookie_header(
             with_cookie_header(
                 response,
@@ -381,8 +381,8 @@ pub async fn oauth_callback(
         .await?;
 
     let session = create_user_session(&state, &headers, &linked_user_id, None).await?;
-    let redirect_to = query.next.as_deref().unwrap_or("/dashboard");
-    let response = Redirect::temporary(redirect_to).into_response();
+    let redirect_to = oauth_redirect_target(query.next.as_deref(), "/dashboard");
+    let response = Redirect::temporary(&redirect_to).into_response();
     Ok(with_cookie_header(
         with_cookie_header(
             response,
@@ -664,6 +664,37 @@ fn cookie_value_from_headers(headers: &HeaderMap, name: &str) -> Option<String> 
                     .map(ToString::to_string)
             })
         })
+}
+
+fn oauth_redirect_target(next: Option<&str>, default_path: &str) -> String {
+    let target = next
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(default_path);
+
+    if target.starts_with("http://") || target.starts_with("https://") {
+        return target.to_string();
+    }
+
+    let normalized_path = if target.starts_with('/') {
+        target.to_string()
+    } else {
+        format!("/{target}")
+    };
+
+    if let Some(base) = oauth_web_base_url() {
+        format!("{base}{normalized_path}")
+    } else {
+        normalized_path
+    }
+}
+
+fn oauth_web_base_url() -> Option<String> {
+    std::env::var("WEB_BASE_URL")
+        .ok()
+        .or_else(|| std::env::var("APP_BASE_URL").ok())
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())
 }
 
 async fn load_oauth_provider(
