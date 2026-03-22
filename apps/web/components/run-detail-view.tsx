@@ -6,6 +6,7 @@ import { Sparkles } from "lucide-react";
 
 import { LiveLogPanel } from "@/components/live-log-panel";
 import { ReplayPanel } from "@/components/replay-panel";
+import { RealTimeStatusView } from "@/components/real-time-status-view";
 import { TraceView, type TraceSpan } from "@/components/trace-view";
 import { WorkflowGraph } from "@/components/workflow-graph";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -259,6 +260,13 @@ export function RunDetailView({
             </Link>
           </CardContent>
         </Card>
+
+        <RealTimeStatusView
+          spans={ordered}
+          logs={liveLogs}
+          selectedSpanId={selectedSpan?.id ?? null}
+          activeSpanId={activeSpanId}
+        />
 
         <Card className="border border-black/5 bg-white/90 py-0 shadow-sm dark:border-white/10 dark:bg-slate-900/90">
           <CardHeader>
