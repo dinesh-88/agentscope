@@ -66,8 +66,7 @@ export function TraceView({ spans, className, title = "Run Trace", selectedSpanI
       return depth;
     };
 
-    const sorted = [...spans].sort((a, b) => a.startMs - b.startMs || b.durationMs - a.durationMs);
-    const enriched: EnrichedSpan[] = sorted.map((span) => {
+    const enriched: EnrichedSpan[] = spans.map((span) => {
       const depth = getDepth(span);
       const ancestors: string[] = [];
       let cursor = span.parentId;
@@ -77,11 +76,30 @@ export function TraceView({ spans, className, title = "Run Trace", selectedSpanI
       }
       return { ...span, depth, ancestors };
     });
+    const sorted = [...enriched].sort((a, b) => {
+      const startDelta = a.startMs - b.startMs;
+      if (startDelta !== 0) return startDelta;
+
+      const aIsAncestorOfB = b.ancestors.includes(a.id);
+      const bIsAncestorOfA = a.ancestors.includes(b.id);
+      if (aIsAncestorOfB && !bIsAncestorOfA) return -1;
+      if (bIsAncestorOfA && !aIsAncestorOfB) return 1;
+
+      const depthDelta = a.depth - b.depth;
+      if (depthDelta !== 0) return depthDelta;
+
+      const durationDelta = b.durationMs - a.durationMs;
+      if (durationDelta !== 0) return durationDelta;
+
+      const nameDelta = a.name.localeCompare(b.name);
+      if (nameDelta !== 0) return nameDelta;
+      return a.id.localeCompare(b.id);
+    });
 
     return {
-      rows: enriched,
-      maxEndMs: Math.max(...enriched.map((span) => span.startMs + span.durationMs), 1),
-      maxDurationMs: Math.max(...enriched.map((span) => span.durationMs), 1),
+      rows: sorted,
+      maxEndMs: Math.max(...sorted.map((span) => span.startMs + span.durationMs), 1),
+      maxDurationMs: Math.max(...sorted.map((span) => span.durationMs), 1),
     };
   }, [spans]);
 
