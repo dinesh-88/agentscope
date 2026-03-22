@@ -1,12 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { Sparkles } from "lucide-react";
 
 import { LiveLogPanel } from "@/components/live-log-panel";
 import { ReplayPanel } from "@/components/replay-panel";
-import { RealTimeStatusView } from "@/components/real-time-status-view";
 import { TraceView, type TraceSpan } from "@/components/trace-view";
 import { WorkflowGraph } from "@/components/workflow-graph";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -120,7 +118,6 @@ export function RunDetailView({
   }, [ordered, selectedSpanId, setSelectedSpanId]);
 
   const [tab, setTab] = useState<Tab>("prompt");
-  const [activeRightPanel, setActiveRightPanel] = useState<"trace" | "insights">("trace");
 
   const selectedSpan = useMemo(
     () => ordered.find((span) => span.id === selectedSpanId) ?? ordered[0] ?? null,
@@ -228,46 +225,59 @@ export function RunDetailView({
   );
 
   return (
-    <section className="grid gap-4 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_380px]">
-      <Card className="border border-black/5 bg-white/85 py-0 shadow-sm">
-        <CardHeader>
-          <CardTitle>Span Timeline</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2 pb-4">
-          <TraceView spans={traceSpans} selectedSpanId={selectedSpan?.id ?? null} onSpanSelect={setSelectedSpanId} />
-        </CardContent>
-      </Card>
-
-      <div className="space-y-4">
-        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
-          <CardContent className="flex items-center gap-2 pb-4 pt-4">
-            <button
-              type="button"
-              onClick={() => {
-                setActiveRightPanel("insights");
-                document.getElementById("insights-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-              className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
-            >
-              Insights
-            </button>
-            <Link
-              href="/runs/compare"
-              data-testid="compare-button"
-              className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
-            >
-              Compare
-            </Link>
+    <section className="grid gap-6 p-4 sm:p-6 lg:grid-cols-3">
+      <div className="space-y-6 lg:col-span-2">
+        <Card className="border border-black/5 bg-white/85 py-0 shadow-sm">
+          <CardHeader>
+            <CardTitle>Span Timeline</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 pb-4">
+            <TraceView spans={traceSpans} selectedSpanId={selectedSpan?.id ?? null} onSpanSelect={setSelectedSpanId} />
           </CardContent>
         </Card>
 
-        <RealTimeStatusView
-          spans={ordered}
-          logs={liveLogs}
-          selectedSpanId={selectedSpan?.id ?? null}
-          activeSpanId={activeSpanId}
-        />
+        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
+          <CardHeader>
+            <CardTitle>Workflow Graph</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <WorkflowGraph
+              spans={ordered}
+              activeSpanId={activeSpanId}
+              selectedSpanId={selectedSpan?.id ?? null}
+              failingSpanIds={failingSpanIds}
+              onSelectSpan={setSelectedSpanId}
+            />
+          </CardContent>
+        </Card>
 
+        <Card
+          id="insights-panel"
+          data-testid="insights-panel"
+          className="border border-black/5 bg-white/90 py-0 shadow-sm"
+        >
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="size-4 text-amber-600" />
+              Insights & Recommendations
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 pb-4">
+            {insights.length === 0 ? (
+              <p className="rounded-lg bg-slate-50 p-3 text-sm text-neutral-500">No insights generated for this run yet.</p>
+            ) : (
+              insights.map((insight) => (
+                <div key={insight.id} className="rounded-xl border border-black/8 bg-white p-3 text-sm">
+                  <p className="font-medium text-neutral-950 dark:text-neutral-100">{insight.message}</p>
+                  <p className="mt-1 text-neutral-600">{insight.recommendation}</p>
+                </div>
+              ))
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="space-y-6">
         <Card className="border border-black/5 bg-white/90 py-0 shadow-sm dark:border-white/10 dark:bg-slate-900/90">
           <CardHeader>
             <CardTitle>Span Details</CardTitle>
@@ -367,20 +377,7 @@ export function RunDetailView({
           </CardContent>
         </Card>
 
-        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
-          <CardHeader>
-            <CardTitle>Workflow Graph</CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4">
-            <WorkflowGraph
-              spans={ordered}
-              activeSpanId={activeSpanId}
-              selectedSpanId={selectedSpan?.id ?? null}
-              failingSpanIds={failingSpanIds}
-              onSelectSpan={setSelectedSpanId}
-            />
-          </CardContent>
-        </Card>
+        <ReplayPanel runId={run.id} selectedArtifacts={selectedArtifacts} />
 
         <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
           <CardHeader>
@@ -388,36 +385,6 @@ export function RunDetailView({
           </CardHeader>
           <CardContent className="pb-4">
             <LiveLogPanel logs={liveLogs} />
-          </CardContent>
-        </Card>
-
-        <ReplayPanel runId={run.id} selectedArtifacts={selectedArtifacts} />
-
-        <Card
-          id="insights-panel"
-          data-testid="insights-panel"
-          className={cn(
-            "border border-black/5 bg-white/90 py-0 shadow-sm",
-            activeRightPanel === "insights" && "ring-2 ring-amber-300/70 ring-offset-2 ring-offset-transparent",
-          )}
-        >
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="size-4 text-amber-600" />
-              Insights & Recommendations
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2 pb-4">
-            {insights.length === 0 ? (
-              <p className="rounded-lg bg-slate-50 p-3 text-sm text-neutral-500">No insights generated for this run yet.</p>
-            ) : (
-              insights.map((insight) => (
-                <div key={insight.id} className="rounded-xl border border-black/8 bg-white p-3 text-sm">
-                  <p className="font-medium text-neutral-950 dark:text-neutral-100">{insight.message}</p>
-                  <p className="mt-1 text-neutral-600">{insight.recommendation}</p>
-                </div>
-              ))
-            )}
           </CardContent>
         </Card>
       </div>
