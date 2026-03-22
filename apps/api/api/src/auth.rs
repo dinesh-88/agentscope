@@ -673,11 +673,15 @@ fn cookie_value_from_headers(headers: &HeaderMap, name: &str) -> Option<String> 
         .get(header::COOKIE)
         .and_then(|value| value.to_str().ok())
         .and_then(|header_value| {
-            header_value.split(';').map(str::trim).find_map(|entry| {
-                entry
-                    .strip_prefix(&format!("{name}="))
-                    .map(ToString::to_string)
-            })
+            header_value
+                .split(';')
+                .map(str::trim)
+                .filter_map(|entry| {
+                    entry
+                        .strip_prefix(&format!("{name}="))
+                        .map(ToString::to_string)
+                })
+                .last()
         })
 }
 
