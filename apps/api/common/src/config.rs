@@ -10,6 +10,7 @@ pub struct Config {
     pub jwt_secret: String,
     pub jwt_expiry_seconds: i64,
     pub secure_cookies: bool,
+    pub session_cookie_domain: Option<String>,
 }
 
 impl Config {
@@ -33,6 +34,10 @@ impl Config {
             .ok()
             .map(|value| matches!(value.to_lowercase().as_str(), "1" | "true" | "yes" | "on"))
             .unwrap_or(false);
+        let session_cookie_domain = env::var("SESSION_COOKIE_DOMAIN")
+            .ok()
+            .map(|value| value.trim().trim_start_matches('.').to_string())
+            .filter(|value| !value.is_empty());
 
         Ok(Self {
             database_url,
@@ -41,6 +46,7 @@ impl Config {
             jwt_secret,
             jwt_expiry_seconds,
             secure_cookies,
+            session_cookie_domain,
         })
     }
 }

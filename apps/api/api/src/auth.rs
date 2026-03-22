@@ -35,6 +35,7 @@ pub struct JwtSettings {
     pub expiry_seconds: i64,
     pub cookie_name: String,
     pub secure_cookies: bool,
+    pub cookie_domain: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -588,14 +589,15 @@ fn session_cookie_header(settings: &JwtSettings, session_token: &str) -> String 
     } else {
         ""
     };
+    let domain = cookie_domain_attribute(settings);
     let same_site = if settings.secure_cookies {
         "None"
     } else {
         "Lax"
     };
     format!(
-        "{}={}; Path=/; HttpOnly; SameSite={}; Max-Age={}{}",
-        settings.cookie_name, session_token, same_site, settings.expiry_seconds, secure
+        "{}={}; Path=/; HttpOnly; SameSite={}; Max-Age={}{}{}",
+        settings.cookie_name, session_token, same_site, settings.expiry_seconds, domain, secure
     )
 }
 
@@ -605,14 +607,15 @@ fn clear_cookie_header(settings: &JwtSettings) -> String {
     } else {
         ""
     };
+    let domain = cookie_domain_attribute(settings);
     let same_site = if settings.secure_cookies {
         "None"
     } else {
         "Lax"
     };
     format!(
-        "{}=; Path=/; HttpOnly; SameSite={}; Max-Age=0{}",
-        settings.cookie_name, same_site, secure
+        "{}=; Path=/; HttpOnly; SameSite={}; Max-Age=0{}{}",
+        settings.cookie_name, same_site, domain, secure
     )
 }
 
@@ -622,9 +625,10 @@ fn oauth_state_cookie(settings: &JwtSettings, state: &str) -> String {
     } else {
         ""
     };
+    let domain = cookie_domain_attribute(settings);
     format!(
-        "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600{}",
-        OAUTH_STATE_COOKIE_NAME, state, secure
+        "{}={}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600{}{}",
+        OAUTH_STATE_COOKIE_NAME, state, domain, secure
     )
 }
 
@@ -634,10 +638,21 @@ fn clear_oauth_state_cookie(settings: &JwtSettings) -> String {
     } else {
         ""
     };
+    let domain = cookie_domain_attribute(settings);
     format!(
-        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}",
-        OAUTH_STATE_COOKIE_NAME, secure
+        "{}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0{}{}",
+        OAUTH_STATE_COOKIE_NAME, domain, secure
     )
+}
+
+fn cookie_domain_attribute(settings: &JwtSettings) -> String {
+    settings
+        .cookie_domain
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| format!("; Domain={value}"))
+        .unwrap_or_default()
 }
 
 fn session_token_from_headers(headers: &HeaderMap, cookie_name: &str) -> Option<String> {

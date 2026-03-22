@@ -11,6 +11,7 @@ pub fn jwt_settings() -> JwtSettings {
         expiry_seconds: 3_600,
         cookie_name: "agentscope_session".to_string(),
         secure_cookies: false,
+        cookie_domain: None,
     }
 }
 

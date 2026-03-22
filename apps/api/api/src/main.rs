@@ -34,6 +34,7 @@ async fn main() {
                 expiry_seconds: config.jwt_expiry_seconds,
                 cookie_name: "agentscope_session".to_string(),
                 secure_cookies: config.secure_cookies,
+                cookie_domain: config.session_cookie_domain.clone(),
             },
         ),
     )
