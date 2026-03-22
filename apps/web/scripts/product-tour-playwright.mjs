@@ -455,15 +455,11 @@ async function runProductTour() {
     }
     await page.waitForTimeout(1800);
 
-    // 15–25s: open insights and hold
-    const insightsButton = page.getByRole("button", { name: /^insights$/i });
-    await insightsButton.waitFor({ state: "visible", timeout: 30000 });
-    await insightsButton.click();
-    await page.waitForTimeout(1800);
+    // 15–25s: focus insights panel and hold
     const insightsPanel = page.locator('[data-testid="insights-panel"]').first();
-    if (await insightsPanel.count()) {
-      await highlightElement(page, insightsPanel, 2600);
-    }
+    await insightsPanel.waitFor({ state: "visible", timeout: 30000 });
+    await smoothScrollToLocator(page, insightsPanel, 900);
+    await highlightElement(page, insightsPanel, 2600);
     await page.waitForTimeout(2200);
 
     // 25–40s: scroll insights (2–3 items)
@@ -475,13 +471,7 @@ async function runProductTour() {
     await page.waitForTimeout(2400);
 
     // 40–60s: comparison, summary zoom, hover latency + tokens
-    const compareButton = page.getByRole("button", { name: /compare/i }).first();
-    const compareLink = page.getByRole("link", { name: /compare/i }).first();
-    if (await compareButton.count()) {
-      await compareButton.click();
-    } else {
-      await compareLink.click();
-    }
+    await page.goto(new URL("/runs/compare", page.url()).toString(), { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(2200);
     await ensureComparisonResultPage(page);
     await page.waitForTimeout(1800);

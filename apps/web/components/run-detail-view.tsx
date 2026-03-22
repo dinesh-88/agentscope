@@ -238,6 +238,15 @@ export function RunDetailView({
 
         <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
           <CardHeader>
+            <CardTitle>Live Logs</CardTitle>
+          </CardHeader>
+          <CardContent className="pb-4">
+            <LiveLogPanel logs={liveLogs} />
+          </CardContent>
+        </Card>
+
+        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
+          <CardHeader>
             <CardTitle>Workflow Graph</CardTitle>
           </CardHeader>
           <CardContent className="pb-4">
@@ -378,15 +387,6 @@ export function RunDetailView({
         </Card>
 
         <ReplayPanel runId={run.id} selectedArtifacts={selectedArtifacts} />
-
-        <Card className="border border-black/5 bg-white/90 py-0 shadow-sm">
-          <CardHeader>
-            <CardTitle>Live Logs</CardTitle>
-          </CardHeader>
-          <CardContent className="pb-4">
-            <LiveLogPanel logs={liveLogs} />
-          </CardContent>
-        </Card>
       </div>
     </section>
   );
