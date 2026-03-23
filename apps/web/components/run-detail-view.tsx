@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 
 import { ContextTab } from "@/components/context-tab";
+import { InstructionsTab } from "@/components/instructions-tab";
 import { LiveLogPanel } from "@/components/live-log-panel";
 import { ReplayPanel } from "@/components/replay-panel";
 import { TraceView, type TraceSpan } from "@/components/trace-view";
@@ -14,13 +15,21 @@ import { useRunDetailStore } from "@/lib/run-detail-store";
 import { useRunStream } from "@/lib/use-run-stream";
 import { cn } from "@/lib/utils";
 
-type Tab = "prompt" | "response" | "metadata" | "context";
+type Tab = "prompt" | "response" | "metadata" | "context" | "instructions";
 const CONTEXT_INSIGHT_TYPES = new Set([
   "CONTEXT_BLOAT",
   "DOMINANT_CONTEXT_SOURCE",
   "CONTEXT_REDUNDANCY",
   "MISSING_CONTEXT",
   "PROMPT_WITH_CONTEXT_TOO_LARGE",
+  "CONTEXT_TOO_LARGE",
+  "CONTEXT_TRUNCATED",
+  "CONTEXT_LIKELY_CAUSED_FAILURE",
+]);
+const INSTRUCTION_INSIGHT_TYPES = new Set([
+  "INSTRUCTION_CONFLICT",
+  "MISSING_INSTRUCTIONS",
+  "INSTRUCTION_DRIFT",
 ]);
 
 function durationMs(startedAt: string, endedAt: string | null) {
@@ -235,18 +244,43 @@ export function RunDetailView({
     () => selectedArtifacts.find((artifact) => artifact.kind === "llm.context") ?? null,
     [selectedArtifacts],
   );
-  const tabs = useMemo<Tab[]>(
-    () => (contextArtifact ? ["prompt", "response", "metadata", "context"] : ["prompt", "response", "metadata"]),
-    [contextArtifact],
+  const previousSpan = useMemo(() => {
+    if (!selectedSpan) return null;
+    const index = ordered.findIndex((span) => span.id === selectedSpan.id);
+    if (index <= 0) return null;
+    return ordered[index - 1] ?? null;
+  }, [ordered, selectedSpan]);
+  const hasSpanContext = Boolean(selectedSpan?.context && typeof selectedSpan.context === "object");
+  const hasInstructionContext = Boolean(
+    selectedSpan?.instruction_context && typeof selectedSpan.instruction_context === "object",
   );
+  const tabs = useMemo<Tab[]>(() => {
+    const entries: Tab[] = ["prompt", "response", "metadata"];
+    if (hasSpanContext || contextArtifact) {
+      entries.push("context");
+    }
+    if (hasInstructionContext) {
+      entries.push("instructions");
+    }
+    return entries;
+  }, [contextArtifact, hasInstructionContext, hasSpanContext]);
   const activeTab: Tab = tabs.includes(tab) ? tab : "prompt";
 
   const contextInsights = useMemo(
     () => insights.filter((insight) => CONTEXT_INSIGHT_TYPES.has(insight.insight_type)),
     [insights],
   );
+  const instructionInsights = useMemo(
+    () => insights.filter((insight) => INSTRUCTION_INSIGHT_TYPES.has(insight.insight_type)),
+    [insights],
+  );
   const otherInsights = useMemo(
-    () => insights.filter((insight) => !CONTEXT_INSIGHT_TYPES.has(insight.insight_type)),
+    () =>
+      insights.filter(
+        (insight) =>
+          !CONTEXT_INSIGHT_TYPES.has(insight.insight_type) &&
+          !INSTRUCTION_INSIGHT_TYPES.has(insight.insight_type),
+      ),
     [insights],
   );
 
@@ -307,6 +341,24 @@ export function RunDetailView({
                     <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">Context Issues</p>
                     <div className="mt-2 space-y-2">
                       {contextInsights.map((insight) => (
+                        <div key={insight.id} className="rounded-lg border border-black/8 bg-white p-3 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium text-neutral-950 dark:text-neutral-100">{insight.message}</p>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                              {insight.severity}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-neutral-600">{insight.recommendation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {instructionInsights.length > 0 ? (
+                  <div className="rounded-xl border border-black/8 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">Instruction Issues</p>
+                    <div className="mt-2 space-y-2">
+                      {instructionInsights.map((insight) => (
                         <div key={insight.id} className="rounded-lg border border-black/8 bg-white p-3 text-sm">
                           <div className="flex items-center justify-between gap-2">
                             <p className="font-medium text-neutral-950 dark:text-neutral-100">{insight.message}</p>
@@ -425,7 +477,10 @@ export function RunDetailView({
                     </pre>
                   </div>
                 ) : null}
-                {activeTab === "context" ? <ContextTab artifact={contextArtifact} /> : null}
+                {activeTab === "context" ? (
+                  <ContextTab span={selectedSpan} previousSpan={previousSpan} artifact={contextArtifact} />
+                ) : null}
+                {activeTab === "instructions" ? <InstructionsTab span={selectedSpan} /> : null}
               </>
             ) : (
               <p className="text-sm text-neutral-500">No spans found for this run.</p>

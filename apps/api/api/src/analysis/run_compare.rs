@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::Storage;
-use agentscope_trace::{Artifact, Run, RunMetrics};
+use agentscope_trace::{Artifact, Run, RunMetrics, Span};
 use chrono::Duration;
 use serde::Serialize;
 
@@ -27,6 +27,7 @@ pub struct RunCompareSummary {
 pub struct RunCompareDiffs {
     pub prompts: Vec<ArtifactDiff>,
     pub responses: Vec<ArtifactDiff>,
+    pub instruction_diff: Vec<ArtifactDiff>,
     pub models: Vec<String>,
     pub artifacts: Vec<ArtifactDiff>,
     pub metrics: MetricsDiff,
@@ -108,6 +109,7 @@ pub async fn compare_runs(
     let diffs = RunCompareDiffs {
         prompts: diff_artifacts("llm.prompt", &artifacts_a, &artifacts_b),
         responses: diff_artifacts("llm.response", &artifacts_a, &artifacts_b),
+        instruction_diff: diff_instruction_context(&spans_a, &spans_b),
         models: model_names,
         artifacts: collect_artifact_kinds(&artifacts_a, &artifacts_b),
         metrics: MetricsDiff {
@@ -335,6 +337,7 @@ mod tests {
         let diffs = RunCompareDiffs {
             prompts: Vec::new(),
             responses: Vec::new(),
+            instruction_diff: Vec::new(),
             models: Vec::new(),
             artifacts: Vec::new(),
             metrics: MetricsDiff {
@@ -365,6 +368,7 @@ mod tests {
         let diffs = RunCompareDiffs {
             prompts: Vec::new(),
             responses: Vec::new(),
+            instruction_diff: Vec::new(),
             models: Vec::new(),
             artifacts: Vec::new(),
             metrics: MetricsDiff {
@@ -435,6 +439,94 @@ fn collect_artifact_kinds(artifacts_a: &[Artifact], artifacts_b: &[Artifact]) ->
                 .collect(),
         })
         .collect()
+}
+
+fn diff_instruction_context(spans_a: &[Span], spans_b: &[Span]) -> Vec<ArtifactDiff> {
+    let sources_a = collect_instruction_sources(spans_a);
+    let sources_b = collect_instruction_sources(spans_b);
+    let precedence_a = collect_precedence_stack(spans_a);
+    let precedence_b = collect_precedence_stack(spans_b);
+
+    vec![
+        ArtifactDiff {
+            label: "instruction.sources".to_string(),
+            run_a: sources_a,
+            run_b: sources_b,
+        },
+        ArtifactDiff {
+            label: "instruction.precedence".to_string(),
+            run_a: precedence_a,
+            run_b: precedence_b,
+        },
+    ]
+}
+
+fn collect_instruction_sources(spans: &[Span]) -> Vec<String> {
+    let mut items = BTreeSet::new();
+    for span in spans {
+        let Some(context) = span.instruction_context.as_ref().and_then(serde_json::Value::as_object) else {
+            continue;
+        };
+        let Some(entries) = context.get("sources").and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+        for entry in entries {
+            let Some(object) = entry.as_object() else {
+                continue;
+            };
+            let source_type = object
+                .get("type")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown");
+            let name = object
+                .get("name")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("unknown");
+            let path = object
+                .get("path")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("-");
+            let hash = object
+                .get("hash")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("-");
+            items.insert(format!("{source_type} | {name} | {path} | {hash}"));
+        }
+    }
+    items.into_iter().collect()
+}
+
+fn collect_precedence_stack(spans: &[Span]) -> Vec<String> {
+    for span in spans.iter().rev() {
+        let Some(context) = span.instruction_context.as_ref().and_then(serde_json::Value::as_object) else {
+            continue;
+        };
+        let Some(entries) = context
+            .get("precedence_stack")
+            .and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+        let stack = entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| {
+                let object = entry.as_object()?;
+                let source_type = object
+                    .get("type")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unknown");
+                let name = object
+                    .get("name")
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("unknown");
+                Some(format!("{}: {} ({})", index + 1, name, source_type))
+            })
+            .collect::<Vec<_>>();
+        if !stack.is_empty() {
+            return stack;
+        }
+    }
+    Vec::new()
 }
 
 fn flatten_payload(value: &serde_json::Value) -> Vec<String> {

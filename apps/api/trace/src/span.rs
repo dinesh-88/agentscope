@@ -32,6 +32,12 @@ pub struct Span {
     pub output_tokens: Option<i64>,
     pub total_tokens: Option<i64>,
     pub estimated_cost: Option<f64>,
+    #[serde(default)]
+    pub context: Option<Value>,
+    #[serde(default)]
+    pub context_tokens: Option<i64>,
+    #[serde(default)]
+    pub instruction_context: Option<Value>,
     pub context_window: Option<i64>,
     pub context_usage_percent: Option<f64>,
     #[serde(default)]

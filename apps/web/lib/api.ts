@@ -51,6 +51,9 @@ export type Span = {
   output_tokens?: number | null;
   total_tokens?: number | null;
   estimated_cost?: number | null;
+  context?: Record<string, unknown> | null;
+  context_tokens?: number | null;
+  instruction_context?: Record<string, unknown> | null;
   context_window?: number | null;
   context_usage_percent?: number | null;
   latency_ms?: number | null;
@@ -182,6 +185,7 @@ export type RunComparison = {
   diffs: {
     prompts: ArtifactDiff[];
     responses: ArtifactDiff[];
+    instruction_diff: ArtifactDiff[];
     models: string[];
     artifacts: ArtifactDiff[];
     metrics: {

@@ -7,7 +7,12 @@ mod events;
 mod limits;
 mod swagger;
 
-use std::{env, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    hash::{Hash, Hasher},
+    sync::Arc,
+};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::{
@@ -31,7 +36,7 @@ use axum::{
 };
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{json, Map, Value};
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
@@ -191,6 +196,7 @@ async fn ingest(
     attach_project_context(&mut payload, &api_key);
     normalize_run(&mut payload.run);
     normalize_spans(&mut payload.spans);
+    normalize_span_context(&mut payload.spans, &payload.artifacts);
     limits::check_rate_limit(&state, &payload.run.project_id).await?;
     limits::check_token_quota(&state, &payload.run.project_id, payload.run.total_tokens).await?;
     apply_project_storage_policies(&state, &mut payload).await?;
@@ -394,6 +400,7 @@ fn normalize_spans(spans: &mut [Span]) {
         span.input_tokens = span.input_tokens.map(|value| value.max(0));
         span.output_tokens = span.output_tokens.map(|value| value.max(0));
         span.total_tokens = span.total_tokens.map(|value| value.max(0));
+        span.context_tokens = span.context_tokens.map(|value| value.max(0));
         span.context_window = span.context_window.map(|value| value.max(0));
         span.max_tokens = span.max_tokens.map(|value| value.max(0));
         span.retry_attempt = span.retry_attempt.map(|value| value.max(0));
@@ -434,6 +441,483 @@ fn normalize_spans(spans: &mut [Span]) {
 
         span.evaluation = normalize_evaluation(span.evaluation.take());
     }
+}
+
+#[derive(Clone)]
+struct ComparableContext {
+    messages: HashSet<String>,
+    variables: Map<String, Value>,
+    context_tokens: i64,
+}
+
+fn normalize_span_context(spans: &mut [Span], artifacts: &[Artifact]) {
+    let prompt_by_span = artifacts
+        .iter()
+        .filter(|artifact| artifact.kind == "llm.prompt")
+        .filter_map(|artifact| artifact.span_id.as_ref().map(|span_id| (span_id.clone(), &artifact.payload)))
+        .collect::<HashMap<_, _>>();
+    let llm_context_by_span = artifacts
+        .iter()
+        .filter(|artifact| artifact.kind == "llm.context")
+        .filter_map(|artifact| artifact.span_id.as_ref().map(|span_id| (span_id.clone(), &artifact.payload)))
+        .collect::<HashMap<_, _>>();
+
+    let mut ordered_indices = (0..spans.len()).collect::<Vec<_>>();
+    ordered_indices.sort_by_key(|index| spans[*index].started_at);
+
+    let mut previous_context: Option<ComparableContext> = None;
+    for index in ordered_indices {
+        let span = &mut spans[index];
+        let prompt_payload = prompt_by_span.get(&span.id).copied();
+        let context_artifact_payload = llm_context_by_span.get(&span.id).copied();
+
+        let mut messages = extract_context_messages(prompt_payload);
+        let mut system_prompt = extract_system_prompt(prompt_payload, &messages);
+        let mut variables = extract_context_variables(prompt_payload);
+        let mut tools_available = extract_tools_available(prompt_payload);
+        let instruction_sources =
+            extract_instruction_sources(context_artifact_payload, &system_prompt);
+
+        if let Some(existing_context) = span.context.as_ref().and_then(Value::as_object) {
+            if messages.is_empty() {
+                messages = existing_context
+                    .get("messages")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+            }
+            if system_prompt.is_empty() {
+                system_prompt = existing_context
+                    .get("system_prompt")
+                    .and_then(Value::as_str)
+                    .unwrap_or_default()
+                    .to_string();
+            }
+            if variables.is_empty() {
+                variables = existing_context
+                    .get("variables")
+                    .and_then(Value::as_object)
+                    .cloned()
+                    .unwrap_or_default();
+            }
+            if tools_available.is_empty() {
+                tools_available = existing_context
+                    .get("tools_available")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
+            }
+        }
+
+        let has_context = !messages.is_empty()
+            || !system_prompt.is_empty()
+            || !variables.is_empty()
+            || !tools_available.is_empty();
+        if !instruction_sources.is_empty() {
+            let precedence_stack = compute_instruction_precedence_stack(&instruction_sources);
+            span.instruction_context = Some(json!({
+                "sources": instruction_sources,
+                "precedence_stack": precedence_stack
+            }));
+        }
+
+        if !has_context {
+            continue;
+        }
+
+        let estimated_context_tokens =
+            estimate_context_tokens(span.input_tokens, &messages, &system_prompt, &variables, &tools_available);
+        span.context_tokens = Some(estimated_context_tokens.max(0));
+
+        if span.context_window.is_some() {
+            span.context_usage_percent =
+                compute_context_usage_percent(span.context_tokens, span.context_window);
+        }
+
+        let message_set = messages
+            .iter()
+            .map(value_to_diff_string)
+            .collect::<HashSet<_>>();
+
+        let diff = compute_context_diff(previous_context.as_ref(), &message_set, &variables);
+        let (context_shrank_unexpectedly, tokens_near_limit) = detect_context_truncation(
+            previous_context.as_ref(),
+            span.context_tokens.unwrap_or_default(),
+            span.context_usage_percent,
+        );
+        let variables_for_next = variables.clone();
+
+        span.context = Some(json!({
+            "messages": messages,
+            "system_prompt": system_prompt,
+            "variables": variables,
+            "tools_available": tools_available,
+            "diff": diff,
+            "metrics": {
+                "total_tokens": span.context_tokens,
+                "context_window": span.context_window,
+                "context_usage_percent": span.context_usage_percent
+            },
+            "truncation": {
+                "context_shrank_unexpectedly": context_shrank_unexpectedly,
+                "tokens_near_limit": tokens_near_limit
+            }
+        }));
+
+        previous_context = Some(ComparableContext {
+            messages: message_set,
+            variables: variables_for_next,
+            context_tokens: span.context_tokens.unwrap_or_default(),
+        });
+    }
+}
+
+fn extract_context_messages(prompt_payload: Option<&Value>) -> Vec<Value> {
+    let Some(payload) = prompt_payload.and_then(Value::as_object) else {
+        return Vec::new();
+    };
+
+    for candidate in [
+        payload.get("messages"),
+        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("messages")),
+        payload.get("input"),
+        payload.get("prompt"),
+    ] {
+        if let Some(Value::Array(messages)) = candidate {
+            return messages.clone();
+        }
+    }
+
+    for candidate in [
+        payload.get("prompt"),
+        payload.get("input"),
+        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("prompt")),
+        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("input")),
+    ] {
+        if let Some(Value::String(prompt)) = candidate {
+            return vec![json!({"role": "user", "content": prompt})];
+        }
+    }
+
+    Vec::new()
+}
+
+fn extract_system_prompt(prompt_payload: Option<&Value>, messages: &[Value]) -> String {
+    if let Some(payload) = prompt_payload.and_then(Value::as_object) {
+        for candidate in [
+            payload.get("system_prompt"),
+            payload.get("system"),
+            payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("system_prompt")),
+            payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("system")),
+        ] {
+            if let Some(Value::String(system_prompt)) = candidate {
+                return system_prompt.clone();
+            }
+        }
+    }
+
+    for message in messages {
+        let Some(object) = message.as_object() else {
+            continue;
+        };
+        if object.get("role").and_then(Value::as_str) != Some("system") {
+            continue;
+        }
+
+        if let Some(content) = object.get("content") {
+            return value_to_diff_string(content);
+        }
+    }
+
+    String::new()
+}
+
+fn extract_context_variables(prompt_payload: Option<&Value>) -> Map<String, Value> {
+    let Some(payload) = prompt_payload.and_then(Value::as_object) else {
+        return Map::new();
+    };
+
+    for candidate in [
+        payload.get("variables"),
+        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("variables")),
+    ] {
+        if let Some(Value::Object(variables)) = candidate {
+            return variables.clone();
+        }
+    }
+
+    Map::new()
+}
+
+fn extract_tools_available(prompt_payload: Option<&Value>) -> Vec<Value> {
+    let Some(payload) = prompt_payload.and_then(Value::as_object) else {
+        return Vec::new();
+    };
+
+    for candidate in [
+        payload.get("tools_available"),
+        payload.get("tools"),
+        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("tools_available")),
+        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("tools")),
+    ] {
+        if let Some(Value::Array(items)) = candidate {
+            return items.clone();
+        }
+    }
+
+    Vec::new()
+}
+
+fn estimate_context_tokens(
+    input_tokens: Option<i64>,
+    messages: &[Value],
+    system_prompt: &str,
+    variables: &Map<String, Value>,
+    tools_available: &[Value],
+) -> i64 {
+    if let Some(tokens) = input_tokens {
+        return tokens;
+    }
+
+    let mut chars = system_prompt.chars().count();
+    chars += messages.iter().map(value_to_diff_string).map(|value| value.chars().count()).sum::<usize>();
+    chars += variables
+        .iter()
+        .map(|(key, value)| key.len() + value_to_diff_string(value).chars().count())
+        .sum::<usize>();
+    chars += tools_available
+        .iter()
+        .map(value_to_diff_string)
+        .map(|value| value.chars().count())
+        .sum::<usize>();
+
+    if chars == 0 {
+        return 0;
+    }
+
+    ((chars as f64) / 4.0).ceil() as i64
+}
+
+fn compute_context_usage_percent(
+    context_tokens: Option<i64>,
+    context_window: Option<i64>,
+) -> Option<f64> {
+    let tokens = context_tokens?;
+    let window = context_window?;
+    if window <= 0 {
+        return None;
+    }
+    Some((tokens as f64 / window as f64) * 100.0)
+}
+
+fn compute_context_diff(
+    previous: Option<&ComparableContext>,
+    current_messages: &HashSet<String>,
+    current_variables: &Map<String, Value>,
+) -> Value {
+    let Some(previous) = previous else {
+        return json!({
+            "added_messages": [],
+            "removed_messages": [],
+            "changed_variables": {
+                "added": [],
+                "removed": [],
+                "changed": []
+            }
+        });
+    };
+
+    let mut added_messages = current_messages
+        .difference(&previous.messages)
+        .cloned()
+        .collect::<Vec<_>>();
+    added_messages.sort();
+
+    let mut removed_messages = previous
+        .messages
+        .difference(current_messages)
+        .cloned()
+        .collect::<Vec<_>>();
+    removed_messages.sort();
+
+    let previous_keys = previous.variables.keys().cloned().collect::<HashSet<_>>();
+    let current_keys = current_variables.keys().cloned().collect::<HashSet<_>>();
+
+    let mut added_keys = current_keys
+        .difference(&previous_keys)
+        .cloned()
+        .collect::<Vec<_>>();
+    added_keys.sort();
+
+    let mut removed_keys = previous_keys
+        .difference(&current_keys)
+        .cloned()
+        .collect::<Vec<_>>();
+    removed_keys.sort();
+
+    let mut changed_keys = current_keys
+        .intersection(&previous_keys)
+        .filter(|key| previous.variables.get(*key) != current_variables.get(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    changed_keys.sort();
+
+    json!({
+        "added_messages": added_messages,
+        "removed_messages": removed_messages,
+        "changed_variables": {
+            "added": added_keys,
+            "removed": removed_keys,
+            "changed": changed_keys
+        }
+    })
+}
+
+fn detect_context_truncation(
+    previous: Option<&ComparableContext>,
+    context_tokens: i64,
+    usage_percent: Option<f64>,
+) -> (bool, bool) {
+    let context_shrank_unexpectedly = previous.is_some_and(|prev| {
+        prev.context_tokens > 0
+            && context_tokens > 0
+            && context_tokens < ((prev.context_tokens as f64) * 0.7) as i64
+            && (prev.context_tokens - context_tokens) >= 200
+    });
+    let tokens_near_limit = usage_percent.is_some_and(|value| value >= 80.0);
+    (context_shrank_unexpectedly, tokens_near_limit)
+}
+
+fn value_to_diff_string(value: &Value) -> String {
+    match value {
+        Value::String(raw) => raw.clone(),
+        _ => value.to_string(),
+    }
+}
+
+fn extract_instruction_sources(context_payload: Option<&Value>, system_prompt: &str) -> Vec<Value> {
+    let mut sources = Vec::<Value>::new();
+
+    if let Some(payload) = context_payload {
+        let data = payload.get("data").unwrap_or(payload);
+        if let Some(entries) = data.get("sources").and_then(Value::as_array) {
+            for entry in entries {
+                let Some(object) = entry.as_object() else {
+                    continue;
+                };
+
+                let name = object
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("unknown")
+                    .to_string();
+                let path = object
+                    .get("path")
+                    .and_then(Value::as_str)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| name.clone());
+                let content = object
+                    .get("content")
+                    .map(value_to_diff_string)
+                    .unwrap_or_default();
+                let provided_type = object
+                    .get("type")
+                    .and_then(Value::as_str)
+                    .unwrap_or("local");
+                let source_type = classify_instruction_type(provided_type, &name, &path);
+                let hash = object
+                    .get("hash")
+                    .and_then(Value::as_str)
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| stable_hash_hex(&content));
+
+                sources.push(json!({
+                    "name": name,
+                    "type": source_type,
+                    "path": path,
+                    "content": content,
+                    "hash": hash
+                }));
+            }
+        }
+    }
+
+    if !system_prompt.trim().is_empty() {
+        sources.push(json!({
+            "name": "system_prompt",
+            "type": "runtime",
+            "path": "runtime:system_prompt",
+            "content": system_prompt,
+            "hash": stable_hash_hex(system_prompt)
+        }));
+    }
+
+    dedupe_instruction_sources(sources)
+}
+
+fn classify_instruction_type(source_type: &str, name: &str, path: &str) -> &'static str {
+    if source_type == "runtime" {
+        return "runtime";
+    }
+    let upper_name = name.to_uppercase();
+    let upper_path = path.to_uppercase();
+    if upper_name.contains("CLAUDE.MD") || upper_path.contains("CLAUDE.MD") {
+        return "global";
+    }
+    if upper_name.contains("AGENTS.MD") || upper_path.contains("AGENTS.MD") {
+        return "local";
+    }
+    "local"
+}
+
+fn dedupe_instruction_sources(sources: Vec<Value>) -> Vec<Value> {
+    let mut seen = HashSet::<String>::new();
+    let mut deduped = Vec::new();
+    for source in sources {
+        let object = source.as_object().cloned().unwrap_or_default();
+        let key = format!(
+            "{}:{}:{}",
+            object.get("type").and_then(Value::as_str).unwrap_or(""),
+            object.get("path").and_then(Value::as_str).unwrap_or(""),
+            object.get("hash").and_then(Value::as_str).unwrap_or("")
+        );
+        if seen.insert(key) {
+            deduped.push(Value::Object(object));
+        }
+    }
+    deduped
+}
+
+fn compute_instruction_precedence_stack(sources: &[Value]) -> Vec<Value> {
+    let mut ranked = sources
+        .iter()
+        .cloned()
+        .map(|source| {
+            let rank = source
+                .get("type")
+                .and_then(Value::as_str)
+                .map(instruction_precedence_rank)
+                .unwrap_or(0);
+            (rank, source)
+        })
+        .collect::<Vec<_>>();
+    ranked.sort_by(|(left, _), (right, _)| right.cmp(left));
+    ranked.into_iter().map(|(_, source)| source).collect()
+}
+
+fn instruction_precedence_rank(source_type: &str) -> i32 {
+    match source_type {
+        "runtime" => 3,
+        "local" => 2,
+        "global" => 1,
+        _ => 0,
+    }
+}
+
+fn stable_hash_hex(value: &str) -> String {
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    value.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 fn normalize_run(run: &mut Run) {

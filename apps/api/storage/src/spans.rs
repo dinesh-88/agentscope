@@ -33,6 +33,9 @@ impl Storage {
                 output_tokens,
                 total_tokens,
                 estimated_cost,
+                context,
+                context_tokens,
+                instruction_context,
                 context_window,
                 context_usage_percent,
                 latency_ms,
@@ -87,16 +90,19 @@ impl Storage {
                 $30,
                 $31,
                 $32,
+                $33,
+                $34,
+                $35,
                 (
                     CASE
-                        WHEN $33::jsonb = 'null'::jsonb THEN NULL
-                        ELSE $33::jsonb
+                        WHEN $36::jsonb = 'null'::jsonb THEN NULL
+                        ELSE $36::jsonb
                     END
                 ),
                 (
                     CASE
-                        WHEN $34::jsonb = 'null'::jsonb THEN NULL
-                        ELSE $34::jsonb
+                        WHEN $37::jsonb = 'null'::jsonb THEN NULL
+                        ELSE $37::jsonb
                     END
                 )
             )
@@ -114,6 +120,9 @@ impl Storage {
                 output_tokens = EXCLUDED.output_tokens,
                 total_tokens = EXCLUDED.total_tokens,
                 estimated_cost = EXCLUDED.estimated_cost,
+                context = EXCLUDED.context,
+                context_tokens = EXCLUDED.context_tokens,
+                instruction_context = EXCLUDED.instruction_context,
                 context_window = EXCLUDED.context_window,
                 context_usage_percent = EXCLUDED.context_usage_percent,
                 latency_ms = EXCLUDED.latency_ms,
@@ -150,6 +159,9 @@ impl Storage {
         .bind(span.output_tokens)
         .bind(total_tokens)
         .bind(span.estimated_cost)
+        .bind(&span.context)
+        .bind(span.context_tokens)
+        .bind(&span.instruction_context)
         .bind(span.context_window)
         .bind(span.context_usage_percent)
         .bind(span.latency_ms)
@@ -195,6 +207,9 @@ impl Storage {
                    output_tokens,
                    total_tokens,
                    estimated_cost,
+                   context,
+                   context_tokens,
+                   instruction_context,
                    context_window,
                    context_usage_percent,
                    latency_ms,

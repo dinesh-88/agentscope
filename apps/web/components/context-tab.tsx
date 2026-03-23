@@ -1,89 +1,122 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 
-import { type Artifact } from "@/lib/api";
+import { type Artifact, type Span } from "@/lib/api";
 
-type ContextSource = {
-  name: string;
-  type: "file" | "runtime";
-  content: string;
-  hash: string;
-};
-
-type ContextPayload = {
-  sources: ContextSource[];
-  finalPrompt: string;
+type SpanContextPayload = {
+  messages: unknown[];
+  systemPrompt: string;
+  variables: Record<string, unknown>;
+  toolsAvailable: unknown[];
+  diff: {
+    addedMessages: string[];
+    removedMessages: string[];
+    changedVariables: {
+      added: string[];
+      removed: string[];
+      changed: string[];
+    };
+  };
+  truncation: {
+    contextShrankUnexpectedly: boolean;
+    tokensNearLimit: boolean;
+  };
 };
 
 type ContextTabProps = {
+  span: Span | null;
+  previousSpan: Span | null;
   artifact: Artifact | null;
 };
 
-function toContextPayload(artifact: Artifact | null): ContextPayload | null {
+function toFinalPrompt(artifact: Artifact | null): string {
   if (!artifact || artifact.kind !== "llm.context") {
+    return "";
+  }
+  const root = artifact.payload;
+  const data = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : root;
+  const value = data.final_prompt;
+  if (typeof value === "string") return value;
+  return value ? JSON.stringify(value, null, 2) : "";
+}
+
+function parseSpanContext(span: Span | null): SpanContextPayload | null {
+  const rawContext = span?.context;
+  if (!rawContext || typeof rawContext !== "object") {
     return null;
   }
 
-  const root = artifact.payload;
-  const data = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : root;
-  const rawSources = data.sources;
-  const sources: ContextSource[] = Array.isArray(rawSources)
-    ? rawSources
-        .filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object")
-        .map((entry) => ({
-          name: typeof entry.name === "string" ? entry.name : "unknown",
-          type: entry.type === "runtime" ? "runtime" : "file",
-          content: typeof entry.content === "string" ? entry.content : JSON.stringify(entry.content ?? "", null, 2),
-          hash: typeof entry.hash === "string" ? entry.hash : "",
-        }))
-    : [];
-
-  const rawFinalPrompt = data.final_prompt;
-  const finalPrompt =
-    typeof rawFinalPrompt === "string"
-      ? rawFinalPrompt
-      : JSON.stringify(rawFinalPrompt ?? "", null, 2);
+  const context = rawContext as Record<string, unknown>;
+  const messages = Array.isArray(context.messages) ? context.messages : [];
+  const systemPrompt = typeof context.system_prompt === "string" ? context.system_prompt : "";
+  const variables =
+    context.variables && typeof context.variables === "object" && !Array.isArray(context.variables)
+      ? (context.variables as Record<string, unknown>)
+      : {};
+  const toolsAvailable = Array.isArray(context.tools_available) ? context.tools_available : [];
+  const rawDiff =
+    context.diff && typeof context.diff === "object" && !Array.isArray(context.diff)
+      ? (context.diff as Record<string, unknown>)
+      : {};
+  const rawChangedVariables =
+    rawDiff.changed_variables &&
+    typeof rawDiff.changed_variables === "object" &&
+    !Array.isArray(rawDiff.changed_variables)
+      ? (rawDiff.changed_variables as Record<string, unknown>)
+      : {};
+  const rawTruncation =
+    context.truncation && typeof context.truncation === "object" && !Array.isArray(context.truncation)
+      ? (context.truncation as Record<string, unknown>)
+      : {};
 
   return {
-    sources,
-    finalPrompt,
+    messages,
+    systemPrompt,
+    variables,
+    toolsAvailable,
+    diff: {
+      addedMessages: Array.isArray(rawDiff.added_messages)
+        ? rawDiff.added_messages.map((entry) => String(entry))
+        : [],
+      removedMessages: Array.isArray(rawDiff.removed_messages)
+        ? rawDiff.removed_messages.map((entry) => String(entry))
+        : [],
+      changedVariables: {
+        added: Array.isArray(rawChangedVariables.added)
+          ? rawChangedVariables.added.map((entry) => String(entry))
+          : [],
+        removed: Array.isArray(rawChangedVariables.removed)
+          ? rawChangedVariables.removed.map((entry) => String(entry))
+          : [],
+        changed: Array.isArray(rawChangedVariables.changed)
+          ? rawChangedVariables.changed.map((entry) => String(entry))
+          : [],
+      },
+    },
+    truncation: {
+      contextShrankUnexpectedly: rawTruncation.context_shrank_unexpectedly === true,
+      tokensNearLimit: rawTruncation.tokens_near_limit === true,
+    },
   };
 }
 
-function sourceSize(source: ContextSource) {
-  return source.content.length;
+function stringifyValue(value: unknown) {
+  return typeof value === "string" ? value : JSON.stringify(value, null, 2);
 }
 
-export function ContextTab({ artifact }: ContextTabProps) {
-  const contextPayload = useMemo(() => toContextPayload(artifact), [artifact]);
-  const [selectedSourceIndex, setSelectedSourceIndex] = useState(0);
-  const safeSelectedIndex = useMemo(() => {
-    const sourceCount = contextPayload?.sources.length ?? 0;
-    if (sourceCount === 0) return 0;
-    return Math.min(selectedSourceIndex, sourceCount - 1);
-  }, [contextPayload?.sources.length, selectedSourceIndex]);
-  const selectedSource = contextPayload?.sources[safeSelectedIndex] ?? null;
+function severityTone(usagePercent: number) {
+  if (usagePercent >= 95) return "bg-rose-500";
+  if (usagePercent >= 80) return "bg-amber-500";
+  return "bg-emerald-500";
+}
 
-  const summary = useMemo(() => {
-    const sources = contextPayload?.sources ?? [];
-    const totalChars = sources.reduce((sum, source) => sum + sourceSize(source), 0);
-    const largest = sources.reduce<ContextSource | null>(
-      (current, source) => {
-        if (!current) return source;
-        return sourceSize(source) > sourceSize(current) ? source : current;
-      },
-      null
-    );
+export function ContextTab({ span, previousSpan, artifact }: ContextTabProps) {
+  const context = useMemo(() => parseSpanContext(span), [span]);
+  const finalPrompt = useMemo(() => toFinalPrompt(artifact), [artifact]);
+  const usagePercent = typeof span?.context_usage_percent === "number" ? span.context_usage_percent : null;
 
-    return {
-      count: sources.length,
-      totalChars,
-      largestName: largest?.name ?? "-",
-    };
-  }, [contextPayload]);
-
-  if (!contextPayload) {
+  if (!context) {
     return (
       <div className="rounded-xl bg-slate-50 p-3 text-sm text-neutral-500 dark:bg-slate-800/70 dark:text-neutral-400">
         No context captured for this span
@@ -93,56 +126,98 @@ export function ContextTab({ artifact }: ContextTabProps) {
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-2 sm:grid-cols-3">
-        <div className="rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/70">
-          <p className="text-neutral-500 dark:text-neutral-400">Sources</p>
-          <p className="mt-1 font-semibold text-neutral-950 dark:text-neutral-100">{summary.count}</p>
+      <div className="rounded-xl border border-black/8 bg-white p-3 dark:border-white/10 dark:bg-slate-900/80">
+        <div className="mb-2 flex items-center justify-between text-xs">
+          <p className="font-medium text-neutral-800 dark:text-neutral-200">Context Usage</p>
+          <p className="text-neutral-500 dark:text-neutral-400">
+            {span?.context_tokens ?? 0} / {span?.context_window ?? "?"} tokens
+            {usagePercent !== null ? ` (${usagePercent.toFixed(1)}%)` : ""}
+          </p>
         </div>
-        <div className="rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/70">
-          <p className="text-neutral-500 dark:text-neutral-400">Total size</p>
-          <p className="mt-1 font-semibold text-neutral-950 dark:text-neutral-100">{summary.totalChars.toLocaleString()} chars</p>
+        <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700">
+          <div
+            className={`h-full ${severityTone(usagePercent ?? 0)}`}
+            style={{ width: `${Math.max(0, Math.min(100, usagePercent ?? 0))}%` }}
+          />
         </div>
-        <div className="rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800/70">
-          <p className="text-neutral-500 dark:text-neutral-400">Largest</p>
-          <p className="mt-1 truncate font-semibold text-neutral-950 dark:text-neutral-100">{summary.largestName}</p>
+        {(usagePercent ?? 0) >= 80 ? (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">Warning: context usage is above 80%.</p>
+        ) : null}
+      </div>
+
+      <div className="rounded-xl border border-black/8 bg-white p-3 dark:border-white/10 dark:bg-slate-900/80">
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+          System Prompt
+        </p>
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 text-xs text-slate-100">
+          {context.systemPrompt || "No system prompt captured"}
+        </pre>
+      </div>
+
+      <div className="rounded-xl border border-black/8 bg-white p-3 dark:border-white/10 dark:bg-slate-900/80">
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+          Messages
+        </p>
+        <div className="max-h-56 space-y-2 overflow-auto">
+          {context.messages.length > 0 ? (
+            context.messages.map((message, index) => (
+              <pre key={index} className="whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 text-xs text-slate-100">
+                {stringifyValue(message)}
+              </pre>
+            ))
+          ) : (
+            <p className="text-sm text-neutral-500 dark:text-neutral-400">No messages captured</p>
+          )}
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[300px_minmax(0,1fr)]">
-        <div className="space-y-2 rounded-xl border border-black/8 bg-white p-2 dark:border-white/10 dark:bg-slate-900/80">
-          {(contextPayload.sources.length > 0 ? contextPayload.sources : []).map((source, index) => (
-            <button
-              key={`${source.name}-${index}`}
-              type="button"
-              onClick={() => setSelectedSourceIndex(index)}
-              className={`w-full rounded-lg border px-3 py-2 text-left text-xs transition ${
-                index === safeSelectedIndex
-                  ? "border-blue-300 bg-blue-50 text-blue-900"
-                  : "border-slate-200 bg-slate-50 text-slate-700 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800/70 dark:text-slate-200"
-              }`}
-            >
-              <p className="truncate font-medium">{source.name}</p>
-              <p className="mt-1 text-[11px] opacity-80">
-                {source.type} · {sourceSize(source).toLocaleString()} chars
-              </p>
-            </button>
-          ))}
-        </div>
+      <div className="rounded-xl border border-black/8 bg-white p-3 dark:border-white/10 dark:bg-slate-900/80">
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+          Variables
+        </p>
+        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 text-xs text-slate-100">
+          {JSON.stringify(context.variables, null, 2)}
+        </pre>
+      </div>
 
-        <div className="rounded-xl border border-black/8 bg-slate-950 p-3 text-xs text-slate-100 dark:border-white/10">
-          <p className="mb-2 text-[11px] uppercase tracking-wide text-slate-400">
-            {selectedSource ? selectedSource.name : "Source Content"}
-          </p>
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono">
-            {selectedSource?.content ?? "Select a source to inspect its content."}
+      <div className="rounded-xl border border-black/8 bg-white p-3 dark:border-white/10 dark:bg-slate-900/80">
+        <p className="mb-2 text-xs font-medium uppercase tracking-[0.16em] text-neutral-500 dark:text-neutral-400">
+          Context Diff {previousSpan ? "(vs previous span)" : ""}
+        </p>
+        <div className="grid gap-2 md:grid-cols-2">
+          <div className="rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+            <p className="font-medium text-emerald-700 dark:text-emerald-300">Added Messages</p>
+            <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
+              {JSON.stringify(context.diff.addedMessages, null, 2)}
+            </pre>
+          </div>
+          <div className="rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+            <p className="font-medium text-rose-700 dark:text-rose-300">Removed Messages</p>
+            <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
+              {JSON.stringify(context.diff.removedMessages, null, 2)}
+            </pre>
+          </div>
+        </div>
+        <div className="mt-2 rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/70">
+          <p className="font-medium text-neutral-800 dark:text-neutral-200">Changed Variables</p>
+          <pre className="mt-1 max-h-28 overflow-auto whitespace-pre-wrap break-words text-neutral-700 dark:text-neutral-300">
+            {JSON.stringify(context.diff.changedVariables, null, 2)}
           </pre>
         </div>
+        {context.truncation.contextShrankUnexpectedly || context.truncation.tokensNearLimit ? (
+          <p className="mt-2 text-xs text-amber-700 dark:text-amber-300">
+            {context.truncation.contextShrankUnexpectedly ? "Context shrank unexpectedly. " : ""}
+            {context.truncation.tokensNearLimit ? "Tokens are near the model context limit." : ""}
+          </p>
+        ) : null}
       </div>
 
-      <div className="rounded-xl border border-black/8 bg-slate-950 p-3 text-xs text-slate-100 dark:border-white/10">
-        <p className="mb-2 text-[11px] uppercase tracking-wide text-slate-400">Final Prompt Sent to Model</p>
-        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words font-mono">{contextPayload.finalPrompt}</pre>
-      </div>
+      {finalPrompt ? (
+        <div className="rounded-xl border border-black/8 bg-slate-950 p-3 text-xs text-slate-100 dark:border-white/10">
+          <p className="mb-2 text-[11px] uppercase tracking-wide text-slate-400">Final Prompt Sent to Model</p>
+          <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono">{finalPrompt}</pre>
+        </div>
+      ) : null}
     </div>
   );
 }

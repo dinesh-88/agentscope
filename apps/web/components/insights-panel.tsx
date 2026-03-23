@@ -13,6 +13,14 @@ const CONTEXT_INSIGHT_TYPES = new Set([
   "CONTEXT_REDUNDANCY",
   "MISSING_CONTEXT",
   "PROMPT_WITH_CONTEXT_TOO_LARGE",
+  "CONTEXT_TOO_LARGE",
+  "CONTEXT_TRUNCATED",
+  "CONTEXT_LIKELY_CAUSED_FAILURE",
+]);
+const INSTRUCTION_INSIGHT_TYPES = new Set([
+  "INSTRUCTION_CONFLICT",
+  "MISSING_INSTRUCTIONS",
+  "INSTRUCTION_DRIFT",
 ]);
 
 function severityTone(severity: string) {
@@ -23,7 +31,12 @@ function severityTone(severity: string) {
 
 export function InsightsPanel({ insights }: InsightsPanelProps) {
   const contextInsights = insights.filter((insight) => CONTEXT_INSIGHT_TYPES.has(insight.insight_type));
-  const otherInsights = insights.filter((insight) => !CONTEXT_INSIGHT_TYPES.has(insight.insight_type));
+  const instructionInsights = insights.filter((insight) => INSTRUCTION_INSIGHT_TYPES.has(insight.insight_type));
+  const otherInsights = insights.filter(
+    (insight) =>
+      !CONTEXT_INSIGHT_TYPES.has(insight.insight_type) &&
+      !INSTRUCTION_INSIGHT_TYPES.has(insight.insight_type),
+  );
 
   return (
     <Card className="rounded-3xl border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
@@ -45,6 +58,25 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
             <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Context Issues</div>
             <div className="space-y-2">
               {contextInsights.map((insight) => (
+                <div key={insight.id} className="rounded-xl border border-slate-200/80 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="font-medium text-slate-950">{insight.insight_type}</span>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(insight.severity)}`}>
+                      {insight.severity}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-700">{insight.message}</p>
+                  <p className="mt-2 text-sm text-slate-500">{insight.recommendation}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {instructionInsights.length > 0 && (
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Instruction Issues</div>
+            <div className="space-y-2">
+              {instructionInsights.map((insight) => (
                 <div key={insight.id} className="rounded-xl border border-slate-200/80 bg-white p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
                     <span className="font-medium text-slate-950">{insight.insight_type}</span>

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 
 use agentscope_common::errors::AgentScopeError;
@@ -91,6 +91,8 @@ pub async fn analyze_run(
 
     insights.extend(build_prompt_regression_insight(run_id, &spans));
     insights.extend(build_context_insights(run_id, &artifacts));
+    insights.extend(build_context_runtime_insights(&run, &spans));
+    insights.extend(build_instruction_insights(run_id, &spans));
 
     if insights.is_empty() {
         insights.push(RunInsight {
@@ -618,6 +620,253 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
             .then_with(|| left.insight_type.cmp(&right.insight_type))
     });
     insights.truncate(MAX_CONTEXT_INSIGHTS_PER_RUN);
+    insights
+}
+
+fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> {
+    let mut insights = Vec::new();
+
+    let largest_usage_span = spans
+        .iter()
+        .filter_map(|span| span.context_usage_percent.map(|usage| (span, usage)))
+        .max_by(|(_, left), (_, right)| left.total_cmp(right));
+    if let Some((span, usage)) = largest_usage_span {
+        if usage >= 80.0 {
+            insights.push(RunInsight {
+                id: deterministic_insight_id(&run.id, "CONTEXT_RUNTIME", "CONTEXT_TOO_LARGE"),
+                run_id: run.id.clone(),
+                insight_type: "CONTEXT_TOO_LARGE".to_string(),
+                severity: if usage >= 95.0 { "high" } else { "medium" }.to_string(),
+                message: "Context too large".to_string(),
+                recommendation: "Trim messages/variables or summarize context before model calls."
+                    .to_string(),
+                created_at: Utc::now(),
+                evidence: json!({
+                    "span_id": span.id,
+                    "context_usage_percent": usage,
+                    "context_tokens": span.context_tokens,
+                    "context_window": span.context_window
+                }),
+                impact_score: 0.0,
+            });
+        }
+    }
+
+    let truncated_span = spans.iter().find(|span| {
+        span.context
+            .as_ref()
+            .and_then(|context| context.get("truncation"))
+            .and_then(Value::as_object)
+            .and_then(|truncation| truncation.get("context_shrank_unexpectedly"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    });
+    if let Some(span) = truncated_span {
+        insights.push(RunInsight {
+            id: deterministic_insight_id(&run.id, "CONTEXT_RUNTIME", "CONTEXT_TRUNCATED"),
+            run_id: run.id.clone(),
+            insight_type: "CONTEXT_TRUNCATED".to_string(),
+            severity: "high".to_string(),
+            message: "Context truncated".to_string(),
+            recommendation:
+                "Review context assembly between spans and avoid dropping required messages."
+                    .to_string(),
+            created_at: Utc::now(),
+            evidence: json!({
+                "span_id": span.id,
+                "context_tokens": span.context_tokens,
+                "context_usage_percent": span.context_usage_percent
+            }),
+            impact_score: 0.0,
+        });
+    }
+
+    let likely_failure_span = spans.iter().find(|span| {
+        let span_failed = matches!(span.status.as_str(), "failed" | "error")
+            || span.success == Some(false);
+        if !span_failed {
+            return false;
+        }
+
+        let near_limit = span.context_usage_percent.is_some_and(|value| value >= 90.0);
+        let truncated = span
+            .context
+            .as_ref()
+            .and_then(|context| context.get("truncation"))
+            .and_then(Value::as_object)
+            .and_then(|truncation| truncation.get("context_shrank_unexpectedly"))
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        near_limit || truncated
+    });
+    if (run.status == "failed" || run.status == "error") && likely_failure_span.is_some() {
+        let span = likely_failure_span.expect("checked above");
+        insights.push(RunInsight {
+            id: deterministic_insight_id(
+                &run.id,
+                "CONTEXT_RUNTIME",
+                "CONTEXT_LIKELY_CAUSED_FAILURE",
+            ),
+            run_id: run.id.clone(),
+            insight_type: "CONTEXT_LIKELY_CAUSED_FAILURE".to_string(),
+            severity: "high".to_string(),
+            message: "Context likely caused failure".to_string(),
+            recommendation:
+                "Reduce context pressure and validate required context continuity before call execution."
+                    .to_string(),
+            created_at: Utc::now(),
+            evidence: json!({
+                "span_id": span.id,
+                "status": span.status,
+                "context_usage_percent": span.context_usage_percent,
+                "context_tokens": span.context_tokens
+            }),
+            impact_score: 0.0,
+        });
+    }
+
+    insights
+}
+
+fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
+    let mut insights = Vec::new();
+    let llm_spans = spans
+        .iter()
+        .filter(|span| span.span_type == "llm" || span.span_type == "llm_call")
+        .collect::<Vec<_>>();
+
+    let spans_with_sources = llm_spans
+        .iter()
+        .filter(|span| {
+            span.instruction_context
+                .as_ref()
+                .and_then(|value| value.get("sources"))
+                .and_then(Value::as_array)
+                .is_some_and(|sources| !sources.is_empty())
+        })
+        .count();
+    if !llm_spans.is_empty() && spans_with_sources == 0 {
+        insights.push(RunInsight {
+            id: deterministic_insight_id(run_id, "INSTRUCTION", "MISSING_INSTRUCTIONS"),
+            run_id: run_id.to_string(),
+            insight_type: "MISSING_INSTRUCTIONS".to_string(),
+            severity: "medium".to_string(),
+            message: "No instruction files or runtime instruction overrides were captured.".to_string(),
+            recommendation: "Load global/local instruction files (e.g., CLAUDE.md, AGENTS.md) and include explicit runtime system prompts."
+                .to_string(),
+            created_at: Utc::now(),
+            evidence: json!({
+                "llm_spans": llm_spans.len(),
+                "spans_with_instruction_sources": spans_with_sources
+            }),
+            impact_score: 0.0,
+        });
+    }
+
+    let conflict_span = llm_spans.iter().find_map(|span| {
+        let sources = span
+            .instruction_context
+            .as_ref()
+            .and_then(|value| value.get("sources"))
+            .and_then(Value::as_array)?;
+        let mut hashes_by_key = HashMap::<String, HashSet<String>>::new();
+        for source in sources {
+            let object = source.as_object()?;
+            let key = object
+                .get("path")
+                .and_then(Value::as_str)
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| {
+                    object
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown")
+                        .to_string()
+                });
+            let hash = object
+                .get("hash")
+                .and_then(Value::as_str)
+                .unwrap_or("-")
+                .to_string();
+            hashes_by_key.entry(key).or_default().insert(hash);
+        }
+        let conflicted = hashes_by_key
+            .iter()
+            .filter(|(_, hashes)| hashes.len() > 1)
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>();
+        if conflicted.is_empty() {
+            None
+        } else {
+            Some((span, conflicted))
+        }
+    });
+    if let Some((span, conflicted)) = conflict_span {
+        insights.push(RunInsight {
+            id: deterministic_insight_id(run_id, "INSTRUCTION", "INSTRUCTION_CONFLICT"),
+            run_id: run_id.to_string(),
+            insight_type: "INSTRUCTION_CONFLICT".to_string(),
+            severity: "high".to_string(),
+            message: "Conflicting instruction sources were detected in span context.".to_string(),
+            recommendation:
+                "Deduplicate instruction files and resolve conflicting overrides using a single source of truth."
+                    .to_string(),
+            created_at: Utc::now(),
+            evidence: json!({
+                "span_id": span.id,
+                "conflicted_sources": conflicted
+            }),
+            impact_score: 0.0,
+        });
+    }
+
+    let mut instruction_signatures = llm_spans
+        .iter()
+        .filter_map(|span| {
+            let sources = span
+                .instruction_context
+                .as_ref()
+                .and_then(|value| value.get("sources"))
+                .and_then(Value::as_array)?;
+            let mut signature = sources
+                .iter()
+                .filter_map(|source| {
+                    let object = source.as_object()?;
+                    let source_type = object.get("type").and_then(Value::as_str).unwrap_or("unknown");
+                    let path = object.get("path").and_then(Value::as_str).unwrap_or("-");
+                    let hash = object.get("hash").and_then(Value::as_str).unwrap_or("-");
+                    Some(format!("{source_type}:{path}:{hash}"))
+                })
+                .collect::<Vec<_>>();
+            signature.sort();
+            Some((span.id.clone(), signature.join("|")))
+        })
+        .collect::<Vec<_>>();
+    instruction_signatures.sort_by(|left, right| left.0.cmp(&right.0));
+
+    let unique_signatures = instruction_signatures
+        .iter()
+        .map(|(_, signature)| signature.clone())
+        .collect::<HashSet<_>>();
+    if unique_signatures.len() > 1 {
+        insights.push(RunInsight {
+            id: deterministic_insight_id(run_id, "INSTRUCTION", "INSTRUCTION_DRIFT"),
+            run_id: run_id.to_string(),
+            insight_type: "INSTRUCTION_DRIFT".to_string(),
+            severity: "medium".to_string(),
+            message: "Instruction stack drifted across spans in this run.".to_string(),
+            recommendation:
+                "Keep instruction sources stable across spans unless intentionally versioned."
+                    .to_string(),
+            created_at: Utc::now(),
+            evidence: json!({
+                "unique_instruction_signatures": unique_signatures.len(),
+                "span_signatures": instruction_signatures
+            }),
+            impact_score: 0.0,
+        });
+    }
+
     insights
 }
 

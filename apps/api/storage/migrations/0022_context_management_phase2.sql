@@ -1,0 +1,6 @@
+ALTER TABLE spans
+ADD COLUMN IF NOT EXISTS context JSONB,
+ADD COLUMN IF NOT EXISTS context_tokens INT,
+ADD COLUMN IF NOT EXISTS context_usage_percent DOUBLE PRECISION;
+
+CREATE INDEX IF NOT EXISTS idx_spans_context ON spans USING GIN (context);

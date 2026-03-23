@@ -325,6 +325,21 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="border border-white/10 bg-[#101722] shadow-none">
+        <CardHeader>
+          <CardTitle className="text-gray-100">Instruction Diff</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {comparison.diffs.instruction_diff.length === 0 ? (
+            <p className="text-sm text-gray-400">No instruction changes detected.</p>
+          ) : (
+            comparison.diffs.instruction_diff.map((diff) => (
+              <DiffBlock key={diff.label} title={diff.label} left={diff.run_a} right={diff.run_b} />
+            ))
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
