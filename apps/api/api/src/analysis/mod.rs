@@ -1,4 +1,5 @@
 pub mod classifiers;
+pub mod context_analyzer;
 pub mod detectors;
 pub mod insights_engine;
 pub mod llm_explanations;

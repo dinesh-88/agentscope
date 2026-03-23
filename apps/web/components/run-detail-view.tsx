@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Sparkles } from "lucide-react";
 
+import { ContextTab } from "@/components/context-tab";
 import { LiveLogPanel } from "@/components/live-log-panel";
 import { ReplayPanel } from "@/components/replay-panel";
 import { TraceView, type TraceSpan } from "@/components/trace-view";
@@ -13,7 +14,14 @@ import { useRunDetailStore } from "@/lib/run-detail-store";
 import { useRunStream } from "@/lib/use-run-stream";
 import { cn } from "@/lib/utils";
 
-type Tab = "prompt" | "response" | "metadata";
+type Tab = "prompt" | "response" | "metadata" | "context";
+const CONTEXT_INSIGHT_TYPES = new Set([
+  "CONTEXT_BLOAT",
+  "DOMINANT_CONTEXT_SOURCE",
+  "CONTEXT_REDUNDANCY",
+  "MISSING_CONTEXT",
+  "PROMPT_WITH_CONTEXT_TOO_LARGE",
+]);
 
 function durationMs(startedAt: string, endedAt: string | null) {
   const start = new Date(startedAt).getTime();
@@ -223,6 +231,24 @@ export function RunDetailView({
       liveArtifacts.find((artifact) => artifact.kind.includes("response")),
     [liveArtifacts, selectedArtifacts],
   );
+  const contextArtifact = useMemo(
+    () => selectedArtifacts.find((artifact) => artifact.kind === "llm.context") ?? null,
+    [selectedArtifacts],
+  );
+  const tabs = useMemo<Tab[]>(
+    () => (contextArtifact ? ["prompt", "response", "metadata", "context"] : ["prompt", "response", "metadata"]),
+    [contextArtifact],
+  );
+  const activeTab: Tab = tabs.includes(tab) ? tab : "prompt";
+
+  const contextInsights = useMemo(
+    () => insights.filter((insight) => CONTEXT_INSIGHT_TYPES.has(insight.insight_type)),
+    [insights],
+  );
+  const otherInsights = useMemo(
+    () => insights.filter((insight) => !CONTEXT_INSIGHT_TYPES.has(insight.insight_type)),
+    [insights],
+  );
 
   return (
     <section className="grid gap-6 lg:grid-cols-3">
@@ -275,12 +301,32 @@ export function RunDetailView({
             {insights.length === 0 ? (
               <p className="rounded-lg bg-slate-50 p-3 text-sm text-neutral-500">No insights generated for this run yet.</p>
             ) : (
-              insights.map((insight) => (
-                <div key={insight.id} className="rounded-xl border border-black/8 bg-white p-3 text-sm">
-                  <p className="font-medium text-neutral-950 dark:text-neutral-100">{insight.message}</p>
-                  <p className="mt-1 text-neutral-600">{insight.recommendation}</p>
-                </div>
-              ))
+              <>
+                {contextInsights.length > 0 ? (
+                  <div className="rounded-xl border border-black/8 bg-slate-50 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">Context Issues</p>
+                    <div className="mt-2 space-y-2">
+                      {contextInsights.map((insight) => (
+                        <div key={insight.id} className="rounded-lg border border-black/8 bg-white p-3 text-sm">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="font-medium text-neutral-950 dark:text-neutral-100">{insight.message}</p>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                              {insight.severity}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-neutral-600">{insight.recommendation}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+                {otherInsights.map((insight) => (
+                  <div key={insight.id} className="rounded-xl border border-black/8 bg-white p-3 text-sm">
+                    <p className="font-medium text-neutral-950 dark:text-neutral-100">{insight.message}</p>
+                    <p className="mt-1 text-neutral-600">{insight.recommendation}</p>
+                  </div>
+                ))}
+              </>
             )}
           </CardContent>
         </Card>
@@ -332,14 +378,14 @@ export function RunDetailView({
                 </div>
 
                 <div className="rounded-xl border border-black/8 p-1">
-                  {(["prompt", "response", "metadata"] as Tab[]).map((entry) => (
+                  {tabs.map((entry) => (
                     <button
                       key={entry}
                       type="button"
                       onClick={() => setTab(entry)}
                       className={cn(
                         "rounded-lg px-3 py-2 text-xs font-medium capitalize transition",
-                        tab === entry
+                        activeTab === entry
                           ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
                           : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800",
                       )}
@@ -349,7 +395,7 @@ export function RunDetailView({
                   ))}
                 </div>
 
-                {tab === "prompt" ? (
+                {activeTab === "prompt" ? (
                   <div className="space-y-2">
                     {promptArtifact ? (
                       parseChatMessages(promptArtifact.payload).map((msg, idx) => (
@@ -364,7 +410,7 @@ export function RunDetailView({
                   </div>
                 ) : null}
 
-                {tab === "response" ? (
+                {activeTab === "response" ? (
                   <div className="rounded-xl bg-slate-950 p-3 text-xs text-slate-100">
                     <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words">
                       {JSON.stringify(responseArtifact?.payload ?? {}, null, 2)}
@@ -372,13 +418,14 @@ export function RunDetailView({
                   </div>
                 ) : null}
 
-                {tab === "metadata" ? (
+                {activeTab === "metadata" ? (
                   <div className="rounded-xl bg-slate-950 p-3 text-xs text-slate-100">
                     <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words">
                       {JSON.stringify(selectedSpan.metadata ?? {}, null, 2)}
                     </pre>
                   </div>
                 ) : null}
+                {activeTab === "context" ? <ContextTab artifact={contextArtifact} /> : null}
               </>
             ) : (
               <p className="text-sm text-neutral-500">No spans found for this run.</p>

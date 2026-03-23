@@ -3,13 +3,14 @@ use std::hash::{Hash, Hasher};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::Storage;
-use agentscope_trace::{Run, RunInsight, Span};
+use agentscope_trace::{Artifact, Run, RunInsight, Span};
 use chrono::Utc;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::analysis::{
     classifiers::{classify_root_cause, Classification},
+    context_analyzer::{analyze_context, extract_context_data, final_prompt_to_text, parse_context_sources},
     detectors::{detect_failure_types, estimate_context_window, Detection},
 };
 
@@ -20,6 +21,7 @@ const MIN_COST_REGRESSION_ABS: f64 = 0.01;
 const HIGH_RETRY_RATE: f64 = 0.2;
 const LARGE_PROMPT_TOKENS: i64 = 100_000;
 const PROMPT_REGRESSION_MIN_SAMPLES: usize = 2;
+const MAX_CONTEXT_INSIGHTS_PER_RUN: usize = 3;
 
 pub async fn analyze_run(
     storage: &Storage,
@@ -88,6 +90,7 @@ pub async fn analyze_run(
     }
 
     insights.extend(build_prompt_regression_insight(run_id, &spans));
+    insights.extend(build_context_insights(run_id, &artifacts));
 
     if insights.is_empty() {
         insights.push(RunInsight {
@@ -540,6 +543,89 @@ fn recommendation_for_failure(failure_type: &str) -> &'static str {
         "API_ERROR" => "Handle rate limits and upstream failures with backoff and fallback.",
         "TOKEN_OVERFLOW" => "Reduce prompt context and truncate low-signal content.",
         _ => "Inspect span and artifact evidence and patch the failing step.",
+    }
+}
+
+fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsight> {
+    let context_artifacts = artifacts
+        .iter()
+        .filter(|artifact| artifact.kind == "llm.context")
+        .collect::<Vec<_>>();
+
+    let mut by_type = HashMap::<String, RunInsight>::new();
+    if context_artifacts.is_empty() {
+        for insight in analyze_context(&[], "") {
+            let key = insight.insight_type.clone();
+            by_type.insert(
+                key.clone(),
+                RunInsight {
+                    id: deterministic_insight_id(run_id, "CONTEXT", &key),
+                    run_id: run_id.to_string(),
+                    insight_type: key,
+                    severity: insight.severity,
+                    message: insight.message,
+                    recommendation: insight.recommendation,
+                    created_at: Utc::now(),
+                    evidence: insight.evidence,
+                    impact_score: 0.0,
+                },
+            );
+        }
+    } else {
+        for artifact in context_artifacts {
+            let data = extract_context_data(&artifact.payload);
+            let sources = parse_context_sources(data.get("sources"));
+            let final_prompt_text = final_prompt_to_text(data.get("final_prompt"));
+            let total_context_chars = sources
+                .iter()
+                .map(|source| source.content.chars().count())
+                .sum::<usize>();
+
+            for insight in analyze_context(&sources, &final_prompt_text) {
+                let key = insight.insight_type.clone();
+                let run_insight = RunInsight {
+                    id: deterministic_insight_id(run_id, "CONTEXT", &key),
+                    run_id: run_id.to_string(),
+                    insight_type: key.clone(),
+                    severity: insight.severity,
+                    message: insight.message,
+                    recommendation: insight.recommendation,
+                    created_at: Utc::now(),
+                    evidence: json!({
+                        "artifact_id": artifact.id,
+                        "span_id": artifact.span_id,
+                        "source_count": sources.len(),
+                        "total_context_chars": total_context_chars,
+                        "final_prompt_chars": final_prompt_text.chars().count(),
+                        "details": insight.evidence
+                    }),
+                    impact_score: 0.0,
+                };
+                match by_type.get(&key) {
+                    Some(current) if severity_rank(current.severity.as_str()) >= severity_rank(run_insight.severity.as_str()) => {}
+                    _ => {
+                        by_type.insert(key, run_insight);
+                    }
+                }
+            }
+        }
+    }
+
+    let mut insights = by_type.into_values().collect::<Vec<_>>();
+    insights.sort_by(|left, right| {
+        severity_rank(right.severity.as_str())
+            .cmp(&severity_rank(left.severity.as_str()))
+            .then_with(|| left.insight_type.cmp(&right.insight_type))
+    });
+    insights.truncate(MAX_CONTEXT_INSIGHTS_PER_RUN);
+    insights
+}
+
+fn severity_rank(severity: &str) -> i32 {
+    match severity {
+        "high" => 3,
+        "medium" => 2,
+        _ => 1,
     }
 }
 

@@ -7,6 +7,14 @@ type InsightsPanelProps = {
   insights: RunInsight[];
 };
 
+const CONTEXT_INSIGHT_TYPES = new Set([
+  "CONTEXT_BLOAT",
+  "DOMINANT_CONTEXT_SOURCE",
+  "CONTEXT_REDUNDANCY",
+  "MISSING_CONTEXT",
+  "PROMPT_WITH_CONTEXT_TOO_LARGE",
+]);
+
 function severityTone(severity: string) {
   if (severity === "high") return "bg-rose-100 text-rose-700";
   if (severity === "medium") return "bg-amber-100 text-amber-700";
@@ -14,6 +22,9 @@ function severityTone(severity: string) {
 }
 
 export function InsightsPanel({ insights }: InsightsPanelProps) {
+  const contextInsights = insights.filter((insight) => CONTEXT_INSIGHT_TYPES.has(insight.insight_type));
+  const otherInsights = insights.filter((insight) => !CONTEXT_INSIGHT_TYPES.has(insight.insight_type));
+
   return (
     <Card className="rounded-3xl border border-slate-200/80 bg-white shadow-[0_20px_60px_rgba(15,23,42,0.08)]">
       <CardHeader>
@@ -29,7 +40,27 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
           </div>
         )}
 
-        {insights.map((insight) => (
+        {contextInsights.length > 0 && (
+          <div className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Context Issues</div>
+            <div className="space-y-2">
+              {contextInsights.map((insight) => (
+                <div key={insight.id} className="rounded-xl border border-slate-200/80 bg-white p-3">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <span className="font-medium text-slate-950">{insight.insight_type}</span>
+                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(insight.severity)}`}>
+                      {insight.severity}
+                    </span>
+                  </div>
+                  <p className="text-sm text-slate-700">{insight.message}</p>
+                  <p className="mt-2 text-sm text-slate-500">{insight.recommendation}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {otherInsights.map((insight) => (
           <div key={insight.id} className="rounded-2xl border border-slate-200/80 bg-slate-50 p-4">
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
