@@ -1,0 +1,22 @@
+{
+  "name": "AgentScope",
+  "short_name": "AgentScope",
+  "description": "Monitor and debug AI agent workflows with comprehensive tracing and insights",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0F14",
+  "theme_color": "#9333EA",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/apple-touch-icon.svg",
+      "sizes": "180x180",
+      "type": "image/svg+xml"
+    }
+  ]
+}
