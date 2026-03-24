@@ -14,6 +14,8 @@ pub struct SpanTransition {
     #[serde(default)]
     pub messages_removed: i32,
     #[serde(default)]
+    pub tool_output_added: bool,
+    #[serde(default)]
     pub tool_outputs_added: Vec<String>,
     #[serde(default)]
     pub instruction_changed: bool,

@@ -53,6 +53,7 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
     insights.find((insight) => insight.insight_type === "RUN_SUMMARY") ??
     null;
   const summaryMessage =
+    runSummary?.cause ??
     runSummary?.message ??
     rootCause?.message ??
     highlightInsight?.message ??

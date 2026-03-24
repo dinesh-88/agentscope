@@ -26,6 +26,7 @@ export type TraceSpan = {
     added_messages: string[];
     removed_messages: string[];
     token_delta: number;
+    tool_output_added: boolean;
     tool_outputs_added: string[];
     instruction_changed: boolean;
     instruction_changes: string[];
@@ -72,10 +73,6 @@ function compact(values: string[], maxItems: number = 4) {
     shown: cleaned.slice(0, maxItems),
     overflow: Math.max(cleaned.length - maxItems, 0),
   };
-}
-
-function normalizeWarning(value: string) {
-  return value;
 }
 
 function statusBadgeTone(status: TraceSpan["status"]) {
@@ -196,21 +193,21 @@ export function TraceView({
             const isHovered = hoveredSpanId === span.id;
             const transition = span.stepTransition;
             const prevSpan = rows[index - 1] ?? null;
-            const warningItems = compact((transition?.warnings ?? []).map(normalizeWarning));
             const tokenDelta = transition?.token_delta ?? 0;
-            const summaryItems = compact([
-              `Token delta: ${tokenDelta > 0 ? "+" : ""}${tokenDelta}`,
-              `Tool outputs added: ${transition?.tool_outputs_added?.length ?? 0}`,
-              `Messages +${transition?.messages_added ?? 0} / -${transition?.messages_removed ?? 0}`,
-              transition?.instruction_changed ? "Instruction changed" : "Instruction unchanged",
-            ]);
+            const summaryItems = compact(
+              [
+                transition?.tool_output_added ? "Tool output added" : "",
+                tokenDelta !== 0
+                  ? `Context ${tokenDelta > 0 ? "+" : ""}${tokenDelta} tokens`
+                  : "",
+                (transition?.messages_added ?? 0) > 0
+                  ? `${transition?.messages_added ?? 0} messages added`
+                  : "",
+              ].filter(Boolean),
+              3,
+            );
             const SpanStatusIcon = statusIcon(span.status);
-            const hasMeaningfulChanges =
-              (transition?.token_delta ?? 0) !== 0 ||
-              (transition?.messages_added ?? 0) > 0 ||
-              (transition?.messages_removed ?? 0) > 0 ||
-              (transition?.tool_outputs_added?.length ?? 0) > 0 ||
-              Boolean(transition?.instruction_changed);
+            const hasMeaningfulChanges = summaryItems.shown.length > 0;
 
             return (
               <div key={span.id} className="space-y-2">
@@ -221,7 +218,7 @@ export function TraceView({
                     onMouseEnter={() => onSpanHover?.(span.id)}
                     onMouseLeave={() => onSpanHover?.(null)}
                     className={cn(
-                      "w-full space-y-2 rounded-lg border bg-neutral-50 p-3 text-left shadow-sm transition-all hover:-translate-y-[1px] hover:shadow dark:bg-slate-800/70",
+                      "my-2 w-full space-y-2 rounded-lg border bg-neutral-50 p-3 text-left shadow-sm transition-all hover:-translate-y-[1px] hover:shadow dark:bg-slate-800/70",
                       transition?.likely_cause
                         ? "border-l-4 border-red-400 border-red-200 bg-red-50/40 dark:border-red-500/40 dark:bg-red-500/10"
                         : "border-black/10 dark:border-white/10",
@@ -241,22 +238,12 @@ export function TraceView({
                         {summaryItems.overflow > 0 ? <li className="text-neutral-500 dark:text-neutral-400">+{summaryItems.overflow} more changes</li> : null}
                       </ul>
                     ) : (
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">No significant changes, state stayed stable</p>
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400">No significant changes</p>
                     )}
-                    {warningItems.shown.length > 0 ? (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-200">
-                        <p className="font-medium">Warnings</p>
-                        <ul className="mt-1 space-y-1">
-                          {warningItems.shown.map((item) => (
-                            <li key={item}>⚠ {item}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
                     {transition?.likely_cause ? (
                       <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200">
-                        <p className="font-semibold">Likely caused failure</p>
-                        <p className="mt-1">{transition.cause_reason ?? "Previous step change likely caused this failure"}</p>
+                        <p className="font-semibold">Likely contributed to failure</p>
+                        <p className="mt-1">{transition.cause_reason ?? "A transition change likely contributed to this failure"}</p>
                       </div>
                     ) : null}
                   </button>

@@ -69,6 +69,10 @@ pub async fn analyze_run(
                 "medium".to_string()
             },
             is_primary: false,
+            title: String::new(),
+            cause: String::new(),
+            impact: String::new(),
+            fix: Vec::new(),
             message: root_cause.message.clone(),
             recommendation: root_cause.suggested_fix.clone(),
             created_at: Utc::now(),
@@ -110,6 +114,10 @@ pub async fn analyze_run(
             insight_type: "NO_MAJOR_ISSUES".to_string(),
             severity: "low".to_string(),
             is_primary: false,
+            title: String::new(),
+            cause: String::new(),
+            impact: String::new(),
+            fix: Vec::new(),
             message: "No strong failure, latency, cost, or prompt-regression issues were detected."
                 .to_string(),
             recommendation: "Continue collecting traces and compare against future baselines."
@@ -134,6 +142,7 @@ pub async fn analyze_run(
         if insight.insight_type != "RUN_SUMMARY" {
             insight.is_primary = false;
         }
+        apply_structured_insight(insight);
         insight.impact_score = compute_impact_score(insight);
     }
 
@@ -164,6 +173,10 @@ pub fn build_detection_insight(
         insight_type: detection.failure_type.to_string(),
         severity: severity.to_string(),
         is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
         message: detection.summary.clone(),
         recommendation: recommendation_for_failure(detection.failure_type).to_string(),
         created_at: Utc::now(),
@@ -192,6 +205,10 @@ pub fn build_root_cause_insight(run_id: &str, root_cause: &Classification) -> Ru
         insight_type: root_cause.root_cause_category.to_string(),
         severity: "medium".to_string(),
         is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
         message: root_cause.summary.clone(),
         recommendation,
         created_at: Utc::now(),
@@ -212,6 +229,10 @@ pub fn build_run_failure_insight(run: &Run) -> RunInsight {
         insight_type: "RUN_FAILURE".to_string(),
         severity: "high".to_string(),
         is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
         message: format!("Run ended with status `{}`.", run.status),
         recommendation:
             "Inspect failed spans first and apply the highest-confidence root-cause fix."
@@ -269,6 +290,10 @@ pub fn generate_run_summary(
         insight_type: "RUN_SUMMARY".to_string(),
         severity: severity.to_string(),
         is_primary: true,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
         message,
         recommendation: recommendation.to_string(),
         created_at: Utc::now(),
@@ -288,6 +313,140 @@ fn format_summary_sentence(is_failed: bool, cause: &str, qualifier: &str, source
         "Run succeeded but"
     };
     clamp_summary(&format!("{prefix} {qualifier} {cause} in {source}"))
+}
+
+fn apply_structured_insight(insight: &mut RunInsight) {
+    let (title, cause, impact, mut fix) = match structured_template_for_type(&insight.insight_type)
+    {
+        Some(values) => values,
+        None => {
+            let fallback_title = if !insight.title.trim().is_empty() {
+                insight.title.trim().to_string()
+            } else {
+                prettify_insight_type(&insight.insight_type)
+            };
+            let fallback_cause = if !insight.cause.trim().is_empty() {
+                insight.cause.trim().to_string()
+            } else {
+                insight.message.trim().to_string()
+            };
+            let fallback_impact = if !insight.impact.trim().is_empty() {
+                insight.impact.trim().to_string()
+            } else {
+                "This issue interrupted normal run execution.".to_string()
+            };
+            let fallback_fix = if !insight.fix.is_empty() {
+                insight.fix.clone()
+            } else if !insight.recommendation.trim().is_empty() {
+                vec![insight.recommendation.trim().to_string()]
+            } else {
+                vec![
+                    "Inspect the failing span and add validation before the next step.".to_string(),
+                ]
+            };
+            (
+                fallback_title,
+                fallback_cause,
+                fallback_impact,
+                fallback_fix,
+            )
+        }
+    };
+
+    if fix.is_empty() {
+        fix.push("Inspect the failing span and add validation before the next step.".to_string());
+    }
+
+    insight.title = title;
+    insight.cause = clamp_structured_text(&cause);
+    insight.impact = clamp_structured_text(&impact);
+    insight.fix = fix
+        .into_iter()
+        .filter(|item| !item.trim().is_empty())
+        .map(|item| clamp_structured_text(&item))
+        .take(2)
+        .collect();
+    if insight.fix.is_empty() {
+        insight
+            .fix
+            .push("Inspect the failing span and add validation before the next step.".to_string());
+    }
+
+    // Keep legacy fields populated while UI migrates to structured sections.
+    insight.message = insight.cause.clone();
+    insight.recommendation = insight.fix.join(" | ");
+}
+
+fn structured_template_for_type(
+    insight_type: &str,
+) -> Option<(String, String, String, Vec<String>)> {
+    let normalized = insight_type
+        .trim_start_matches("ROOT_CAUSE_")
+        .to_ascii_uppercase();
+
+    match normalized.as_str() {
+        "SCHEMA_VALIDATION_ERROR" | "LLM_OUTPUT_FORMAT_ERROR" => Some((
+            "Invalid structured output".to_string(),
+            "Model or tool returned invalid JSON that was passed to the next step.".to_string(),
+            "Parsing failed and broke downstream step.".to_string(),
+            vec![
+                "Enforce JSON schema in prompt".to_string(),
+                "Validate before passing to next step".to_string(),
+            ],
+        )),
+        "TOOL_FAILURE" | "TOOL_EXECUTION_ERROR" => Some((
+            "Tool execution failed".to_string(),
+            "Tool returned an error or an invalid response payload.".to_string(),
+            "Dependent steps could not proceed.".to_string(),
+            vec![
+                "Validate tool inputs".to_string(),
+                "Add retry logic".to_string(),
+            ],
+        )),
+        "TIMEOUT" => Some((
+            "Request timed out".to_string(),
+            "Operation exceeded the allowed execution time.".to_string(),
+            "Step failed and interrupted flow.".to_string(),
+            vec![
+                "Reduce latency or payload size".to_string(),
+                "Add timeout and retry handling".to_string(),
+            ],
+        )),
+        "TOKEN_OVERFLOW" | "PROMPT_TOO_LARGE" => Some((
+            "Context size exceeded".to_string(),
+            "Prompt exceeded model token limits.".to_string(),
+            "Model call failed or was truncated.".to_string(),
+            vec![
+                "Trim context".to_string(),
+                "Summarize previous steps".to_string(),
+            ],
+        )),
+        _ => None,
+    }
+}
+
+fn prettify_insight_type(insight_type: &str) -> String {
+    insight_type
+        .trim_start_matches("ROOT_CAUSE_")
+        .to_ascii_lowercase()
+        .split('_')
+        .map(|part| {
+            let mut chars = part.chars();
+            match chars.next() {
+                Some(first) => format!("{}{}", first.to_ascii_uppercase(), chars.as_str()),
+                None => String::new(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn clamp_structured_text(value: &str) -> String {
+    let cleaned = value.replace('\n', " ").trim().to_string();
+    if cleaned.len() <= 180 {
+        return cleaned;
+    }
+    format!("{}...", cleaned.chars().take(177).collect::<String>())
 }
 
 fn cause_from_root_cause_type(root_cause_type: &str) -> &'static str {
@@ -608,6 +767,10 @@ pub fn build_latency_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight>
             "medium".to_string()
         },
         is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
         message: format!(
             "Latency is elevated (avg {:.0} ms, p95 {} ms).",
             avg_latency, p95_latency
@@ -647,6 +810,10 @@ pub fn build_cost_insight(run: &Run, baseline_cost: f32) -> Option<RunInsight> {
             "medium".to_string()
         },
         is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
         message: format!(
             "Run cost (${run_cost:.5}) is above baseline (${:.5}).",
             baseline_cost
@@ -697,6 +864,10 @@ pub fn build_retry_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight> {
             "medium".to_string()
         },
         is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
         message: format!(
             "Retries are frequent: {} of {} spans retried ({:.1}%).",
             retry_spans.len(),
@@ -743,6 +914,10 @@ pub fn build_prompt_size_insight(run_id: &str, spans: &[Span]) -> Option<RunInsi
             "medium".to_string()
         },
         is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
         message: format!("Largest prompt used {input_tokens} input tokens on model `{model}`."),
         recommendation: "Summarize context and drop low-value prompt sections before model calls."
             .to_string(),
@@ -785,6 +960,10 @@ pub fn build_prompt_regression_insight(run_id: &str, spans: &[Span]) -> Vec<RunI
             insight_type: "PROMPT_REGRESSION".to_string(),
             severity: if success_rate < 0.5 { "high" } else { "medium" }.to_string(),
             is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
             message: format!(
                 "Prompt hash `{prompt_hash}` shows regression (success {:.1}%, avg latency {:.0} ms).",
                 success_rate * 100.0,
@@ -966,6 +1145,10 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                     insight_type: key,
                     severity: insight.severity,
                     is_primary: false,
+                    title: String::new(),
+                    cause: String::new(),
+                    impact: String::new(),
+                    fix: Vec::new(),
                     message: insight.message,
                     recommendation: insight.recommendation,
                     created_at: Utc::now(),
@@ -993,6 +1176,10 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                     insight_type: key.clone(),
                     severity: insight.severity,
                     is_primary: false,
+                    title: String::new(),
+                    cause: String::new(),
+                    impact: String::new(),
+                    fix: Vec::new(),
                     message: insight.message,
                     recommendation: insight.recommendation,
                     created_at: Utc::now(),
@@ -1044,6 +1231,10 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
                 insight_type: "CONTEXT_TOO_LARGE".to_string(),
                 severity: if usage >= 95.0 { "high" } else { "medium" }.to_string(),
                 is_primary: false,
+                title: String::new(),
+                cause: String::new(),
+                impact: String::new(),
+                fix: Vec::new(),
                 message: "Context too large".to_string(),
                 recommendation: "Trim messages/variables or summarize context before model calls."
                     .to_string(),
@@ -1076,6 +1267,10 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
             insight_type: "CONTEXT_TRUNCATED".to_string(),
             severity: "high".to_string(),
             is_primary: false,
+            title: String::new(),
+            cause: String::new(),
+            impact: String::new(),
+            fix: Vec::new(),
             message: "Context truncated".to_string(),
             recommendation:
                 "Review context assembly between spans and avoid dropping required messages."
@@ -1123,6 +1318,10 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
             insight_type: "CONTEXT_LIKELY_CAUSED_FAILURE".to_string(),
             severity: "high".to_string(),
             is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
             message: "Context likely caused failure".to_string(),
             recommendation:
                 "Reduce context pressure and validate required context continuity before call execution."
@@ -1166,6 +1365,10 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             insight_type: "MISSING_INSTRUCTIONS".to_string(),
             severity: "medium".to_string(),
             is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
             message: "No instruction files or runtime instruction overrides were captured.".to_string(),
             recommendation: "Load global/local instruction files (e.g., CLAUDE.md, AGENTS.md) and include explicit runtime system prompts."
                 .to_string(),
@@ -1224,6 +1427,10 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             insight_type: "INSTRUCTION_CONFLICT".to_string(),
             severity: "high".to_string(),
             is_primary: false,
+        title: String::new(),
+        cause: String::new(),
+        impact: String::new(),
+        fix: Vec::new(),
             message: "Conflicting instruction sources were detected in span context.".to_string(),
             recommendation:
                 "Deduplicate instruction files and resolve conflicting overrides using a single source of truth."
@@ -1276,6 +1483,10 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             insight_type: "INSTRUCTION_DRIFT".to_string(),
             severity: "medium".to_string(),
             is_primary: false,
+            title: String::new(),
+            cause: String::new(),
+            impact: String::new(),
+            fix: Vec::new(),
             message: "Instruction stack drifted across spans in this run.".to_string(),
             recommendation:
                 "Keep instruction sources stable across spans unless intentionally versioned."

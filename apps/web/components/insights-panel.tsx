@@ -30,6 +30,41 @@ function severityTone(severity: string) {
   return "bg-cyan-100 text-cyan-700";
 }
 
+function structuredCause(insight: RunInsight) {
+  return insight.cause || insight.message;
+}
+
+function structuredImpact(insight: RunInsight) {
+  return insight.impact || "This issue affected run quality and reliability.";
+}
+
+function structuredFix(insight: RunInsight) {
+  if (insight.fix && insight.fix.length > 0) return insight.fix;
+  if (insight.recommendation) return [insight.recommendation];
+  return ["Inspect failing spans and apply targeted validation before the next step."];
+}
+
+function renderStructuredInsight(insight: RunInsight) {
+  return (
+    <>
+      <p className="text-sm text-slate-700">
+        <span className="font-semibold text-slate-900">Cause: </span>
+        {structuredCause(insight)}
+      </p>
+      <p className="mt-2 text-sm text-slate-700">
+        <span className="font-semibold text-slate-900">Impact: </span>
+        {structuredImpact(insight)}
+      </p>
+      <ul className="mt-2 space-y-1 text-sm text-slate-700">
+        <li className="font-semibold text-slate-900">Fix:</li>
+        {structuredFix(insight).slice(0, 2).map((fixItem) => (
+          <li key={fixItem}>- {fixItem}</li>
+        ))}
+      </ul>
+    </>
+  );
+}
+
 export function InsightsPanel({ insights }: InsightsPanelProps) {
   const fixSuggestions =
     insights.find((insight) => insight.insight_type === "RUN_SUMMARY" && insight.is_primary)
@@ -89,13 +124,12 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
               {contextInsights.map((insight) => (
                 <div key={insight.id} className="rounded-xl border border-slate-200/80 bg-white p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="font-medium text-slate-950">{insight.insight_type}</span>
+                    <span className="font-medium text-slate-950">{insight.title || insight.insight_type}</span>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(insight.severity)}`}>
                       {insight.severity}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-700">{insight.message}</p>
-                  <p className="mt-2 text-sm text-slate-500">{insight.recommendation}</p>
+                  {renderStructuredInsight(insight)}
                 </div>
               ))}
             </div>
@@ -108,13 +142,12 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
               {instructionInsights.map((insight) => (
                 <div key={insight.id} className="rounded-xl border border-slate-200/80 bg-white p-3">
                   <div className="mb-2 flex items-center justify-between gap-2">
-                    <span className="font-medium text-slate-950">{insight.insight_type}</span>
+                    <span className="font-medium text-slate-950">{insight.title || insight.insight_type}</span>
                     <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(insight.severity)}`}>
                       {insight.severity}
                     </span>
                   </div>
-                  <p className="text-sm text-slate-700">{insight.message}</p>
-                  <p className="mt-2 text-sm text-slate-500">{insight.recommendation}</p>
+                  {renderStructuredInsight(insight)}
                 </div>
               ))}
             </div>
@@ -126,14 +159,13 @@ export function InsightsPanel({ insights }: InsightsPanelProps) {
             <div className="mb-2 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <AlertTriangle className="size-4 text-slate-500" />
-                <span className="font-medium text-slate-950">{insight.insight_type}</span>
+                <span className="font-medium text-slate-950">{insight.title || insight.insight_type}</span>
               </div>
               <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${severityTone(insight.severity)}`}>
                 {insight.severity}
               </span>
             </div>
-            <p className="text-sm text-slate-700">{insight.message}</p>
-            <p className="mt-2 text-sm text-slate-500">{insight.recommendation}</p>
+            {renderStructuredInsight(insight)}
           </div>
         ))}
       </CardContent>

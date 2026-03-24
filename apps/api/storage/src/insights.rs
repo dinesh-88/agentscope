@@ -26,9 +26,9 @@ impl Storage {
             sqlx::query(
                 r#"
                 INSERT INTO run_insights
-                    (id, run_id, insight_type, severity, is_primary, message, recommendation, created_at, evidence, impact_score, fix_suggestions)
+                    (id, run_id, insight_type, severity, is_primary, title, cause, impact, fix, message, recommendation, created_at, evidence, impact_score, fix_suggestions)
                 VALUES
-                    ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                 "#,
             )
             .bind(&insight.id)
@@ -36,6 +36,10 @@ impl Storage {
             .bind(&insight.insight_type)
             .bind(&insight.severity)
             .bind(insight.is_primary)
+            .bind(&insight.title)
+            .bind(&insight.cause)
+            .bind(&insight.impact)
+            .bind(serde_json::to_value(&insight.fix).unwrap_or_else(|_| serde_json::json!([])))
             .bind(&insight.message)
             .bind(&insight.recommendation)
             .bind(insight.created_at)
@@ -69,6 +73,10 @@ impl Storage {
                 insight_type,
                 severity,
                 is_primary,
+                title,
+                cause,
+                impact,
+                fix,
                 message,
                 recommendation,
                 created_at,

@@ -82,6 +82,7 @@ export type Span = {
     messages_added: number;
     messages_removed: number;
     token_delta: number;
+    tool_output_added: boolean;
     tool_outputs_added: string[];
     instruction_changed: boolean;
     instruction_changes: string[];
@@ -134,6 +135,10 @@ export type RunInsight = {
   insight_type: string;
   severity: string;
   is_primary: boolean;
+  title: string;
+  cause: string;
+  impact: string;
+  fix: string[];
   message: string;
   recommendation: string;
   fix_suggestions: {

@@ -223,6 +223,7 @@ export function RunDetailView({
 
   const runStarted = new Date(liveRun.started_at).getTime();
   const runDuration = durationMs(liveRun.started_at, liveRun.ended_at);
+  const isFailedRun = liveRun.status === "failed" || liveRun.status === "error";
 
   const latestModel = useMemo(
     () =>
@@ -258,10 +259,10 @@ export function RunDetailView({
       const spanId = findSpanId(insight.evidence);
       if (!spanId || map.has(spanId)) continue;
       map.set(spanId, {
-        summary: insight.message,
+        summary: insight.cause || insight.message,
         rootCause: insight.insight_type,
         location: spanId,
-        suggestedFix: insight.recommendation,
+        suggestedFix: insight.fix?.[0] ?? insight.recommendation,
       });
     }
 
@@ -390,23 +391,27 @@ export function RunDetailView({
   }, [selectedInsight?.evidence]);
 
   const whyFailedPoints = useMemo(() => {
-    const points = [rootCause?.message, selectedInsight?.message, selectedSpan?.error_type]
+    const points = [rootCause?.message, selectedInsight?.cause || selectedInsight?.message, selectedSpan?.error_type]
       .filter((value): value is string => Boolean(value))
       .slice(0, 3);
     if (points.length === 0 && selectedSpan?.status === "error") {
       return ["Span execution failed without a structured root-cause message."];
     }
     return points;
-  }, [rootCause?.message, selectedInsight?.message, selectedSpan?.error_type, selectedSpan?.status]);
+  }, [rootCause?.message, selectedInsight?.cause, selectedInsight?.message, selectedSpan?.error_type, selectedSpan?.status]);
 
   const recommendationPoints = useMemo(() => {
-    const values = [rootCause?.suggested_fix, selectedInsight?.recommendation]
+    const values = [
+      rootCause?.suggested_fix,
+      ...(selectedInsight?.fix ?? []),
+      selectedInsight?.recommendation,
+    ]
       .filter((value): value is string => Boolean(value));
     if (values.length === 0) {
       return ["Add schema validation and retry on parse failure."];
     }
     return values.slice(0, 3);
-  }, [rootCause?.suggested_fix, selectedInsight?.recommendation]);
+  }, [rootCause?.suggested_fix, selectedInsight?.fix, selectedInsight?.recommendation]);
 
   const impactPoints = useMemo(() => {
     const list: string[] = [];
@@ -469,10 +474,11 @@ export function RunDetailView({
     const message =
       rootCause?.message ??
       primarySummaryInsight?.message ??
+      selectedInsight?.cause ??
       selectedInsight?.message ??
       (primaryFailingSpan ? `${primaryFailingSpan.name} failed during execution` : "Run completed without a detected failure");
     return message.endsWith(".") ? message : `${message}.`;
-  }, [primaryFailingSpan, primarySummaryInsight?.message, rootCause?.message, selectedInsight?.message]);
+  }, [primaryFailingSpan, primarySummaryInsight?.message, rootCause?.message, selectedInsight?.cause, selectedInsight?.message]);
 
   const jumpToSpan = (spanId: string | null) => {
     if (!spanId) return;
@@ -580,98 +586,100 @@ export function RunDetailView({
       </main>
 
       <aside className="space-y-4">
-        <Card
-          id="insights-panel"
-          data-testid="insights-panel"
-          className={cn(
-            "border shadow-sm",
-            insightSeverity === "high"
-              ? "border-red-300 bg-red-50/40 dark:border-red-500/35 dark:bg-red-500/10"
-              : insightSeverity === "medium"
-                ? "border-amber-300 bg-amber-50/40 dark:border-amber-500/35 dark:bg-amber-500/10"
-                : "border-emerald-300 bg-emerald-50/30 dark:border-emerald-500/35 dark:bg-emerald-500/10",
-          )}
-        >
-          <CardHeader className="pb-2">
-            <div className="flex items-center justify-between gap-2">
-              <CardTitle className="flex items-center gap-2 text-sm">
-                <Flame className="size-4 text-red-600 dark:text-red-300" />
-                Why this run failed
-              </CardTitle>
-              <span className="inline-flex rounded border border-black/10 bg-white px-2 py-1 text-[11px] text-neutral-600 dark:border-white/15 dark:bg-slate-900 dark:text-neutral-300">
-                details
-              </span>
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
-              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Cause</p>
-              <p className="mt-1 text-neutral-700 dark:text-neutral-300">{rootCause?.message ?? selectedInsight?.message ?? "No explicit cause detected."}</p>
-            </div>
+        {isFailedRun ? (
+          <Card
+            id="insights-panel"
+            data-testid="insights-panel"
+            className={cn(
+              "border shadow-sm",
+              insightSeverity === "high"
+                ? "border-red-300 bg-red-50/40 dark:border-red-500/35 dark:bg-red-500/10"
+                : insightSeverity === "medium"
+                  ? "border-amber-300 bg-amber-50/40 dark:border-amber-500/35 dark:bg-amber-500/10"
+                  : "border-emerald-300 bg-emerald-50/30 dark:border-emerald-500/35 dark:bg-emerald-500/10",
+            )}
+          >
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <Flame className="size-4 text-red-600 dark:text-red-300" />
+                  Why this run failed
+                </CardTitle>
+                <span className="inline-flex rounded border border-black/10 bg-white px-2 py-1 text-[11px] text-neutral-600 dark:border-white/15 dark:bg-slate-900 dark:text-neutral-300">
+                  details
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
+                <p className="font-semibold text-neutral-900 dark:text-neutral-100">Cause</p>
+                <p className="mt-1 text-neutral-700 dark:text-neutral-300">{rootCause?.message ?? selectedInsight?.cause ?? selectedInsight?.message ?? "No explicit cause detected."}</p>
+              </div>
 
-            <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
-              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Reasoning</p>
-              <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
-                {(selectedSpan?.step_transition?.cause_reason
-                  ? [selectedSpan.step_transition.cause_reason]
-                  : selectedInsight?.evidence?.reason && typeof selectedInsight.evidence.reason === "string"
-                    ? [selectedInsight.evidence.reason]
-                    : whyFailedPoints
-                ).slice(0, 3).map((point) => (
-                  <li key={point}>- {point}</li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
-              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Fix</p>
-              {fixSuggestions.length > 0 ? (
-                <div className="mt-2 space-y-2">
-                  {fixSuggestions.map((fix, index) => (
-                    <button
-                      key={`${fix.title}-${fix.action_type}`}
-                      type="button"
-                      onClick={() => jumpToSpan(selectedInsightEvidenceSpanId ?? selectedSpan?.id ?? firstFailingSpanId)}
-                      className={cn(
-                        "w-full rounded-md border p-2 text-left",
-                        index === 0
-                          ? "border-emerald-300 bg-emerald-50 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-100"
-                          : "border-black/10 bg-neutral-50 text-neutral-700 dark:border-white/10 dark:bg-slate-800/70 dark:text-neutral-300",
-                      )}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="text-sm font-medium">{fix.title}</p>
-                        <span className="rounded-full border border-black/15 bg-white px-2 py-0.5 text-[10px] uppercase text-neutral-600 dark:border-white/20 dark:bg-slate-900 dark:text-neutral-300">
-                          {fix.action_type}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-xs">{fix.description}</p>
-                    </button>
+              <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
+                <p className="font-semibold text-neutral-900 dark:text-neutral-100">Reasoning</p>
+                <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
+                  {(selectedSpan?.step_transition?.cause_reason
+                    ? [selectedSpan.step_transition.cause_reason]
+                    : selectedInsight?.evidence?.reason && typeof selectedInsight.evidence.reason === "string"
+                      ? [selectedInsight.evidence.reason]
+                      : whyFailedPoints
+                  ).slice(0, 3).map((point) => (
+                    <li key={point}>- {point}</li>
                   ))}
-                </div>
-              ) : (
-                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">No actionable fixes generated yet.</p>
-              )}
-            </div>
+                </ul>
+              </div>
 
-            <div>
-              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Impact</p>
-              <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
-                {(impactPoints.length > 0 ? impactPoints : ["No explicit impact metadata captured"]).map((point) => (
-                  <li key={point}>- {point}</li>
-                ))}
-              </ul>
-            </div>
-            <div>
-              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Next Action</p>
-              <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
-                {recommendationPoints.map((point) => (
-                  <li key={point}>- {point}</li>
-                ))}
-              </ul>
-            </div>
-          </CardContent>
-        </Card>
+              <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
+                <p className="font-semibold text-neutral-900 dark:text-neutral-100">Fix</p>
+                {fixSuggestions.length > 0 ? (
+                  <div className="mt-2 space-y-2">
+                    {fixSuggestions.map((fix, index) => (
+                      <button
+                        key={`${fix.title}-${fix.action_type}`}
+                        type="button"
+                        onClick={() => jumpToSpan(selectedInsightEvidenceSpanId ?? selectedSpan?.id ?? firstFailingSpanId)}
+                        className={cn(
+                          "w-full rounded-md border p-2 text-left",
+                          index === 0
+                            ? "border-emerald-300 bg-emerald-50 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-100"
+                            : "border-black/10 bg-neutral-50 text-neutral-700 dark:border-white/10 dark:bg-slate-800/70 dark:text-neutral-300",
+                        )}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-medium">{fix.title}</p>
+                          <span className="rounded-full border border-black/15 bg-white px-2 py-0.5 text-[10px] uppercase text-neutral-600 dark:border-white/20 dark:bg-slate-900 dark:text-neutral-300">
+                            {fix.action_type}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs">{fix.description}</p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">No actionable fixes generated yet.</p>
+                )}
+              </div>
+
+              <div>
+                <p className="font-semibold text-neutral-900 dark:text-neutral-100">Impact</p>
+                <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
+                  {(impactPoints.length > 0 ? impactPoints : ["No explicit impact metadata captured"]).map((point) => (
+                    <li key={point}>- {point}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="font-semibold text-neutral-900 dark:text-neutral-100">Next Action</p>
+                <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
+                  {recommendationPoints.map((point) => (
+                    <li key={point}>- {point}</li>
+                  ))}
+                </ul>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
         <Card className="border border-black/8 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
           <CardHeader className="pb-2">

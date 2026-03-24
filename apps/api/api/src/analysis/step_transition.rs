@@ -51,6 +51,8 @@ pub fn compute_transition(
 ) -> StepTransition {
     let previous_messages = context_messages(previous);
     let current_messages = context_messages(current);
+    let previous_message_count = context_message_count(previous);
+    let current_message_count = context_message_count(current);
     let previous_variables = context_variables(previous);
     let current_variables = context_variables(current);
 
@@ -68,23 +70,21 @@ pub fn compute_transition(
 
     let token_delta = resolve_token_delta(previous, current);
     let tool_outputs_added = tool_outputs(previous, previous_artifacts);
-    let warnings = transition_warnings(token_delta, current, !tool_outputs_added.is_empty());
+    let tool_output_added = !tool_outputs_added.is_empty();
+    let warnings = transition_warnings(token_delta, current, tool_output_added);
+    let messages_added = (current_message_count - previous_message_count).max(0);
+    let messages_removed = (previous_message_count - current_message_count).max(0);
 
-    let (likely_cause, cause_confidence, cause_reason) = detect_transition_cause(
-        token_delta,
-        !tool_outputs_added.is_empty(),
-        instruction_changed,
-        previous,
-        current,
-        next_failures,
-    );
+    let (likely_cause, cause_confidence, cause_reason) =
+        detect_transition_cause(token_delta, tool_output_added, current, next_failures);
 
     StepTransition {
         from_span_id: previous.id.clone(),
         to_span_id: current.id.clone(),
         token_delta,
-        messages_added: added_messages.len().min(i32::MAX as usize) as i32,
-        messages_removed: removed_messages.len().min(i32::MAX as usize) as i32,
+        messages_added,
+        messages_removed,
+        tool_output_added,
         tool_outputs_added,
         instruction_changed,
         warnings,
@@ -102,50 +102,31 @@ pub fn compute_transition(
 pub fn detect_transition_cause(
     token_delta: i64,
     has_tool_output: bool,
-    instruction_changed: bool,
-    previous: &Span,
     next_span: &Span,
     next_failures: Option<&HashSet<&'static str>>,
 ) -> (bool, f32, Option<String>) {
+    let next_failed =
+        matches!(next_span.status.as_str(), "failed" | "error") || next_span.success == Some(false);
     let failure_types = next_failures.cloned().unwrap_or_default();
 
-    if failure_types.contains("SCHEMA_VALIDATION_ERROR") && has_tool_output {
+    if next_failed && has_tool_output {
         return (
             true,
             0.9,
-            Some("Tool output introduced invalid JSON into context".to_string()),
+            Some("Tool output introduced invalid or unexpected data".to_string()),
         );
     }
 
-    if failure_types.contains("TOKEN_OVERFLOW") && token_delta > 1000 {
+    if next_failed && token_delta > 1000 {
         return (
             true,
             0.85,
-            Some("Context growth caused model limit overflow".to_string()),
+            Some("Context growth may have affected model behavior".to_string()),
         );
     }
 
-    if instruction_changed && run_behavior_changed(previous, next_span) {
-        return (
-            true,
-            0.8,
-            Some("Instruction change altered model behavior".to_string()),
-        );
-    }
-
+    let _ = failure_types;
     (false, 0.0, None)
-}
-
-fn run_behavior_changed(previous: &Span, next: &Span) -> bool {
-    if previous.status != next.status {
-        return true;
-    }
-
-    if previous.success != next.success {
-        return true;
-    }
-
-    matches!(next.status.as_str(), "failed" | "error") || next.success == Some(false)
 }
 
 fn detections_by_span(detections: &[Detection]) -> HashMap<String, HashSet<&'static str>> {
@@ -204,6 +185,16 @@ fn context_messages(span: &Span) -> HashSet<String> {
                 .collect::<HashSet<_>>()
         })
         .unwrap_or_default()
+}
+
+fn context_message_count(span: &Span) -> i32 {
+    span.context
+        .as_ref()
+        .and_then(Value::as_object)
+        .and_then(|context| context.get("messages"))
+        .and_then(Value::as_array)
+        .map(|messages| messages.len().min(i32::MAX as usize) as i32)
+        .unwrap_or(0)
 }
 
 fn context_variables(span: &Span) -> Map<String, Value> {

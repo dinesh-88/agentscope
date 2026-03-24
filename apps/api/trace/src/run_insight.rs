@@ -20,6 +20,15 @@ pub struct RunInsight {
     pub severity: String,
     #[serde(default)]
     pub is_primary: bool,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub cause: String,
+    #[serde(default)]
+    pub impact: String,
+    #[serde(default)]
+    #[sqlx(default, json)]
+    pub fix: Vec<String>,
     pub message: String,
     pub recommendation: String,
     pub created_at: DateTime<Utc>,
