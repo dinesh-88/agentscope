@@ -493,7 +493,7 @@ export function RunDetailView({
 
   return (
     <section className="space-y-4">
-      <div className="sticky top-16 z-20 rounded-xl border border-red-300 bg-red-50/95 p-3 shadow-sm backdrop-blur dark:border-red-500/35 dark:bg-slate-900/95">
+      <div className="rounded-xl border border-red-300 bg-red-50/95 p-3 shadow-sm dark:border-red-500/35 dark:bg-slate-900/95">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-red-700 dark:text-red-300">Run Summary</p>
@@ -509,7 +509,7 @@ export function RunDetailView({
         </div>
       </div>
 
-      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_380px]">
+      <div className="grid gap-4 2xl:grid-cols-[260px_minmax(0,1fr)_380px]">
       <aside className="min-w-0">
         <Card className="border border-black/8 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
           <CardHeader className="pb-2">
@@ -584,7 +584,7 @@ export function RunDetailView({
           id="insights-panel"
           data-testid="insights-panel"
           className={cn(
-            "sticky top-36 border shadow-sm",
+            "border shadow-sm",
             insightSeverity === "high"
               ? "border-red-300 bg-red-50/40 dark:border-red-500/35 dark:bg-red-500/10"
               : insightSeverity === "medium"

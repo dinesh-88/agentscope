@@ -366,7 +366,7 @@ console.log("trace received: run_01H...");
 
           <div className="grid gap-6 md:grid-cols-2">
             <div className="overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-3">
-              <TraceView spans={mockTraceSpans} title="Failed Run #1247" />
+              <TraceView spans={mockTraceSpans} title="Failed Run #1247" className="dark" />
             </div>
 
             <div className="overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50">

@@ -56,7 +56,7 @@ export function AppShell({ activePath = "/dashboard", children, mainClassName, t
         <div className="flex min-h-screen w-full">
           <Sidebar activePath={activePath} theme={resolvedTheme} onToggleTheme={toggleTheme} />
           <main className={cn("min-w-0 flex-1", mainClassName)}>
-            <AlertsTopbar />
+            <AlertsTopbar theme={resolvedTheme} />
             {children}
           </main>
         </div>
