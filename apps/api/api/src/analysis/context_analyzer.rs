@@ -26,7 +26,10 @@ pub struct ContextInsight {
     pub evidence: Value,
 }
 
-pub fn analyze_context(context_sources: &[ContextSource], final_prompt: &str) -> Vec<ContextInsight> {
+pub fn analyze_context(
+    context_sources: &[ContextSource],
+    final_prompt: &str,
+) -> Vec<ContextInsight> {
     if context_sources.is_empty() {
         return vec![ContextInsight {
             insight_type: "MISSING_CONTEXT".to_string(),
@@ -42,7 +45,10 @@ pub fn analyze_context(context_sources: &[ContextSource], final_prompt: &str) ->
     }
 
     let mut insights = Vec::new();
-    let total_context_chars = context_sources.iter().map(|source| source.content.chars().count()).sum::<usize>();
+    let total_context_chars = context_sources
+        .iter()
+        .map(|source| source.content.chars().count())
+        .sum::<usize>();
     let largest_source = context_sources
         .iter()
         .max_by_key(|source| source.content.chars().count());
@@ -163,7 +169,9 @@ pub fn final_prompt_to_text(value: Option<&Value>) -> String {
     }
 }
 
-fn find_redundant_pair(context_sources: &[ContextSource]) -> Option<(&ContextSource, &ContextSource, f64)> {
+fn find_redundant_pair(
+    context_sources: &[ContextSource],
+) -> Option<(&ContextSource, &ContextSource, f64)> {
     let mut best: Option<(&ContextSource, &ContextSource, f64)> = None;
     for left_index in 0..context_sources.len() {
         for right_index in (left_index + 1)..context_sources.len() {
@@ -228,18 +236,22 @@ mod tests {
             ContextSource {
                 name: "A".to_string(),
                 source_type: "file".to_string(),
-                content: "alpha beta gamma delta epsilon alpha beta gamma delta epsilon".to_string(),
+                content: "alpha beta gamma delta epsilon alpha beta gamma delta epsilon"
+                    .to_string(),
                 hash: "1".to_string(),
             },
             ContextSource {
                 name: "B".to_string(),
                 source_type: "file".to_string(),
-                content: "alpha beta gamma delta epsilon alpha beta gamma delta epsilon".to_string(),
+                content: "alpha beta gamma delta epsilon alpha beta gamma delta epsilon"
+                    .to_string(),
                 hash: "2".to_string(),
             },
         ];
         let insights = analyze_context(&sources, "ok");
-        assert!(insights.iter().any(|insight| insight.insight_type == "CONTEXT_REDUNDANCY"));
+        assert!(insights
+            .iter()
+            .any(|insight| insight.insight_type == "CONTEXT_REDUNDANCY"));
     }
 
     #[test]

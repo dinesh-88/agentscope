@@ -104,7 +104,7 @@ async fn computes_run_analysis_and_project_insights(pool: PgPool) {
                 evaluation: None,
                 metadata: None,
                 error: None,
-            step_transition: None,
+                step_transition: None,
             },
             Span {
                 id: tool_span_id.clone(),
