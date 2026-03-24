@@ -33,10 +33,10 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
     runDurationMs === null ? "running" : runDurationMs < 1000 ? `${Math.round(runDurationMs)}ms` : `${(runDurationMs / 1000).toFixed(1)}s`;
   const statusTone =
     run.status === "failed" || run.status === "error"
-      ? "border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300"
+      ? "border-red-500/30 bg-red-500/10 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-300"
       : run.status === "running"
-        ? "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:text-blue-300"
-        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+        ? "border-blue-500/30 bg-blue-500/10 text-blue-700 dark:border-blue-500/40 dark:bg-blue-500/15 dark:text-blue-300"
+        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-300";
   const latestModel =
     spans
       .slice()
@@ -59,16 +59,16 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
     (hasFailedSpan ? "Run failed with unknown cause in execution pipeline" : "Run completed successfully in orchestrator");
   const summaryTone =
     run.status === "failed" || run.status === "error"
-      ? "border-red-300 bg-red-50 text-red-700"
+      ? "border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200"
       : runSummary?.severity === "high" || runSummary?.severity === "medium"
-        ? "border-amber-300 bg-amber-50 text-amber-700"
-        : "border-emerald-300 bg-emerald-50 text-emerald-700";
+        ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200"
+        : "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200";
 
   return (
     <AppShell activePath="/runs">
       <section className="space-y-6 p-6 sm:p-8">
         <div className="space-y-4">
-          <Link href="/runs" className="inline-flex text-sm font-medium text-blue-600 hover:text-blue-700">
+          <Link href="/runs" className="inline-flex text-sm font-medium text-blue-600 hover:text-blue-700 dark:text-blue-300 dark:hover:text-blue-200">
             Back to runs
           </Link>
 

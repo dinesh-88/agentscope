@@ -136,6 +136,12 @@ export type RunInsight = {
   is_primary: boolean;
   message: string;
   recommendation: string;
+  fix_suggestions: {
+    title: string;
+    description: string;
+    action_type: "prompt" | "validation" | "retry" | "config" | string;
+    confidence: number;
+  }[];
   created_at: string;
   evidence: Record<string, unknown>;
   impact_score: number;

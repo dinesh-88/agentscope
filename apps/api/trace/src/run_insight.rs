@@ -3,6 +3,14 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::FromRow;
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FixSuggestion {
+    pub title: String,
+    pub description: String,
+    pub action_type: String,
+    pub confidence: f32,
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize, FromRow)]
 #[sqlx(default)]
 pub struct RunInsight {
@@ -19,4 +27,7 @@ pub struct RunInsight {
     pub evidence: Value,
     #[serde(default)]
     pub impact_score: f32,
+    #[serde(default)]
+    #[sqlx(default, json)]
+    pub fix_suggestions: Vec<FixSuggestion>,
 }

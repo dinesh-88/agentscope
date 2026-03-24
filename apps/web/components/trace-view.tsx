@@ -197,24 +197,13 @@ export function TraceView({
             const transition = span.stepTransition;
             const prevSpan = rows[index - 1] ?? null;
             const warningItems = compact((transition?.warnings ?? []).map(normalizeWarning));
-            const summaryItems = compact(
-              [
-                ...(transition?.tool_outputs_added?.length
-                  ? [`Tool output added (${transition.tool_outputs_added.length})`]
-                  : []),
-                typeof transition?.token_delta === "number" && transition.token_delta !== 0
-                  ? `Context ${transition.token_delta > 0 ? "+" : ""}${transition.token_delta} tokens`
-                  : "",
-                (transition?.messages_added ?? 0) > 0
-                  ? `${transition?.messages_added ?? 0} messages added`
-                  : "",
-                (transition?.messages_removed ?? 0) > 0
-                  ? `${transition?.messages_removed ?? 0} messages removed`
-                  : "",
-                transition?.instruction_changed ? "Instruction changed" : "",
-              ],
-              4,
-            );
+            const tokenDelta = transition?.token_delta ?? 0;
+            const summaryItems = compact([
+              `Token delta: ${tokenDelta > 0 ? "+" : ""}${tokenDelta}`,
+              `Tool outputs added: ${transition?.tool_outputs_added?.length ?? 0}`,
+              `Messages +${transition?.messages_added ?? 0} / -${transition?.messages_removed ?? 0}`,
+              transition?.instruction_changed ? "Instruction changed" : "Instruction unchanged",
+            ]);
             const SpanStatusIcon = statusIcon(span.status);
             const hasMeaningfulChanges =
               (transition?.token_delta ?? 0) !== 0 ||
@@ -229,6 +218,8 @@ export function TraceView({
                   <button
                     type="button"
                     onClick={() => onSpanSelect?.(span.id)}
+                    onMouseEnter={() => onSpanHover?.(span.id)}
+                    onMouseLeave={() => onSpanHover?.(null)}
                     className={cn(
                       "w-full space-y-2 rounded-lg border bg-neutral-50 p-3 text-left shadow-sm transition-all hover:-translate-y-[1px] hover:shadow",
                       transition?.likely_cause
@@ -250,7 +241,7 @@ export function TraceView({
                         {summaryItems.overflow > 0 ? <li className="text-neutral-500">+{summaryItems.overflow} more changes</li> : null}
                       </ul>
                     ) : (
-                      <p className="text-xs text-neutral-500">No significant changes</p>
+                      <p className="text-xs text-neutral-500">No significant changes, state stayed stable</p>
                     )}
                     {warningItems.shown.length > 0 ? (
                       <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
@@ -272,6 +263,7 @@ export function TraceView({
                 ) : null}
 
                 <div
+                  id={`span-${span.id}`}
                   ref={(node) => {
                     rowRefs.current.set(span.id, node);
                   }}

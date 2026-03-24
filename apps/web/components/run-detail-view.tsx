@@ -70,9 +70,9 @@ function parseChatMessages(payload: Record<string, unknown>) {
 }
 
 function roleBubbleTone(role: string) {
-  if (role === "system") return "bg-slate-100 text-slate-900 border-slate-200";
-  if (role === "assistant") return "bg-emerald-50 text-emerald-900 border-emerald-100";
-  return "bg-blue-50 text-blue-900 border-blue-100";
+  if (role === "system") return "border-slate-200 bg-slate-100 text-slate-900 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100";
+  if (role === "assistant") return "border-emerald-100 bg-emerald-50 text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-200";
+  return "border-blue-100 bg-blue-50 text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-200";
 }
 
 function buildTree(spans: Span[]): DecoratedSpan[] {
@@ -149,10 +149,17 @@ function parseInstructionSources(span: Span | null): InstructionSource[] {
     }));
 }
 
+function pickInstructionSource(
+  sources: InstructionSource[],
+  matcher: (source: InstructionSource) => boolean,
+): InstructionSource | null {
+  return sources.find(matcher) ?? null;
+}
+
 function statusTone(status: TraceSpan["status"]) {
-  if (status === "error") return "border-red-300 bg-red-50 text-red-700";
-  if (status === "running") return "border-amber-300 bg-amber-50 text-amber-700";
-  return "border-emerald-300 bg-emerald-50 text-emerald-700";
+  if (status === "error") return "border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200";
+  if (status === "running") return "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200";
+  return "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200";
 }
 
 export function RunDetailView({
@@ -361,7 +368,26 @@ export function RunDetailView({
       }) ?? insights[0] ?? null
     );
   }, [insights, selectedSpan]);
+  const primarySummaryInsight = useMemo(
+    () =>
+      insights.find((insight) => insight.insight_type === "RUN_SUMMARY" && insight.is_primary) ??
+      insights.find((insight) => insight.insight_type === "RUN_SUMMARY") ??
+      null,
+    [insights],
+  );
+  const fixSuggestions = useMemo(
+    () =>
+      (primarySummaryInsight?.fix_suggestions && primarySummaryInsight.fix_suggestions.length > 0
+        ? primarySummaryInsight.fix_suggestions
+        : selectedInsight?.fix_suggestions ?? []
+      ).slice(0, 3),
+    [primarySummaryInsight, selectedInsight],
+  );
   const insightSeverity = selectedInsight?.severity?.toLowerCase() ?? (selectedSpan?.status === "error" ? "high" : "low");
+  const selectedInsightEvidenceSpanId = useMemo(() => {
+    const value = selectedInsight?.evidence?.span_id ?? selectedInsight?.evidence?.spanId;
+    return typeof value === "string" ? value : null;
+  }, [selectedInsight?.evidence]);
 
   const whyFailedPoints = useMemo(() => {
     const points = [rootCause?.message, selectedInsight?.message, selectedSpan?.error_type]
@@ -421,7 +447,14 @@ export function RunDetailView({
   );
 
   const instructionSources = useMemo(() => parseInstructionSources(selectedSpan), [selectedSpan]);
-
+  const agentsSource = useMemo(
+    () => pickInstructionSource(instructionSources, (source) => /AGENTS\.md/i.test(source.name) || /AGENTS\.md/i.test(source.path)),
+    [instructionSources],
+  );
+  const claudeSource = useMemo(
+    () => pickInstructionSource(instructionSources, (source) => /CLAUDE\.md/i.test(source.name) || /CLAUDE\.md/i.test(source.path)),
+    [instructionSources],
+  );
   const contextSystemPrompt =
     selectedSpan?.context && typeof selectedSpan.context === "object" && typeof selectedSpan.context.system_prompt === "string"
       ? selectedSpan.context.system_prompt
@@ -431,14 +464,57 @@ export function RunDetailView({
     selectedSpan?.context && typeof selectedSpan.context === "object" && selectedSpan.context.variables && typeof selectedSpan.context.variables === "object"
       ? (selectedSpan.context.variables as Record<string, unknown>)
       : null;
+  const primaryFailingSpan = useMemo(() => ordered.find((span) => span.id === firstFailingSpanId) ?? null, [firstFailingSpanId, ordered]);
+  const rootCauseSentence = useMemo(() => {
+    const message =
+      rootCause?.message ??
+      primarySummaryInsight?.message ??
+      selectedInsight?.message ??
+      (primaryFailingSpan ? `${primaryFailingSpan.name} failed during execution` : "Run completed without a detected failure");
+    return message.endsWith(".") ? message : `${message}.`;
+  }, [primaryFailingSpan, primarySummaryInsight?.message, rootCause?.message, selectedInsight?.message]);
+
+  const jumpToSpan = (spanId: string | null) => {
+    if (!spanId) return;
+    setSelectedSpanId(spanId);
+    setHoveredSpanId(spanId);
+    const node = treeRefs.current.get(spanId);
+    if (node) {
+      node.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (typeof window !== "undefined") {
+      const el = document.getElementById(`span-${spanId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+  };
 
   return (
-    <section className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_380px]">
+    <section className="space-y-4">
+      <div className="sticky top-16 z-20 rounded-xl border border-red-300 bg-red-50/95 p-3 shadow-sm backdrop-blur dark:border-red-500/35 dark:bg-slate-900/95">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-red-700 dark:text-red-300">Run Summary</p>
+            <p className="mt-1 truncate text-sm font-medium text-red-900 dark:text-red-100">{rootCauseSentence}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => jumpToSpan(firstFailingSpanId)}
+            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:bg-slate-800 dark:text-red-200 dark:hover:bg-slate-700"
+          >
+            Jump to failing span
+          </button>
+        </div>
+      </div>
+
+      <div className="grid gap-4 xl:grid-cols-[260px_minmax(0,1fr)_380px]">
       <aside className="min-w-0">
-        <Card className="border border-black/8 bg-white shadow-sm">
+        <Card className="border border-black/8 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm">
-              <GitBranch className="size-4 text-neutral-700" />
+              <GitBranch className="size-4 text-neutral-700 dark:text-neutral-300" />
               Span Tree
             </CardTitle>
           </CardHeader>
@@ -463,19 +539,19 @@ export function RunDetailView({
                   className={cn(
                     "flex w-full items-center justify-between rounded-lg border px-2 py-2 text-left transition",
                     isSelected
-                      ? "border-blue-300 bg-blue-50"
+                      ? "border-blue-300 bg-blue-50 dark:border-blue-500/40 dark:bg-blue-500/15"
                       : isFailing
-                        ? "border-red-200 bg-red-50/50"
-                        : "border-black/10 bg-white hover:bg-neutral-50",
-                    isHovered && !isSelected ? "border-blue-200" : undefined,
+                        ? "border-red-200 bg-red-50/50 dark:border-red-500/40 dark:bg-red-500/10"
+                        : "border-black/10 bg-white hover:bg-neutral-50 dark:border-white/10 dark:bg-slate-900 dark:hover:bg-slate-800/70",
+                    isHovered && !isSelected ? "border-blue-200 dark:border-blue-500/40" : undefined,
                   )}
                   style={{ paddingLeft: `${span.level * 14 + 8}px` }}
                 >
                   <div className="min-w-0">
-                    <p className={cn("truncate text-sm", isFailing ? "font-semibold text-red-700" : "font-medium text-neutral-900")}>
+                    <p className={cn("truncate text-sm", isFailing ? "font-semibold text-red-700 dark:text-red-300" : "font-medium text-neutral-900 dark:text-neutral-100")}>
                       {span.name}
                     </p>
-                    <div className="mt-1 flex items-center gap-1 text-[11px] text-neutral-500">
+                    <div className="mt-1 flex items-center gap-1 text-[11px] text-neutral-500 dark:text-neutral-400">
                       <Icon className={cn("size-3", status === "running" ? "animate-spin" : undefined)} />
                       <span>{formatMs(durationMs(span.started_at, span.ended_at))}</span>
                     </div>
@@ -508,49 +584,88 @@ export function RunDetailView({
           id="insights-panel"
           data-testid="insights-panel"
           className={cn(
-            "border shadow-sm",
+            "sticky top-36 border shadow-sm",
             insightSeverity === "high"
-              ? "border-red-300 bg-red-50/40"
+              ? "border-red-300 bg-red-50/40 dark:border-red-500/35 dark:bg-red-500/10"
               : insightSeverity === "medium"
-                ? "border-amber-300 bg-amber-50/40"
-                : "border-emerald-300 bg-emerald-50/30",
+                ? "border-amber-300 bg-amber-50/40 dark:border-amber-500/35 dark:bg-amber-500/10"
+                : "border-emerald-300 bg-emerald-50/30 dark:border-emerald-500/35 dark:bg-emerald-500/10",
           )}
         >
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between gap-2">
               <CardTitle className="flex items-center gap-2 text-sm">
-                <Flame className="size-4 text-red-600" />
+                <Flame className="size-4 text-red-600 dark:text-red-300" />
                 Why this run failed
               </CardTitle>
-              <span className="inline-flex rounded border border-black/10 bg-white px-2 py-1 text-[11px] text-neutral-600">
+              <span className="inline-flex rounded border border-black/10 bg-white px-2 py-1 text-[11px] text-neutral-600 dark:border-white/15 dark:bg-slate-900 dark:text-neutral-300">
                 details
               </span>
             </div>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div>
-              <p className="font-semibold text-neutral-900">Findings</p>
-              <ul className="mt-1 space-y-1 text-neutral-700">
-                {whyFailedPoints.map((point) => (
-                  <li key={point} className="flex gap-2">
-                    <AlertTriangle className="mt-0.5 size-3 text-red-600" />
-                    <span>{point}</span>
-                  </li>
+            <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
+              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Cause</p>
+              <p className="mt-1 text-neutral-700 dark:text-neutral-300">{rootCause?.message ?? selectedInsight?.message ?? "No explicit cause detected."}</p>
+            </div>
+
+            <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
+              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Reasoning</p>
+              <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
+                {(selectedSpan?.step_transition?.cause_reason
+                  ? [selectedSpan.step_transition.cause_reason]
+                  : selectedInsight?.evidence?.reason && typeof selectedInsight.evidence.reason === "string"
+                    ? [selectedInsight.evidence.reason]
+                    : whyFailedPoints
+                ).slice(0, 3).map((point) => (
+                  <li key={point}>- {point}</li>
                 ))}
               </ul>
             </div>
+
+            <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
+              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Fix</p>
+              {fixSuggestions.length > 0 ? (
+                <div className="mt-2 space-y-2">
+                  {fixSuggestions.map((fix, index) => (
+                    <button
+                      key={`${fix.title}-${fix.action_type}`}
+                      type="button"
+                      onClick={() => jumpToSpan(selectedInsightEvidenceSpanId ?? selectedSpan?.id ?? firstFailingSpanId)}
+                      className={cn(
+                        "w-full rounded-md border p-2 text-left",
+                        index === 0
+                          ? "border-emerald-300 bg-emerald-50 dark:border-emerald-500/35 dark:bg-emerald-500/15 dark:text-emerald-100"
+                          : "border-black/10 bg-neutral-50 text-neutral-700 dark:border-white/10 dark:bg-slate-800/70 dark:text-neutral-300",
+                      )}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium">{fix.title}</p>
+                        <span className="rounded-full border border-black/15 bg-white px-2 py-0.5 text-[10px] uppercase text-neutral-600 dark:border-white/20 dark:bg-slate-900 dark:text-neutral-300">
+                          {fix.action_type}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs">{fix.description}</p>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">No actionable fixes generated yet.</p>
+              )}
+            </div>
+
             <div>
-              <p className="font-semibold text-neutral-900">Recommendation</p>
-              <ul className="mt-1 space-y-1 text-neutral-700">
-                {recommendationPoints.map((point) => (
+              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Impact</p>
+              <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
+                {(impactPoints.length > 0 ? impactPoints : ["No explicit impact metadata captured"]).map((point) => (
                   <li key={point}>- {point}</li>
                 ))}
               </ul>
             </div>
             <div>
-              <p className="font-semibold text-neutral-900">Impact</p>
-              <ul className="mt-1 space-y-1 text-neutral-700">
-                {(impactPoints.length > 0 ? impactPoints : ["No explicit impact metadata captured"]).map((point) => (
+              <p className="font-semibold text-neutral-900 dark:text-neutral-100">Next Action</p>
+              <ul className="mt-1 space-y-1 text-neutral-700 dark:text-neutral-300">
+                {recommendationPoints.map((point) => (
                   <li key={point}>- {point}</li>
                 ))}
               </ul>
@@ -558,7 +673,7 @@ export function RunDetailView({
           </CardContent>
         </Card>
 
-        <Card className="border border-black/8 bg-white shadow-sm">
+        <Card className="border border-black/8 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Span Details</CardTitle>
           </CardHeader>
@@ -566,21 +681,21 @@ export function RunDetailView({
             {selectedSpan ? (
               <>
                 <div className="grid grid-cols-3 gap-2 text-xs">
-                  <div className="rounded-lg bg-neutral-50 p-2">
-                    <p className="text-neutral-500">Tokens</p>
-                    <p className="font-medium text-neutral-900">{(selectedSpan.total_tokens ?? 0).toLocaleString()}</p>
+                  <div className="rounded-lg bg-neutral-50 p-2 dark:bg-slate-800">
+                    <p className="text-neutral-500 dark:text-neutral-400">Tokens</p>
+                    <p className="font-medium text-neutral-900 dark:text-neutral-100">{(selectedSpan.total_tokens ?? 0).toLocaleString()}</p>
                   </div>
-                  <div className="rounded-lg bg-neutral-50 p-2">
-                    <p className="text-neutral-500">Latency</p>
-                    <p className="font-medium text-neutral-900">{formatMs(durationMs(selectedSpan.started_at, selectedSpan.ended_at))}</p>
+                  <div className="rounded-lg bg-neutral-50 p-2 dark:bg-slate-800">
+                    <p className="text-neutral-500 dark:text-neutral-400">Latency</p>
+                    <p className="font-medium text-neutral-900 dark:text-neutral-100">{formatMs(durationMs(selectedSpan.started_at, selectedSpan.ended_at))}</p>
                   </div>
-                  <div className="rounded-lg bg-neutral-50 p-2">
-                    <p className="text-neutral-500">Status</p>
-                    <p className="font-medium text-neutral-900 capitalize">{selectedSpan.status}</p>
+                  <div className="rounded-lg bg-neutral-50 p-2 dark:bg-slate-800">
+                    <p className="text-neutral-500 dark:text-neutral-400">Status</p>
+                    <p className="font-medium text-neutral-900 capitalize dark:text-neutral-100">{selectedSpan.status}</p>
                   </div>
                 </div>
 
-                <div className="flex gap-2 rounded-lg border border-black/10 p-1">
+                <div className="flex gap-2 rounded-lg border border-black/10 p-1 dark:border-white/10">
                   {(["context", "output", "metadata"] as Tab[]).map((entry) => (
                     <button
                       key={entry}
@@ -588,7 +703,9 @@ export function RunDetailView({
                       onClick={() => setTab(entry)}
                       className={cn(
                         "rounded-md px-2 py-1 text-xs font-medium capitalize",
-                        tab === entry ? "bg-neutral-900 text-white" : "text-neutral-600 hover:bg-neutral-100",
+                        tab === entry
+                          ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                          : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-slate-800",
                       )}
                     >
                       {entry}
@@ -598,9 +715,9 @@ export function RunDetailView({
 
                 {tab === "context" ? (
                   <div className="space-y-3 text-sm">
-                    <div className="rounded-lg border border-black/10 p-3">
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Context</p>
-                      <p className="text-xs text-neutral-600">Prompt</p>
+                    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Context</p>
+                      <p className="text-xs text-neutral-600 dark:text-neutral-300">Prompt</p>
                       <div className="mt-1 space-y-1">
                         {previewPromptMessages.shown.length > 0 ? (
                           previewPromptMessages.shown.map((entry) => {
@@ -614,21 +731,21 @@ export function RunDetailView({
                             );
                           })
                         ) : (
-                          <p className="text-xs text-neutral-500">No prompt content captured.</p>
+                          <p className="text-xs text-neutral-500 dark:text-neutral-400">No prompt content captured.</p>
                         )}
-                        {previewPromptMessages.overflow > 0 ? <p className="text-xs text-neutral-500">+{previewPromptMessages.overflow} more messages</p> : null}
+                        {previewPromptMessages.overflow > 0 ? <p className="text-xs text-neutral-500 dark:text-neutral-400">+{previewPromptMessages.overflow} more messages</p> : null}
                       </div>
                     </div>
 
-                    <div className="rounded-lg border border-black/10 p-3">
-                      <p className="text-xs text-neutral-600">System prompt</p>
-                      <p className="mt-1 line-clamp-4 text-xs text-neutral-800">{contextSystemPrompt}</p>
+                    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                      <p className="text-xs text-neutral-600 dark:text-neutral-300">System prompt</p>
+                      <p className="mt-1 line-clamp-4 text-xs text-neutral-800 dark:text-neutral-200">{contextSystemPrompt}</p>
                     </div>
 
-                    <div className="rounded-lg border border-black/10 p-3">
-                      <p className="text-xs text-neutral-600">Variables</p>
+                    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                      <p className="text-xs text-neutral-600 dark:text-neutral-300">Variables</p>
                       {contextVariables && Object.keys(contextVariables).length > 0 ? (
-                        <div className="mt-1 space-y-1 text-xs text-neutral-700">
+                        <div className="mt-1 space-y-1 text-xs text-neutral-700 dark:text-neutral-300">
                           {Object.entries(contextVariables)
                             .slice(0, 4)
                             .map(([key, value]) => (
@@ -638,7 +755,7 @@ export function RunDetailView({
                             ))}
                         </div>
                       ) : (
-                        <p className="mt-1 text-xs text-neutral-500">No variables captured.</p>
+                        <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">No variables captured.</p>
                       )}
                     </div>
                   </div>
@@ -646,27 +763,27 @@ export function RunDetailView({
 
                 {tab === "output" ? (
                   <div className="space-y-3 text-sm">
-                    <div className="rounded-lg border border-black/10 p-3">
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Output</p>
+                    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Output</p>
                       {outputSummaries.shown.length > 0 ? (
-                        <ul className="space-y-1 text-xs text-neutral-700">
+                        <ul className="space-y-1 text-xs text-neutral-700 dark:text-neutral-300">
                           {outputSummaries.shown.map((item) => (
                             <li key={item} className="truncate">{item}</li>
                           ))}
                         </ul>
                       ) : (
-                        <p className="text-xs text-neutral-500">No tool/response outputs attached to this span.</p>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400">No tool/response outputs attached to this span.</p>
                       )}
-                      {outputSummaries.overflow > 0 ? <p className="mt-1 text-xs text-neutral-500">+{outputSummaries.overflow} more outputs</p> : null}
+                      {outputSummaries.overflow > 0 ? <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">+{outputSummaries.overflow} more outputs</p> : null}
                     </div>
 
-                    <div className="rounded-lg border border-black/10 p-3">
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Signals</p>
+                    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Signals</p>
                       <div className="grid grid-cols-2 gap-2 text-xs">
-                        <div className="rounded bg-neutral-50 p-2">Tokens: {(selectedSpan.total_tokens ?? 0).toLocaleString()}</div>
-                        <div className="rounded bg-neutral-50 p-2">Latency: {formatMs(durationMs(selectedSpan.started_at, selectedSpan.ended_at))}</div>
-                        <div className="rounded bg-neutral-50 p-2">Errors: {selectedSpan.error_type ?? "none"}</div>
-                        <div className="rounded bg-neutral-50 p-2">Tool latency: {typeof selectedSpan.tool_latency_ms === "number" ? `${selectedSpan.tool_latency_ms.toFixed(0)}ms` : "n/a"}</div>
+                        <div className="rounded bg-neutral-50 p-2 dark:bg-slate-800">Tokens: {(selectedSpan.total_tokens ?? 0).toLocaleString()}</div>
+                        <div className="rounded bg-neutral-50 p-2 dark:bg-slate-800">Latency: {formatMs(durationMs(selectedSpan.started_at, selectedSpan.ended_at))}</div>
+                        <div className="rounded bg-neutral-50 p-2 dark:bg-slate-800">Errors: {selectedSpan.error_type ?? "none"}</div>
+                        <div className="rounded bg-neutral-50 p-2 dark:bg-slate-800">Tool latency: {typeof selectedSpan.tool_latency_ms === "number" ? `${selectedSpan.tool_latency_ms.toFixed(0)}ms` : "n/a"}</div>
                       </div>
                     </div>
                   </div>
@@ -674,29 +791,29 @@ export function RunDetailView({
 
                 {tab === "metadata" ? (
                   <div className="space-y-3 text-sm">
-                    <div className="rounded-lg border border-black/10 p-3">
-                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500">Metadata</p>
+                    <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                      <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Metadata</p>
                       {compactMetadata.shown.length > 0 ? (
-                        <ul className="space-y-1 text-xs text-neutral-700">
+                        <ul className="space-y-1 text-xs text-neutral-700 dark:text-neutral-300">
                           {compactMetadata.shown.map((item) => (
                             <li key={item} className="truncate">{item}</li>
                           ))}
                         </ul>
                       ) : (
-                        <p className="text-xs text-neutral-500">No metadata captured.</p>
+                        <p className="text-xs text-neutral-500 dark:text-neutral-400">No metadata captured.</p>
                       )}
-                      {compactMetadata.overflow > 0 ? <p className="mt-1 text-xs text-neutral-500">+{compactMetadata.overflow} more fields</p> : null}
+                      {compactMetadata.overflow > 0 ? <p className="mt-1 text-xs text-neutral-500 dark:text-neutral-400">+{compactMetadata.overflow} more fields</p> : null}
                     </div>
 
-                    <details className="rounded-lg border border-black/10 p-3">
-                      <summary className="cursor-pointer text-xs font-medium text-neutral-700">Show raw metadata JSON</summary>
+                    <details className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                      <summary className="cursor-pointer text-xs font-medium text-neutral-700 dark:text-neutral-300">Show raw metadata JSON</summary>
                       <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded bg-neutral-950 p-2 text-[11px] text-neutral-100">
                         {JSON.stringify(selectedSpan.metadata ?? {}, null, 2)}
                       </pre>
                     </details>
 
-                    <details className="rounded-lg border border-black/10 p-3">
-                      <summary className="cursor-pointer text-xs font-medium text-neutral-700">Show raw response JSON</summary>
+                    <details className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+                      <summary className="cursor-pointer text-xs font-medium text-neutral-700 dark:text-neutral-300">Show raw response JSON</summary>
                       <pre className="mt-2 max-h-52 overflow-auto whitespace-pre-wrap break-words rounded bg-neutral-950 p-2 text-[11px] text-neutral-100">
                         {JSON.stringify(responseArtifact?.payload ?? {}, null, 2)}
                       </pre>
@@ -705,55 +822,59 @@ export function RunDetailView({
                 ) : null}
               </>
             ) : (
-              <p className="text-sm text-neutral-500">No spans found for this run.</p>
+              <p className="text-sm text-neutral-500 dark:text-neutral-400">No spans found for this run.</p>
             )}
           </CardContent>
         </Card>
 
-        <Card className="border border-black/8 bg-white shadow-sm">
+        <Card className="border border-black/8 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">Instruction Context</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm">
-            <div className="rounded-lg border border-black/10 p-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">Precedence</p>
-              <ol className="mt-2 space-y-1 text-xs text-neutral-700">
+            <div className="rounded-lg border border-black/10 p-3 dark:border-white/10">
+              <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500 dark:text-neutral-400">Precedence</p>
+              <ol className="mt-2 space-y-1 text-xs text-neutral-700 dark:text-neutral-300">
                 <li>1. system prompt</li>
                 <li>2. AGENTS.md</li>
                 <li>3. CLAUDE.md</li>
               </ol>
             </div>
 
-            <div className="space-y-2">
-              <div className="rounded-lg border border-black/10 p-3 text-xs">
-                <p className="font-semibold text-neutral-700">Global</p>
-                <p className="mt-1 text-neutral-600">CLAUDE.md</p>
-              </div>
-              <div className="rounded-lg border border-black/10 p-3 text-xs">
-                <p className="font-semibold text-neutral-700">Local</p>
-                <p className="mt-1 text-neutral-600">AGENTS.md</p>
-              </div>
-              <div className="rounded-lg border border-black/10 p-3 text-xs">
-                <p className="font-semibold text-neutral-700">Runtime</p>
-                <p className="mt-1 line-clamp-3 text-neutral-600">{contextSystemPrompt}</p>
+                <div className="space-y-2">
+                  <div className="rounded-lg border border-black/10 p-3 text-xs dark:border-white/10">
+                    <p className="font-semibold text-neutral-700 dark:text-neutral-200">Global</p>
+                    <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+                      CLAUDE.md {claudeSource ? "captured" : "not captured"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-black/10 p-3 text-xs dark:border-white/10">
+                    <p className="font-semibold text-neutral-700 dark:text-neutral-200">Local</p>
+                    <p className="mt-1 text-neutral-600 dark:text-neutral-400">
+                      AGENTS.md {agentsSource ? "captured" : "not captured"}
+                    </p>
+                  </div>
+                  <div className="rounded-lg border border-black/10 p-3 text-xs dark:border-white/10">
+                    <p className="font-semibold text-neutral-700 dark:text-neutral-200">Runtime</p>
+                <p className="mt-1 line-clamp-3 text-neutral-600 dark:text-neutral-400">{contextSystemPrompt}</p>
               </div>
             </div>
 
             <div className="space-y-2">
               {instructionSources.length > 0 ? (
                 instructionSources.map((source, index) => (
-                  <details key={`${source.name}-${index}`} className="rounded-lg border border-black/10 p-3 text-xs">
-                    <summary className="cursor-pointer font-medium text-neutral-700">
+                  <details key={`${source.name}-${index}`} className="rounded-lg border border-black/10 p-3 text-xs dark:border-white/10">
+                    <summary className="cursor-pointer font-medium text-neutral-700 dark:text-neutral-200">
                       {source.name} ({source.type})
                     </summary>
-                    <p className="mt-1 text-neutral-500">{source.path}</p>
+                    <p className="mt-1 text-neutral-500 dark:text-neutral-400">{source.path}</p>
                     <pre className="mt-2 max-h-44 overflow-auto whitespace-pre-wrap break-words rounded bg-neutral-950 p-2 text-[11px] text-neutral-100">
                       {source.content}
                     </pre>
                   </details>
                 ))
               ) : (
-                <p className="text-xs text-neutral-500">No instruction source payload captured for this span.</p>
+                <p className="text-xs text-neutral-500 dark:text-neutral-400">No instruction source payload captured for this span.</p>
               )}
             </div>
           </CardContent>
@@ -761,6 +882,7 @@ export function RunDetailView({
 
         <ReplayPanel runId={run.id} selectedArtifacts={selectedArtifacts} selectedSpanId={selectedSpan?.id ?? null} />
       </aside>
+      </div>
     </section>
   );
 }

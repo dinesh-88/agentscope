@@ -24,7 +24,7 @@ pub use project_insight::ProjectInsight;
 pub use run::Run;
 pub use run_analysis::RunAnalysis;
 pub use run_explanation::RunExplanation;
-pub use run_insight::RunInsight;
+pub use run_insight::{FixSuggestion, RunInsight};
 pub use run_replay::RunReplay;
 pub use run_root_cause::RunRootCause;
 pub use search::{ArtifactSearchResponse, ArtifactSearchResult};

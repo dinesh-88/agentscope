@@ -3,7 +3,9 @@ use std::hash::{Hash, Hasher};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::Storage;
-use agentscope_trace::{Artifact, Run, RunInsight, RunRootCause, Span};
+use agentscope_trace::{
+    Artifact, FixSuggestion, Run, RunInsight, RunRootCause, Span, StepTransition,
+};
 use chrono::Utc;
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -14,6 +16,7 @@ use crate::analysis::{
         analyze_context, extract_context_data, final_prompt_to_text, parse_context_sources,
     },
     detectors::{detect_failure_types, estimate_context_window, Detection},
+    step_transition::build_step_transitions_with_causes,
 };
 
 const RECENT_RUN_LIMIT: i64 = 50;
@@ -39,6 +42,7 @@ pub async fn analyze_run(
     let root_causes = storage.get_run_root_causes(run_id).await?;
 
     let detections = detect_failure_types(&spans, &artifacts);
+    let transitions = build_step_transitions_with_causes(&spans, &artifacts, &detections);
     let classification = classify_root_cause(&detections);
 
     let recent_runs = get_recent_runs(storage, &run.project_id, RECENT_RUN_LIMIT).await?;
@@ -69,6 +73,7 @@ pub async fn analyze_run(
             recommendation: root_cause.suggested_fix.clone(),
             created_at: Utc::now(),
             evidence: root_cause.evidence.clone(),
+            fix_suggestions: Vec::new(),
             impact_score: 0.0,
         });
     }
@@ -111,15 +116,18 @@ pub async fn analyze_run(
                 .to_string(),
             created_at: Utc::now(),
             evidence: json!({}),
+            fix_suggestions: Vec::new(),
             impact_score: 0.0,
         });
     }
 
+    let fix_suggestions = generate_fix_suggestions(&detections, &transitions, &spans);
     insights.push(generate_run_summary(
         &run,
         &spans,
         &detections,
         &root_causes,
+        fix_suggestions,
     ));
 
     for insight in &mut insights {
@@ -166,6 +174,7 @@ pub fn build_detection_insight(
             "affected_spans": detection.affected_spans,
             "evidence": detection.evidence
         }),
+        fix_suggestions: Vec::new(),
         impact_score: 0.0,
     }
 }
@@ -191,6 +200,7 @@ pub fn build_root_cause_insight(run_id: &str, root_cause: &Classification) -> Ru
             "suggested_fixes": root_cause.suggested_fixes,
             "evidence": root_cause.evidence
         }),
+        fix_suggestions: Vec::new(),
         impact_score: 0.0,
     }
 }
@@ -212,6 +222,7 @@ pub fn build_run_failure_insight(run: &Run) -> RunInsight {
             "started_at": run.started_at,
             "ended_at": run.ended_at
         }),
+        fix_suggestions: Vec::new(),
         impact_score: 0.0,
     }
 }
@@ -221,6 +232,7 @@ pub fn generate_run_summary(
     spans: &[Span],
     detections: &[Detection],
     root_causes: &[RunRootCause],
+    fix_suggestions: Vec<FixSuggestion>,
 ) -> RunInsight {
     let is_failed = matches!(run.status.as_str(), "failed" | "error");
     let severity = if is_failed { "high" } else { "medium" };
@@ -265,6 +277,7 @@ pub fn generate_run_summary(
             "source": "summary_generator"
         }),
         impact_score: 1.0,
+        fix_suggestions,
     }
 }
 
@@ -400,6 +413,168 @@ fn clamp_summary(text: &str) -> String {
     line.chars().take(RUN_SUMMARY_MAX_LEN).collect()
 }
 
+pub fn generate_fix_suggestions(
+    detections: &[Detection],
+    transitions: &HashMap<String, StepTransition>,
+    spans: &[Span],
+) -> Vec<FixSuggestion> {
+    let mut by_key = HashMap::<String, (FixSuggestion, i32)>::new();
+    let has_instruction_context = spans
+        .iter()
+        .any(|span| span.instruction_context.as_ref().is_some());
+
+    for detection in detections {
+        let mut candidate: Option<(FixSuggestion, i32)> = None;
+        match detection.failure_type {
+            "SCHEMA_VALIDATION_ERROR" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Add JSON schema validation".to_string(),
+                        description: "Validate tool output before passing to the next LLM call"
+                            .to_string(),
+                        action_type: "validation".to_string(),
+                        confidence: 0.9,
+                    },
+                    3,
+                ));
+            }
+            "TOOL_FAILURE" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Add retry logic for tool calls".to_string(),
+                        description:
+                            "Retry tool execution with exponential backoff for transient errors"
+                                .to_string(),
+                        action_type: "retry".to_string(),
+                        confidence: 0.85,
+                    },
+                    2,
+                ));
+            }
+            "TIMEOUT" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Reduce latency or add timeout handling".to_string(),
+                        description: "Shorten prompt or add timeout + retry strategy".to_string(),
+                        action_type: "config".to_string(),
+                        confidence: 0.8,
+                    },
+                    2,
+                ));
+            }
+            "TOKEN_OVERFLOW" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Reduce context size".to_string(),
+                        description:
+                            "Trim messages or summarize previous steps before sending to model"
+                                .to_string(),
+                        action_type: "prompt".to_string(),
+                        confidence: 0.9,
+                    },
+                    3,
+                ));
+            }
+            "MISSING_OUTPUT_CONSTRAINT" | "INSTRUCTION_DRIFT" | "INSTRUCTION_CONFLICT" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Add explicit output constraints".to_string(),
+                        description: "Specify output format (e.g. JSON schema) in system prompt"
+                            .to_string(),
+                        action_type: "prompt".to_string(),
+                        confidence: 0.85,
+                    },
+                    2,
+                ));
+            }
+            "TRANSITION_CAUSE" => {
+                let caused_by_tool_output = transitions.values().any(|transition| {
+                    transition.likely_cause
+                        && !transition.tool_outputs_added.is_empty()
+                        && transition
+                            .cause_reason
+                            .as_deref()
+                            .unwrap_or_default()
+                            .to_lowercase()
+                            .contains("tool output")
+                });
+                if caused_by_tool_output {
+                    candidate = Some((
+                        FixSuggestion {
+                            title: "Validate tool output before reuse".to_string(),
+                            description:
+                                "Ensure tool responses are sanitized before injecting into context"
+                                    .to_string(),
+                            action_type: "validation".to_string(),
+                            confidence: 0.9,
+                        },
+                        3,
+                    ));
+                }
+            }
+            _ => {}
+        }
+
+        if let Some((fix, severity_rank)) = candidate {
+            merge_fix_candidate(&mut by_key, fix, severity_rank);
+        }
+    }
+
+    if by_key.is_empty() && has_instruction_context {
+        merge_fix_candidate(
+            &mut by_key,
+            FixSuggestion {
+                title: "Add explicit output constraints".to_string(),
+                description: "Specify output format (e.g. JSON schema) in system prompt"
+                    .to_string(),
+                action_type: "prompt".to_string(),
+                confidence: 0.75,
+            },
+            1,
+        );
+    }
+
+    let mut suggestions = by_key.into_values().collect::<Vec<_>>();
+    suggestions.sort_by(|(left, left_sev), (right, right_sev)| {
+        right
+            .confidence
+            .total_cmp(&left.confidence)
+            .then_with(|| right_sev.cmp(left_sev))
+            .then_with(|| left.title.cmp(&right.title))
+    });
+
+    suggestions
+        .into_iter()
+        .map(|(suggestion, _)| suggestion)
+        .take(3)
+        .collect()
+}
+
+fn merge_fix_candidate(
+    by_key: &mut HashMap<String, (FixSuggestion, i32)>,
+    candidate: FixSuggestion,
+    severity_rank: i32,
+) {
+    let key = format!(
+        "{}::{}",
+        candidate.action_type.to_lowercase(),
+        candidate.title.to_lowercase()
+    );
+    match by_key.get_mut(&key) {
+        Some((current, current_severity)) => {
+            if candidate.confidence > current.confidence {
+                *current = candidate;
+            }
+            if severity_rank > *current_severity {
+                *current_severity = severity_rank;
+            }
+        }
+        None => {
+            by_key.insert(key, (candidate, severity_rank));
+        }
+    }
+}
+
 pub fn build_latency_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight> {
     if spans.is_empty() {
         return None;
@@ -445,6 +620,7 @@ pub fn build_latency_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight>
             "p95_latency_ms": p95_latency,
             "sample_size": latencies.len()
         }),
+        fix_suggestions: Vec::new(),
         impact_score: 0.0,
     })
 }
@@ -488,6 +664,7 @@ pub fn build_cost_insight(run: &Run, baseline_cost: f32) -> Option<RunInsight> {
                 Value::Null
             }
         }),
+        fix_suggestions: Vec::new(),
         impact_score: 0.0,
     })
 }
@@ -535,6 +712,7 @@ pub fn build_retry_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight> {
             "retry_rate": retry_rate,
             "affected_spans": retry_spans.iter().map(|span| span.id.clone()).collect::<Vec<_>>()
         }),
+        fix_suggestions: Vec::new(),
         impact_score: 0.0,
     })
 }
@@ -575,6 +753,7 @@ pub fn build_prompt_size_insight(run_id: &str, spans: &[Span]) -> Option<RunInsi
             "input_tokens": input_tokens,
             "estimated_context_window": context_window
         }),
+        fix_suggestions: Vec::new(),
         impact_score: 0.0,
     })
 }
@@ -622,6 +801,7 @@ pub fn build_prompt_regression_insight(run_id: &str, spans: &[Span]) -> Vec<RunI
                 "avg_latency_ms": avg_latency,
                 "span_ids": prompt_spans.iter().map(|span| span.id.clone()).collect::<Vec<_>>()
             }),
+            fix_suggestions: Vec::new(),
             impact_score: 0.0,
         });
     }
@@ -790,6 +970,7 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                     recommendation: insight.recommendation,
                     created_at: Utc::now(),
                     evidence: insight.evidence,
+                    fix_suggestions: Vec::new(),
                     impact_score: 0.0,
                 },
             );
@@ -823,6 +1004,7 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                         "final_prompt_chars": final_prompt_text.chars().count(),
                         "details": insight.evidence
                     }),
+                    fix_suggestions: Vec::new(),
                     impact_score: 0.0,
                 };
                 match by_type.get(&key) {
@@ -872,6 +1054,7 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
                     "context_tokens": span.context_tokens,
                     "context_window": span.context_window
                 }),
+                fix_suggestions: Vec::new(),
                 impact_score: 0.0,
             });
         }
@@ -903,6 +1086,7 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
                 "context_tokens": span.context_tokens,
                 "context_usage_percent": span.context_usage_percent
             }),
+            fix_suggestions: Vec::new(),
             impact_score: 0.0,
         });
     }
@@ -950,6 +1134,7 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
                 "context_usage_percent": span.context_usage_percent,
                 "context_tokens": span.context_tokens
             }),
+            fix_suggestions: Vec::new(),
             impact_score: 0.0,
         });
     }
@@ -989,6 +1174,7 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
                 "llm_spans": llm_spans.len(),
                 "spans_with_instruction_sources": spans_with_sources
             }),
+            fix_suggestions: Vec::new(),
             impact_score: 0.0,
         });
     }
@@ -1047,6 +1233,7 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
                 "span_id": span.id,
                 "conflicted_sources": conflicted
             }),
+            fix_suggestions: Vec::new(),
             impact_score: 0.0,
         });
     }
@@ -1098,6 +1285,7 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
                 "unique_instruction_signatures": unique_signatures.len(),
                 "span_signatures": instruction_signatures
             }),
+            fix_suggestions: Vec::new(),
             impact_score: 0.0,
         });
     }
