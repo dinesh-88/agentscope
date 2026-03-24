@@ -2,7 +2,9 @@ use agentscope_trace::{Artifact, Span};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
-use crate::analysis::step_transition::{build_step_transitions, is_meaningful_transition};
+use crate::analysis::step_transition::{
+    build_step_transitions, build_step_transitions_with_causes, is_meaningful_transition,
+};
 
 #[derive(Debug, Clone)]
 pub struct Detection {
@@ -44,9 +46,88 @@ pub fn detect_failure_types(spans: &[Span], artifacts: &[Artifact]) -> Vec<Detec
     if let Some(detection) = detect_step_transition_issue(spans, artifacts) {
         detections.push(detection);
     }
+    if let Some(detection) = detect_transition_cause(spans, artifacts, &detections) {
+        detections.push(detection);
+    }
 
     detections.sort_by(|left, right| right.confidence.total_cmp(&left.confidence));
     detections
+}
+
+fn detect_transition_cause(
+    spans: &[Span],
+    artifacts: &[Artifact],
+    detections: &[Detection],
+) -> Option<Detection> {
+    let mut ordered = spans.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|span| span.started_at);
+
+    if ordered.len() < 2 {
+        return None;
+    }
+
+    let by_span = build_step_transitions_with_causes(spans, artifacts, detections);
+    let mut affected_spans = Vec::<String>::new();
+    let mut transition_evidence = Vec::<Value>::new();
+    let mut max_confidence = 0.0_f32;
+    let mut primary_reason: Option<String> = None;
+
+    for index in 1..ordered.len() {
+        let current = ordered[index];
+        let failed =
+            matches!(current.status.as_str(), "failed" | "error") || current.success == Some(false);
+        if !failed {
+            continue;
+        }
+
+        let Some(transition) = by_span.get(&current.id) else {
+            continue;
+        };
+        if !transition.likely_cause {
+            continue;
+        }
+
+        affected_spans.push(current.id.clone());
+        max_confidence = max_confidence.max(transition.cause_confidence);
+        if primary_reason.is_none() {
+            primary_reason = transition.cause_reason.clone();
+        }
+        transition_evidence.push(json!({
+            "span_id": current.id,
+            "previous_span_id": ordered[index - 1].id,
+            "token_delta": transition.token_delta,
+            "tool_outputs_added": transition.tool_outputs_added,
+            "instruction_changed": transition.instruction_changed,
+            "cause_confidence": transition.cause_confidence,
+            "cause_reason": transition.cause_reason
+        }));
+    }
+
+    if affected_spans.is_empty() {
+        return None;
+    }
+
+    let reason = primary_reason.unwrap_or_else(|| {
+        "Failure likely caused by context introduced in previous step".to_string()
+    });
+    let summary = if reason == "Tool output introduced invalid JSON into context" {
+        "Invalid JSON caused by tool output added in previous step".to_string()
+    } else if reason == "Context growth caused model limit overflow" {
+        "Token overflow caused by context growth in previous step".to_string()
+    } else {
+        format!("Failure likely caused by previous step change: {reason}")
+    };
+
+    Some(Detection {
+        failure_type: "TRANSITION_CAUSE",
+        confidence: max_confidence as f64,
+        summary,
+        span_count: affected_spans.len(),
+        affected_spans,
+        evidence: json!({
+            "transitions": transition_evidence
+        }),
+    })
 }
 
 fn detect_step_transition_issue(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
@@ -63,7 +144,8 @@ fn detect_step_transition_issue(spans: &[Span], artifacts: &[Artifact]) -> Optio
 
     for index in 1..ordered.len() {
         let current = ordered[index];
-        let failed = matches!(current.status.as_str(), "failed" | "error") || current.success == Some(false);
+        let failed =
+            matches!(current.status.as_str(), "failed" | "error") || current.success == Some(false);
         if !failed {
             continue;
         }
@@ -174,7 +256,8 @@ fn detect_missing_output_constraint(spans: &[Span], artifacts: &[Artifact]) -> O
     Some(Detection {
         failure_type: "MISSING_OUTPUT_CONSTRAINT",
         confidence: 0.83,
-        summary: "LLM spans failed without explicit output-format constraints in instructions.".to_string(),
+        summary: "LLM spans failed without explicit output-format constraints in instructions."
+            .to_string(),
         span_count: affected.len(),
         affected_spans: affected.clone(),
         evidence: json!({
@@ -459,7 +542,10 @@ fn instruction_signature(span: &Span) -> Option<String> {
         .iter()
         .filter_map(|source| {
             let object = source.as_object()?;
-            let source_type = object.get("type").and_then(Value::as_str).unwrap_or("unknown");
+            let source_type = object
+                .get("type")
+                .and_then(Value::as_str)
+                .unwrap_or("unknown");
             let path = object.get("path").and_then(Value::as_str).unwrap_or("-");
             let hash = object.get("hash").and_then(Value::as_str).unwrap_or("-");
             Some(format!("{source_type}:{path}:{hash}"))
@@ -488,9 +574,16 @@ fn has_output_constraint(span: &Span) -> bool {
         .join("\n")
         .to_lowercase();
 
-    ["json", "schema", "format", "must output", "respond with", "structured"]
-        .iter()
-        .any(|needle| combined.contains(needle))
+    [
+        "json",
+        "schema",
+        "format",
+        "must output",
+        "respond with",
+        "structured",
+    ]
+    .iter()
+    .any(|needle| combined.contains(needle))
 }
 
 fn stringify_json(value: &Value) -> String {

@@ -19,12 +19,20 @@ export type TraceSpan = {
   latencyMs: number;
   contextUsagePercent?: number | null;
   stepTransition?: {
+    from_span_id: string;
+    to_span_id: string;
+    messages_added: number;
+    messages_removed: number;
     added_messages: string[];
     removed_messages: string[];
     token_delta: number;
     tool_outputs_added: string[];
+    instruction_changed: boolean;
     instruction_changes: string[];
     warnings: string[];
+    likely_cause: boolean;
+    cause_confidence: number;
+    cause_reason?: string | null;
   } | null;
   rca?: {
     summary: string;
@@ -66,9 +74,6 @@ function compact(values: string[], maxItems: number = 4) {
 }
 
 function normalizeWarning(value: string) {
-  if (value === "context_size_high") return "Context nearing limit";
-  if (value === "context_truncated") return "Context was truncated";
-  if (value === "missing_validation") return "No validation before next step";
   return value;
 }
 
@@ -189,72 +194,62 @@ export function TraceView({
             const isHovered = hoveredSpanId === span.id;
             const transition = span.stepTransition;
             const prevSpan = rows[index - 1] ?? null;
-            const addedItems = compact([...(transition?.tool_outputs_added ?? []), ...(transition?.added_messages ?? [])]);
-            const removedItems = compact(transition?.removed_messages ?? []);
             const warningItems = compact((transition?.warnings ?? []).map(normalizeWarning));
-            const instructionItems = compact(transition?.instruction_changes ?? []);
+            const summaryItems = compact(
+              [
+                ...(transition?.tool_outputs_added?.length
+                  ? [`Tool output added (${transition.tool_outputs_added.length})`]
+                  : []),
+                typeof transition?.token_delta === "number" && transition.token_delta !== 0
+                  ? `Context ${transition.token_delta > 0 ? "+" : ""}${transition.token_delta} tokens`
+                  : "",
+                (transition?.messages_added ?? 0) > 0
+                  ? `${transition?.messages_added ?? 0} messages added`
+                  : "",
+                (transition?.messages_removed ?? 0) > 0
+                  ? `${transition?.messages_removed ?? 0} messages removed`
+                  : "",
+                transition?.instruction_changed ? "Instruction changed" : "",
+              ],
+              4,
+            );
             const SpanStatusIcon = statusIcon(span.status);
+            const hasMeaningfulChanges =
+              (transition?.token_delta ?? 0) !== 0 ||
+              (transition?.messages_added ?? 0) > 0 ||
+              (transition?.messages_removed ?? 0) > 0 ||
+              (transition?.tool_outputs_added?.length ?? 0) > 0 ||
+              Boolean(transition?.instruction_changed);
 
             return (
               <div key={span.id} className="space-y-2">
                 {index > 0 ? (
-                  <div className="space-y-1 rounded-lg border border-black/10 bg-neutral-50 p-3 transition-shadow hover:shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => onSpanSelect?.(span.id)}
+                    className={cn(
+                      "w-full space-y-2 rounded-lg border bg-neutral-50 p-3 text-left shadow-sm transition-all hover:-translate-y-[1px] hover:shadow",
+                      transition?.likely_cause
+                        ? "border-l-4 border-red-400 border-red-200 bg-red-50/40"
+                        : "border-black/10",
+                    )}
+                  >
                     <div className="text-xs text-neutral-500">
                       <span className="font-medium text-neutral-700">{prevSpan?.name}</span>
                       <ArrowDown className="mx-1 inline size-3 align-middle text-neutral-400" />
                       <span className="font-medium text-neutral-700">{span.name}</span>
                     </div>
                     <p className="text-sm font-semibold text-neutral-900">Changes after this step</p>
-                    <div className="grid gap-2 text-xs text-neutral-700 sm:grid-cols-2">
-                      <div className="rounded-md bg-white p-2">
-                        <p className="font-medium text-emerald-700">+ Added</p>
-                        {addedItems.shown.length > 0 ? (
-                          <ul className="mt-1 space-y-1">
-                            {addedItems.shown.map((item) => (
-                              <li key={item} className="truncate">{item}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="mt-1 text-neutral-500">No additions</p>
-                        )}
-                        {addedItems.overflow > 0 ? (
-                          <details className="mt-1 text-neutral-500">
-                            <summary className="cursor-pointer">+{addedItems.overflow} more</summary>
-                          </details>
-                        ) : null}
-                      </div>
-                      <div className="rounded-md bg-white p-2">
-                        <p className="font-medium text-red-700">- Removed</p>
-                        {removedItems.shown.length > 0 ? (
-                          <ul className="mt-1 space-y-1">
-                            {removedItems.shown.map((item) => (
-                              <li key={item} className="truncate">{item}</li>
-                            ))}
-                          </ul>
-                        ) : (
-                          <p className="mt-1 text-neutral-500">No removals</p>
-                        )}
-                        {removedItems.overflow > 0 ? (
-                          <details className="mt-1 text-neutral-500">
-                            <summary className="cursor-pointer">+{removedItems.overflow} more</summary>
-                          </details>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
-                      <span className="rounded bg-white px-2 py-1">Token delta: {(transition?.token_delta ?? 0) >= 0 ? "+" : ""}{transition?.token_delta ?? 0}</span>
-                      <span className="rounded bg-white px-2 py-1">Context usage: {typeof span.contextUsagePercent === "number" ? `${span.contextUsagePercent.toFixed(0)}%` : "n/a"}</span>
-                    </div>
-                    {instructionItems.shown.length > 0 ? (
-                      <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
-                        <p className="font-medium">Instruction changes</p>
-                        <ul className="mt-1 space-y-1">
-                          {instructionItems.shown.map((item) => (
-                            <li key={item} className="truncate">{item}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    ) : null}
+                    {hasMeaningfulChanges ? (
+                      <ul className="space-y-1 text-xs text-neutral-700">
+                        {summaryItems.shown.map((item) => (
+                          <li key={item}>+ {item}</li>
+                        ))}
+                        {summaryItems.overflow > 0 ? <li className="text-neutral-500">+{summaryItems.overflow} more changes</li> : null}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-neutral-500">No significant changes</p>
+                    )}
                     {warningItems.shown.length > 0 ? (
                       <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
                         <p className="font-medium">Warnings</p>
@@ -265,7 +260,13 @@ export function TraceView({
                         </ul>
                       </div>
                     ) : null}
-                  </div>
+                    {transition?.likely_cause ? (
+                      <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800">
+                        <p className="font-semibold">Likely caused failure</p>
+                        <p className="mt-1">{transition.cause_reason ?? "Previous step change likely caused this failure"}</p>
+                      </div>
+                    ) : null}
+                  </button>
                 ) : null}
 
                 <div

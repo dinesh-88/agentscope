@@ -48,10 +48,21 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
     insights.find((insight) => insight.severity === "medium") ??
     insights[0] ??
     null;
-  const criticalSummary =
+  const runSummary =
+    insights.find((insight) => insight.insight_type === "RUN_SUMMARY" && insight.is_primary) ??
+    insights.find((insight) => insight.insight_type === "RUN_SUMMARY") ??
+    null;
+  const summaryMessage =
+    runSummary?.message ??
     rootCause?.message ??
     highlightInsight?.message ??
-    (hasFailedSpan ? "Run failed due to an error in a downstream span." : "No critical failures detected.");
+    (hasFailedSpan ? "Run failed with unknown cause in execution pipeline" : "Run completed successfully in orchestrator");
+  const summaryTone =
+    run.status === "failed" || run.status === "error"
+      ? "border-red-300 bg-red-50 text-red-700"
+      : runSummary?.severity === "high" || runSummary?.severity === "medium"
+        ? "border-amber-300 bg-amber-50 text-amber-700"
+        : "border-emerald-300 bg-emerald-50 text-emerald-700";
 
   return (
     <AppShell activePath="/runs">
@@ -88,14 +99,15 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
               </span>
             </div>
 
-            <div className={hasFailedSpan ? "rounded-lg border border-red-300 bg-red-50 p-3" : "rounded-lg border border-emerald-300 bg-emerald-50 p-3"}>
-              <p className={hasFailedSpan ? "text-xs font-semibold uppercase tracking-wide text-red-700" : "text-xs font-semibold uppercase tracking-wide text-emerald-700"}>
-                Critical
+            <a href="#insights-panel" className={`block rounded-lg border-l-4 p-3 ${summaryTone}`}>
+              <p className="text-xs font-semibold uppercase tracking-wide">
+                Run Summary
               </p>
-              <p className={hasFailedSpan ? "mt-1 text-sm font-medium text-red-700" : "mt-1 text-sm font-medium text-emerald-700"}>
-                {criticalSummary}
+              <p className="mt-1 text-sm font-medium">
+                {summaryMessage}
               </p>
-            </div>
+              <p className="mt-1 text-xs opacity-80">View details in insights</p>
+            </a>
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">Run ID: {run.id}</p>
         </div>

@@ -54,6 +54,16 @@ pub fn classify_root_cause(detections: &[Detection]) -> Classification {
             ],
             evidence: primary.unwrap().evidence.clone(),
         },
+        Some("TRANSITION_CAUSE") => Classification {
+            root_cause_category: "STEP_TRANSITION_CAUSE",
+            summary: primary.unwrap().summary.clone(),
+            suggested_fixes: vec![
+                "Validate tool output before injecting it into next-step context.".to_string(),
+                "Keep transition context minimal and remove noisy intermediate outputs.".to_string(),
+                "Gate instruction changes and context growth with explicit checks.".to_string(),
+            ],
+            evidence: primary.unwrap().evidence.clone(),
+        },
         Some("MISSING_OUTPUT_CONSTRAINT") => Classification {
             root_cause_category: "INSTRUCTION_OUTPUT_CONSTRAINT_MISSING",
             summary: primary.unwrap().summary.clone(),

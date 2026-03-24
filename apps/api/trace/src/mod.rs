@@ -29,5 +29,5 @@ pub use run_replay::RunReplay;
 pub use run_root_cause::RunRootCause;
 pub use search::{ArtifactSearchResponse, ArtifactSearchResult};
 pub use span::Span;
-pub use step_transition::StepTransition;
+pub use step_transition::{SpanTransition, StepTransition};
 pub use trend::{CostMetrics, LatencyMetrics, PromptMetric, TrendInsight, TrendReport};

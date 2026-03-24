@@ -10,6 +10,8 @@ pub struct RunInsight {
     pub run_id: String,
     pub insight_type: String,
     pub severity: String,
+    #[serde(default)]
+    pub is_primary: bool,
     pub message: String,
     pub recommendation: String,
     pub created_at: DateTime<Utc>,

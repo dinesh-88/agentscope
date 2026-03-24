@@ -75,14 +75,22 @@ export type Span = {
   evaluation?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
   step_transition?: {
+    from_span_id: string;
+    to_span_id: string;
     added_messages: string[];
     removed_messages: string[];
+    messages_added: number;
+    messages_removed: number;
     token_delta: number;
     tool_outputs_added: string[];
+    instruction_changed: boolean;
     instruction_changes: string[];
     context_diff: Record<string, unknown>;
     instruction_diff: Record<string, unknown>;
     warnings: string[];
+    likely_cause: boolean;
+    cause_confidence: number;
+    cause_reason?: string | null;
   } | null;
 };
 
@@ -125,6 +133,7 @@ export type RunInsight = {
   run_id: string;
   insight_type: string;
   severity: string;
+  is_primary: boolean;
   message: string;
   recommendation: string;
   created_at: string;

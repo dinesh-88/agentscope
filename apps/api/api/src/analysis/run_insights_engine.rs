@@ -3,14 +3,16 @@ use std::hash::{Hash, Hasher};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::Storage;
-use agentscope_trace::{Artifact, Run, RunInsight, Span};
+use agentscope_trace::{Artifact, Run, RunInsight, RunRootCause, Span};
 use chrono::Utc;
 use serde_json::{json, Value};
 use uuid::Uuid;
 
 use crate::analysis::{
     classifiers::{classify_root_cause, Classification},
-    context_analyzer::{analyze_context, extract_context_data, final_prompt_to_text, parse_context_sources},
+    context_analyzer::{
+        analyze_context, extract_context_data, final_prompt_to_text, parse_context_sources,
+    },
     detectors::{detect_failure_types, estimate_context_window, Detection},
 };
 
@@ -22,6 +24,7 @@ const HIGH_RETRY_RATE: f64 = 0.2;
 const LARGE_PROMPT_TOKENS: i64 = 100_000;
 const PROMPT_REGRESSION_MIN_SAMPLES: usize = 2;
 const MAX_CONTEXT_INSIGHTS_PER_RUN: usize = 3;
+const RUN_SUMMARY_MAX_LEN: usize = 120;
 
 pub async fn analyze_run(
     storage: &Storage,
@@ -61,6 +64,7 @@ pub async fn analyze_run(
             } else {
                 "medium".to_string()
             },
+            is_primary: false,
             message: root_cause.message.clone(),
             recommendation: root_cause.suggested_fix.clone(),
             created_at: Utc::now(),
@@ -100,6 +104,7 @@ pub async fn analyze_run(
             run_id: run_id.to_string(),
             insight_type: "NO_MAJOR_ISSUES".to_string(),
             severity: "low".to_string(),
+            is_primary: false,
             message: "No strong failure, latency, cost, or prompt-regression issues were detected."
                 .to_string(),
             recommendation: "Continue collecting traces and compare against future baselines."
@@ -110,7 +115,17 @@ pub async fn analyze_run(
         });
     }
 
+    insights.push(generate_run_summary(
+        &run,
+        &spans,
+        &detections,
+        &root_causes,
+    ));
+
     for insight in &mut insights {
+        if insight.insight_type != "RUN_SUMMARY" {
+            insight.is_primary = false;
+        }
         insight.impact_score = compute_impact_score(insight);
     }
 
@@ -140,6 +155,7 @@ pub fn build_detection_insight(
         run_id: run_id.to_string(),
         insight_type: detection.failure_type.to_string(),
         severity: severity.to_string(),
+        is_primary: false,
         message: detection.summary.clone(),
         recommendation: recommendation_for_failure(detection.failure_type).to_string(),
         created_at: Utc::now(),
@@ -166,6 +182,7 @@ pub fn build_root_cause_insight(run_id: &str, root_cause: &Classification) -> Ru
         run_id: run_id.to_string(),
         insight_type: root_cause.root_cause_category.to_string(),
         severity: "medium".to_string(),
+        is_primary: false,
         message: root_cause.summary.clone(),
         recommendation,
         created_at: Utc::now(),
@@ -184,6 +201,7 @@ pub fn build_run_failure_insight(run: &Run) -> RunInsight {
         run_id: run.id.clone(),
         insight_type: "RUN_FAILURE".to_string(),
         severity: "high".to_string(),
+        is_primary: false,
         message: format!("Run ended with status `{}`.", run.status),
         recommendation:
             "Inspect failed spans first and apply the highest-confidence root-cause fix."
@@ -196,6 +214,190 @@ pub fn build_run_failure_insight(run: &Run) -> RunInsight {
         }),
         impact_score: 0.0,
     }
+}
+
+pub fn generate_run_summary(
+    run: &Run,
+    spans: &[Span],
+    detections: &[Detection],
+    root_causes: &[RunRootCause],
+) -> RunInsight {
+    let is_failed = matches!(run.status.as_str(), "failed" | "error");
+    let severity = if is_failed { "high" } else { "medium" };
+
+    let message = if let Some(root_cause) = root_causes.first() {
+        let qualifier = if root_cause.confidence >= 0.9 {
+            "due to"
+        } else {
+            "likely caused by"
+        };
+        let cause = cause_from_root_cause_type(&root_cause.root_cause_type);
+        let source = source_from_evidence(spans, Some(&root_cause.evidence), &[]);
+        format_summary_sentence(is_failed, cause, qualifier, &source)
+    } else if let Some(detection) = detections.first() {
+        let cause = cause_from_detection_type(detection.failure_type);
+        let source =
+            source_from_evidence(spans, Some(&detection.evidence), &detection.affected_spans);
+        format_summary_sentence(is_failed, cause, "due to", &source)
+    } else if is_failed {
+        "Run failed with unknown cause in execution pipeline".to_string()
+    } else {
+        "Run completed successfully in orchestrator".to_string()
+    };
+
+    let recommendation = if is_failed {
+        "Open failing span and review insights for targeted remediation."
+    } else {
+        "Review insights if you need optimization opportunities."
+    };
+
+    RunInsight {
+        id: deterministic_insight_id(&run.id, "RUN_SUMMARY", "PRIMARY"),
+        run_id: run.id.clone(),
+        insight_type: "RUN_SUMMARY".to_string(),
+        severity: severity.to_string(),
+        is_primary: true,
+        message,
+        recommendation: recommendation.to_string(),
+        created_at: Utc::now(),
+        evidence: json!({
+            "status": run.status,
+            "source": "summary_generator"
+        }),
+        impact_score: 1.0,
+    }
+}
+
+fn format_summary_sentence(is_failed: bool, cause: &str, qualifier: &str, source: &str) -> String {
+    let prefix = if is_failed {
+        "Run failed"
+    } else {
+        "Run succeeded but"
+    };
+    clamp_summary(&format!("{prefix} {qualifier} {cause} in {source}"))
+}
+
+fn cause_from_root_cause_type(root_cause_type: &str) -> &'static str {
+    match root_cause_type.to_ascii_uppercase().as_str() {
+        "LLM_OUTPUT_FORMAT_ERROR" | "SCHEMA_VALIDATION_ERROR" => {
+            "invalid structured output from model"
+        }
+        "TOOL_EXECUTION_ERROR" | "TOOL_FAILURE" => "tool execution error",
+        "TIMEOUT" => "timeout in LLM call",
+        "API_FAILURE" | "API_ERROR" => "upstream API error",
+        "PROMPT_TOO_LARGE" | "TOKEN_OVERFLOW" => "context exceeding model limits",
+        "INSTRUCTION_DRIFT" => "updated instructions",
+        "INSTRUCTION_CONFLICT" => "conflicting instructions",
+        "STEP_TRANSITION_ISSUE" => "step transition inconsistency",
+        "STEP_TRANSITION_CAUSE" | "TRANSITION_CAUSE" => "previous step context change",
+        "INSTRUCTION_OUTPUT_CONSTRAINT_MISSING" | "MISSING_OUTPUT_CONSTRAINT" => {
+            "missing output validation after tool execution"
+        }
+        _ => "run execution error",
+    }
+}
+
+fn cause_from_detection_type(failure_type: &str) -> &'static str {
+    match failure_type {
+        "SCHEMA_VALIDATION_ERROR" => "invalid structured output from model",
+        "TOOL_FAILURE" => "tool execution error",
+        "TIMEOUT" => "timeout in LLM call",
+        "API_ERROR" => "upstream API error",
+        "TOKEN_OVERFLOW" => "context exceeding model limits",
+        "INSTRUCTION_DRIFT" => "updated instructions",
+        "INSTRUCTION_CONFLICT" => "conflicting instructions",
+        "STEP_TRANSITION_ISSUE" => "step transition inconsistency",
+        "TRANSITION_CAUSE" => "previous step context change",
+        "MISSING_OUTPUT_CONSTRAINT" => "missing output validation after tool execution",
+        _ => "run execution error",
+    }
+}
+
+fn source_from_evidence(
+    spans: &[Span],
+    evidence: Option<&Value>,
+    affected_spans: &[String],
+) -> String {
+    let by_id = spans
+        .iter()
+        .map(|span| (span.id.as_str(), span))
+        .collect::<HashMap<_, _>>();
+
+    if let Some(id) = evidence
+        .and_then(Value::as_object)
+        .and_then(|obj| obj.get("span_id"))
+        .and_then(Value::as_str)
+    {
+        if let Some(span) = by_id.get(id) {
+            return summarize_source(span.name.as_str(), Some(span.span_type.as_str()));
+        }
+    }
+
+    if let Some(id) = affected_spans.first().map(String::as_str) {
+        if let Some(span) = by_id.get(id) {
+            return summarize_source(span.name.as_str(), Some(span.span_type.as_str()));
+        }
+    }
+
+    if let Some(name) = evidence
+        .and_then(Value::as_object)
+        .and_then(|obj| obj.get("span_name"))
+        .and_then(Value::as_str)
+    {
+        return summarize_source(name, None);
+    }
+
+    if let Some(provider) = evidence
+        .and_then(Value::as_object)
+        .and_then(|obj| obj.get("provider"))
+        .and_then(Value::as_str)
+    {
+        return summarize_source(provider, Some("provider"));
+    }
+
+    "orchestrator".to_string()
+}
+
+fn summarize_source(name: &str, span_type: Option<&str>) -> String {
+    let mut normalized = name.trim().replace('`', "");
+    if normalized.is_empty() {
+        normalized = span_type.unwrap_or("orchestrator").to_string();
+    }
+    let normalized = normalized
+        .split_whitespace()
+        .take(5)
+        .collect::<Vec<_>>()
+        .join(" ");
+    let label = if let Some(kind) = span_type {
+        if kind == "llm" || kind == "llm_call" {
+            format!("{normalized} LLM step")
+        } else if kind == "tool_call" {
+            format!("{normalized} tool_call step")
+        } else {
+            format!("{normalized} {kind} step")
+        }
+    } else {
+        format!("{normalized} step")
+    };
+    let compact = label.trim().to_string();
+    if compact.chars().count() > 34 {
+        compact.chars().take(34).collect()
+    } else {
+        compact
+    }
+}
+
+fn clamp_summary(text: &str) -> String {
+    let line = text
+        .replace('\n', " ")
+        .replace(['.', '!', '?'], "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if line.chars().count() <= RUN_SUMMARY_MAX_LEN {
+        return line;
+    }
+    line.chars().take(RUN_SUMMARY_MAX_LEN).collect()
 }
 
 pub fn build_latency_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight> {
@@ -230,6 +432,7 @@ pub fn build_latency_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight>
         } else {
             "medium".to_string()
         },
+        is_primary: false,
         message: format!(
             "Latency is elevated (avg {:.0} ms, p95 {} ms).",
             avg_latency, p95_latency
@@ -267,6 +470,7 @@ pub fn build_cost_insight(run: &Run, baseline_cost: f32) -> Option<RunInsight> {
         } else {
             "medium".to_string()
         },
+        is_primary: false,
         message: format!(
             "Run cost (${run_cost:.5}) is above baseline (${:.5}).",
             baseline_cost
@@ -315,6 +519,7 @@ pub fn build_retry_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight> {
         } else {
             "medium".to_string()
         },
+        is_primary: false,
         message: format!(
             "Retries are frequent: {} of {} spans retried ({:.1}%).",
             retry_spans.len(),
@@ -359,6 +564,7 @@ pub fn build_prompt_size_insight(run_id: &str, spans: &[Span]) -> Option<RunInsi
         } else {
             "medium".to_string()
         },
+        is_primary: false,
         message: format!("Largest prompt used {input_tokens} input tokens on model `{model}`."),
         recommendation: "Summarize context and drop low-value prompt sections before model calls."
             .to_string(),
@@ -399,6 +605,7 @@ pub fn build_prompt_regression_insight(run_id: &str, spans: &[Span]) -> Vec<RunI
             run_id: run_id.to_string(),
             insight_type: "PROMPT_REGRESSION".to_string(),
             severity: if success_rate < 0.5 { "high" } else { "medium" }.to_string(),
+            is_primary: false,
             message: format!(
                 "Prompt hash `{prompt_hash}` shows regression (success {:.1}%, avg latency {:.0} ms).",
                 success_rate * 100.0,
@@ -554,6 +761,9 @@ fn recommendation_for_failure(failure_type: &str) -> &'static str {
         "STEP_TRANSITION_ISSUE" => {
             "Inspect the previous step transition, remove noisy context/tool output, and keep only required messages."
         }
+        "TRANSITION_CAUSE" => {
+            "Validate and sanitize previous-step context before injecting it into the failing step."
+        }
         _ => "Inspect span and artifact evidence and patch the failing step.",
     }
 }
@@ -575,6 +785,7 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                     run_id: run_id.to_string(),
                     insight_type: key,
                     severity: insight.severity,
+                    is_primary: false,
                     message: insight.message,
                     recommendation: insight.recommendation,
                     created_at: Utc::now(),
@@ -600,6 +811,7 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                     run_id: run_id.to_string(),
                     insight_type: key.clone(),
                     severity: insight.severity,
+                    is_primary: false,
                     message: insight.message,
                     recommendation: insight.recommendation,
                     created_at: Utc::now(),
@@ -614,7 +826,9 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                     impact_score: 0.0,
                 };
                 match by_type.get(&key) {
-                    Some(current) if severity_rank(current.severity.as_str()) >= severity_rank(run_insight.severity.as_str()) => {}
+                    Some(current)
+                        if severity_rank(current.severity.as_str())
+                            >= severity_rank(run_insight.severity.as_str()) => {}
                     _ => {
                         by_type.insert(key, run_insight);
                     }
@@ -647,6 +861,7 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
                 run_id: run.id.clone(),
                 insight_type: "CONTEXT_TOO_LARGE".to_string(),
                 severity: if usage >= 95.0 { "high" } else { "medium" }.to_string(),
+                is_primary: false,
                 message: "Context too large".to_string(),
                 recommendation: "Trim messages/variables or summarize context before model calls."
                     .to_string(),
@@ -677,6 +892,7 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
             run_id: run.id.clone(),
             insight_type: "CONTEXT_TRUNCATED".to_string(),
             severity: "high".to_string(),
+            is_primary: false,
             message: "Context truncated".to_string(),
             recommendation:
                 "Review context assembly between spans and avoid dropping required messages."
@@ -692,13 +908,15 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
     }
 
     let likely_failure_span = spans.iter().find(|span| {
-        let span_failed = matches!(span.status.as_str(), "failed" | "error")
-            || span.success == Some(false);
+        let span_failed =
+            matches!(span.status.as_str(), "failed" | "error") || span.success == Some(false);
         if !span_failed {
             return false;
         }
 
-        let near_limit = span.context_usage_percent.is_some_and(|value| value >= 90.0);
+        let near_limit = span
+            .context_usage_percent
+            .is_some_and(|value| value >= 90.0);
         let truncated = span
             .context
             .as_ref()
@@ -720,6 +938,7 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
             run_id: run.id.clone(),
             insight_type: "CONTEXT_LIKELY_CAUSED_FAILURE".to_string(),
             severity: "high".to_string(),
+            is_primary: false,
             message: "Context likely caused failure".to_string(),
             recommendation:
                 "Reduce context pressure and validate required context continuity before call execution."
@@ -761,6 +980,7 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             run_id: run_id.to_string(),
             insight_type: "MISSING_INSTRUCTIONS".to_string(),
             severity: "medium".to_string(),
+            is_primary: false,
             message: "No instruction files or runtime instruction overrides were captured.".to_string(),
             recommendation: "Load global/local instruction files (e.g., CLAUDE.md, AGENTS.md) and include explicit runtime system prompts."
                 .to_string(),
@@ -817,6 +1037,7 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             run_id: run_id.to_string(),
             insight_type: "INSTRUCTION_CONFLICT".to_string(),
             severity: "high".to_string(),
+            is_primary: false,
             message: "Conflicting instruction sources were detected in span context.".to_string(),
             recommendation:
                 "Deduplicate instruction files and resolve conflicting overrides using a single source of truth."
@@ -842,7 +1063,10 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
                 .iter()
                 .filter_map(|source| {
                     let object = source.as_object()?;
-                    let source_type = object.get("type").and_then(Value::as_str).unwrap_or("unknown");
+                    let source_type = object
+                        .get("type")
+                        .and_then(Value::as_str)
+                        .unwrap_or("unknown");
                     let path = object.get("path").and_then(Value::as_str).unwrap_or("-");
                     let hash = object.get("hash").and_then(Value::as_str).unwrap_or("-");
                     Some(format!("{source_type}:{path}:{hash}"))
@@ -864,6 +1088,7 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             run_id: run_id.to_string(),
             insight_type: "INSTRUCTION_DRIFT".to_string(),
             severity: "medium".to_string(),
+            is_primary: false,
             message: "Instruction stack drifted across spans in this run.".to_string(),
             recommendation:
                 "Keep instruction sources stable across spans unless intentionally versioned."

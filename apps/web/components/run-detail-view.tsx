@@ -4,8 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
-  ChevronDown,
-  ChevronRight,
   Flame,
   GitBranch,
   Loader2,
@@ -208,7 +206,6 @@ export function RunDetailView({
 
   const [tab, setTab] = useState<Tab>("context");
   const [hoveredSpanId, setHoveredSpanId] = useState<string | null>(null);
-  const [insightsCollapsed, setInsightsCollapsed] = useState(false);
   const treeRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const autoFocusedRef = useRef(false);
 
@@ -364,7 +361,6 @@ export function RunDetailView({
       }) ?? insights[0] ?? null
     );
   }, [insights, selectedSpan]);
-
   const insightSeverity = selectedInsight?.severity?.toLowerCase() ?? (selectedSpan?.status === "error" ? "high" : "low");
 
   const whyFailedPoints = useMemo(() => {
@@ -509,6 +505,8 @@ export function RunDetailView({
 
       <aside className="space-y-4">
         <Card
+          id="insights-panel"
+          data-testid="insights-panel"
           className={cn(
             "border shadow-sm",
             insightSeverity === "high"
@@ -524,47 +522,40 @@ export function RunDetailView({
                 <Flame className="size-4 text-red-600" />
                 Why this run failed
               </CardTitle>
-              <button
-                type="button"
-                onClick={() => setInsightsCollapsed((value) => !value)}
-                className="inline-flex items-center gap-1 rounded border border-black/10 bg-white px-2 py-1 text-xs text-neutral-600"
-              >
-                {insightsCollapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
-                {insightsCollapsed ? "Expand" : "Collapse"}
-              </button>
+              <span className="inline-flex rounded border border-black/10 bg-white px-2 py-1 text-[11px] text-neutral-600">
+                details
+              </span>
             </div>
           </CardHeader>
-          {!insightsCollapsed ? (
-            <CardContent className="space-y-3 text-sm">
-              <div>
-                <p className="font-semibold text-neutral-900">Findings</p>
-                <ul className="mt-1 space-y-1 text-neutral-700">
-                  {whyFailedPoints.map((point) => (
-                    <li key={point} className="flex gap-2">
-                      <AlertTriangle className="mt-0.5 size-3 text-red-600" />
-                      <span>{point}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <p className="font-semibold text-neutral-900">Recommendation</p>
-                <ul className="mt-1 space-y-1 text-neutral-700">
-                  {recommendationPoints.map((point) => (
-                    <li key={point}>- {point}</li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <p className="font-semibold text-neutral-900">Impact</p>
-                <ul className="mt-1 space-y-1 text-neutral-700">
-                  {(impactPoints.length > 0 ? impactPoints : ["No explicit impact metadata captured"]).map((point) => (
-                    <li key={point}>- {point}</li>
-                  ))}
-                </ul>
-              </div>
-            </CardContent>
-          ) : null}
+          <CardContent className="space-y-3 text-sm">
+            <div>
+              <p className="font-semibold text-neutral-900">Findings</p>
+              <ul className="mt-1 space-y-1 text-neutral-700">
+                {whyFailedPoints.map((point) => (
+                  <li key={point} className="flex gap-2">
+                    <AlertTriangle className="mt-0.5 size-3 text-red-600" />
+                    <span>{point}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold text-neutral-900">Recommendation</p>
+              <ul className="mt-1 space-y-1 text-neutral-700">
+                {recommendationPoints.map((point) => (
+                  <li key={point}>- {point}</li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold text-neutral-900">Impact</p>
+              <ul className="mt-1 space-y-1 text-neutral-700">
+                {(impactPoints.length > 0 ? impactPoints : ["No explicit impact metadata captured"]).map((point) => (
+                  <li key={point}>- {point}</li>
+                ))}
+              </ul>
+            </div>
+          </CardContent>
         </Card>
 
         <Card className="border border-black/8 bg-white shadow-sm">

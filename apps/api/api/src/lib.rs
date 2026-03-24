@@ -454,12 +454,22 @@ fn normalize_span_context(spans: &mut [Span], artifacts: &[Artifact]) {
     let prompt_by_span = artifacts
         .iter()
         .filter(|artifact| artifact.kind == "llm.prompt")
-        .filter_map(|artifact| artifact.span_id.as_ref().map(|span_id| (span_id.clone(), &artifact.payload)))
+        .filter_map(|artifact| {
+            artifact
+                .span_id
+                .as_ref()
+                .map(|span_id| (span_id.clone(), &artifact.payload))
+        })
         .collect::<HashMap<_, _>>();
     let llm_context_by_span = artifacts
         .iter()
         .filter(|artifact| artifact.kind == "llm.context")
-        .filter_map(|artifact| artifact.span_id.as_ref().map(|span_id| (span_id.clone(), &artifact.payload)))
+        .filter_map(|artifact| {
+            artifact
+                .span_id
+                .as_ref()
+                .map(|span_id| (span_id.clone(), &artifact.payload))
+        })
         .collect::<HashMap<_, _>>();
 
     let mut ordered_indices = (0..spans.len()).collect::<Vec<_>>();
@@ -525,8 +535,13 @@ fn normalize_span_context(spans: &mut [Span], artifacts: &[Artifact]) {
             continue;
         }
 
-        let estimated_context_tokens =
-            estimate_context_tokens(span.input_tokens, &messages, &system_prompt, &variables, &tools_available);
+        let estimated_context_tokens = estimate_context_tokens(
+            span.input_tokens,
+            &messages,
+            &system_prompt,
+            &variables,
+            &tools_available,
+        );
         span.context_tokens = Some(estimated_context_tokens.max(0));
 
         if span.context_window.is_some() {
@@ -579,7 +594,10 @@ fn extract_context_messages(prompt_payload: Option<&Value>) -> Vec<Value> {
 
     for candidate in [
         payload.get("messages"),
-        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("messages")),
+        payload
+            .get("payload")
+            .and_then(Value::as_object)
+            .and_then(|entry| entry.get("messages")),
         payload.get("input"),
         payload.get("prompt"),
     ] {
@@ -591,8 +609,14 @@ fn extract_context_messages(prompt_payload: Option<&Value>) -> Vec<Value> {
     for candidate in [
         payload.get("prompt"),
         payload.get("input"),
-        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("prompt")),
-        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("input")),
+        payload
+            .get("payload")
+            .and_then(Value::as_object)
+            .and_then(|entry| entry.get("prompt")),
+        payload
+            .get("payload")
+            .and_then(Value::as_object)
+            .and_then(|entry| entry.get("input")),
     ] {
         if let Some(Value::String(prompt)) = candidate {
             return vec![json!({"role": "user", "content": prompt})];
@@ -607,8 +631,14 @@ fn extract_system_prompt(prompt_payload: Option<&Value>, messages: &[Value]) -> 
         for candidate in [
             payload.get("system_prompt"),
             payload.get("system"),
-            payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("system_prompt")),
-            payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("system")),
+            payload
+                .get("payload")
+                .and_then(Value::as_object)
+                .and_then(|entry| entry.get("system_prompt")),
+            payload
+                .get("payload")
+                .and_then(Value::as_object)
+                .and_then(|entry| entry.get("system")),
         ] {
             if let Some(Value::String(system_prompt)) = candidate {
                 return system_prompt.clone();
@@ -639,7 +669,10 @@ fn extract_context_variables(prompt_payload: Option<&Value>) -> Map<String, Valu
 
     for candidate in [
         payload.get("variables"),
-        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("variables")),
+        payload
+            .get("payload")
+            .and_then(Value::as_object)
+            .and_then(|entry| entry.get("variables")),
     ] {
         if let Some(Value::Object(variables)) = candidate {
             return variables.clone();
@@ -657,8 +690,14 @@ fn extract_tools_available(prompt_payload: Option<&Value>) -> Vec<Value> {
     for candidate in [
         payload.get("tools_available"),
         payload.get("tools"),
-        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("tools_available")),
-        payload.get("payload").and_then(Value::as_object).and_then(|entry| entry.get("tools")),
+        payload
+            .get("payload")
+            .and_then(Value::as_object)
+            .and_then(|entry| entry.get("tools_available")),
+        payload
+            .get("payload")
+            .and_then(Value::as_object)
+            .and_then(|entry| entry.get("tools")),
     ] {
         if let Some(Value::Array(items)) = candidate {
             return items.clone();
@@ -680,7 +719,11 @@ fn estimate_context_tokens(
     }
 
     let mut chars = system_prompt.chars().count();
-    chars += messages.iter().map(value_to_diff_string).map(|value| value.chars().count()).sum::<usize>();
+    chars += messages
+        .iter()
+        .map(value_to_diff_string)
+        .map(|value| value.chars().count())
+        .sum::<usize>();
     chars += variables
         .iter()
         .map(|(key, value)| key.len() + value_to_diff_string(value).chars().count())
@@ -1186,7 +1229,12 @@ async fn get_run_spans(
     ensure_run_access(&state, &id, &user.id).await?;
     let mut spans = state.storage.get_spans(&id).await?;
     let artifacts = state.storage.get_artifacts(&id).await?;
-    let transitions = analysis::step_transition::build_step_transitions(&spans, &artifacts);
+    let detections = analysis::detectors::detect_failure_types(&spans, &artifacts);
+    let transitions = analysis::step_transition::build_step_transitions_with_causes(
+        &spans,
+        &artifacts,
+        &detections,
+    );
     for span in &mut spans {
         span.step_transition = transitions.get(&span.id).cloned();
     }
