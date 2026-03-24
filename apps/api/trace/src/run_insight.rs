@@ -39,4 +39,12 @@ pub struct RunInsight {
     #[serde(default)]
     #[sqlx(default, json)]
     pub fix_suggestions: Vec<FixSuggestion>,
+    #[serde(default)]
+    pub related_transition_from_span_id: Option<String>,
+    #[serde(default)]
+    pub related_transition_to_span_id: Option<String>,
+    #[serde(default)]
+    pub cause_confidence: Option<String>,
+    #[serde(default)]
+    pub derived_from_transition: bool,
 }

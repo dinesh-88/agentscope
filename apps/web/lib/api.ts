@@ -150,6 +150,10 @@ export type RunInsight = {
   created_at: string;
   evidence: Record<string, unknown>;
   impact_score: number;
+  related_transition_from_span_id?: string | null;
+  related_transition_to_span_id?: string | null;
+  cause_confidence?: "high" | "medium" | "low" | string | null;
+  derived_from_transition?: boolean;
 };
 
 export type ProjectInsight = {

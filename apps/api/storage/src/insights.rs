@@ -26,9 +26,29 @@ impl Storage {
             sqlx::query(
                 r#"
                 INSERT INTO run_insights
-                    (id, run_id, insight_type, severity, is_primary, title, cause, impact, fix, message, recommendation, created_at, evidence, impact_score, fix_suggestions)
+                    (
+                        id,
+                        run_id,
+                        insight_type,
+                        severity,
+                        is_primary,
+                        title,
+                        cause,
+                        impact,
+                        fix,
+                        message,
+                        recommendation,
+                        created_at,
+                        evidence,
+                        impact_score,
+                        fix_suggestions,
+                        related_transition_from_span_id,
+                        related_transition_to_span_id,
+                        cause_confidence,
+                        derived_from_transition
+                    )
                 VALUES
-                    ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+                    ($1::uuid, $2::uuid, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
                 "#,
             )
             .bind(&insight.id)
@@ -46,6 +66,10 @@ impl Storage {
             .bind(&insight.evidence)
             .bind(insight.impact_score as f64)
             .bind(serde_json::to_value(&insight.fix_suggestions).unwrap_or_else(|_| serde_json::json!([])))
+            .bind(&insight.related_transition_from_span_id)
+            .bind(&insight.related_transition_to_span_id)
+            .bind(&insight.cause_confidence)
+            .bind(insight.derived_from_transition)
             .execute(&mut *tx)
             .await
             .map_err(|e| {
@@ -82,7 +106,11 @@ impl Storage {
                 created_at,
                 evidence,
                 impact_score::real AS impact_score,
-                fix_suggestions
+                fix_suggestions,
+                related_transition_from_span_id,
+                related_transition_to_span_id,
+                cause_confidence,
+                derived_from_transition
             FROM run_insights
             WHERE run_id = $1::uuid
             ORDER BY impact_score DESC, created_at ASC, insight_type ASC

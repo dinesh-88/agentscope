@@ -79,6 +79,10 @@ pub async fn analyze_run(
             evidence: root_cause.evidence.clone(),
             fix_suggestions: Vec::new(),
             impact_score: 0.0,
+            related_transition_from_span_id: None,
+            related_transition_to_span_id: None,
+            cause_confidence: None,
+            derived_from_transition: false,
         });
     }
 
@@ -126,17 +130,23 @@ pub async fn analyze_run(
             evidence: json!({}),
             fix_suggestions: Vec::new(),
             impact_score: 0.0,
+            related_transition_from_span_id: None,
+            related_transition_to_span_id: None,
+            cause_confidence: None,
+            derived_from_transition: false,
         });
     }
 
     let fix_suggestions = generate_fix_suggestions(&detections, &transitions, &spans);
-    insights.push(generate_run_summary(
-        &run,
-        &spans,
-        &detections,
-        &root_causes,
-        fix_suggestions,
-    ));
+    let failing_span_id = select_failing_span_id(&spans);
+    let mut primary_summary =
+        generate_run_summary(&run, &spans, &detections, &root_causes, fix_suggestions);
+    if let Some(selected_span_id) = failing_span_id.as_deref() {
+        let transition_list = ordered_transitions_for_spans(&spans, &transitions);
+        primary_summary =
+            enrich_insight_with_transition(primary_summary, &transition_list, selected_span_id);
+    }
+    insights.push(primary_summary);
 
     for insight in &mut insights {
         if insight.insight_type != "RUN_SUMMARY" {
@@ -189,6 +199,10 @@ pub fn build_detection_insight(
         }),
         fix_suggestions: Vec::new(),
         impact_score: 0.0,
+        related_transition_from_span_id: None,
+        related_transition_to_span_id: None,
+        cause_confidence: None,
+        derived_from_transition: false,
     }
 }
 
@@ -219,6 +233,10 @@ pub fn build_root_cause_insight(run_id: &str, root_cause: &Classification) -> Ru
         }),
         fix_suggestions: Vec::new(),
         impact_score: 0.0,
+        related_transition_from_span_id: None,
+        related_transition_to_span_id: None,
+        cause_confidence: None,
+        derived_from_transition: false,
     }
 }
 
@@ -245,6 +263,10 @@ pub fn build_run_failure_insight(run: &Run) -> RunInsight {
         }),
         fix_suggestions: Vec::new(),
         impact_score: 0.0,
+        related_transition_from_span_id: None,
+        related_transition_to_span_id: None,
+        cause_confidence: None,
+        derived_from_transition: false,
     }
 }
 
@@ -303,7 +325,114 @@ pub fn generate_run_summary(
         }),
         impact_score: 1.0,
         fix_suggestions,
+        related_transition_from_span_id: None,
+        related_transition_to_span_id: None,
+        cause_confidence: None,
+        derived_from_transition: false,
     }
+}
+
+pub fn enrich_insight_with_transition(
+    mut insight: RunInsight,
+    transitions: &[StepTransition],
+    selected_span_id: &str,
+) -> RunInsight {
+    let Some(transition) = choose_related_transition(transitions, selected_span_id) else {
+        return insight;
+    };
+
+    let transition_cause = transition
+        .cause_reason
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string);
+
+    if let Some(transition_cause) = transition_cause {
+        let existing_cause = insight.cause.trim();
+        insight.cause = if existing_cause.is_empty() {
+            transition_cause
+        } else if is_generic_cause(existing_cause)
+            && is_more_specific_than(&transition_cause, existing_cause)
+        {
+            transition_cause
+        } else {
+            let suffix = format!("This was likely triggered by {transition_cause}");
+            if existing_cause.ends_with('.') {
+                format!("{existing_cause} {suffix}")
+            } else {
+                format!("{existing_cause}. {suffix}")
+            }
+        };
+    }
+
+    insight.related_transition_from_span_id = Some(transition.from_span_id.clone());
+    insight.related_transition_to_span_id = Some(transition.to_span_id.clone());
+    insight.cause_confidence = Some(map_cause_confidence_label(transition.cause_confidence));
+    insight.derived_from_transition = true;
+    insight
+}
+
+fn choose_related_transition<'a>(
+    transitions: &'a [StepTransition],
+    selected_span_id: &str,
+) -> Option<&'a StepTransition> {
+    transitions
+        .iter()
+        .enumerate()
+        .filter(|(_, transition)| {
+            transition.to_span_id == selected_span_id && transition.likely_cause
+        })
+        .max_by(|(left_index, left), (right_index, right)| {
+            left.cause_confidence
+                .total_cmp(&right.cause_confidence)
+                .then_with(|| left_index.cmp(right_index))
+        })
+        .map(|(_, transition)| transition)
+}
+
+fn select_failing_span_id(spans: &[Span]) -> Option<String> {
+    spans
+        .iter()
+        .filter(|span| {
+            matches!(span.status.as_str(), "failed" | "error") || span.success == Some(false)
+        })
+        .min_by_key(|span| span.started_at)
+        .map(|span| span.id.clone())
+}
+
+fn ordered_transitions_for_spans(
+    spans: &[Span],
+    transitions: &HashMap<String, StepTransition>,
+) -> Vec<StepTransition> {
+    let mut ordered_spans = spans.iter().collect::<Vec<_>>();
+    ordered_spans.sort_by_key(|span| span.started_at);
+    ordered_spans
+        .iter()
+        .filter_map(|span| transitions.get(&span.id).cloned())
+        .collect()
+}
+
+fn map_cause_confidence_label(confidence: f32) -> String {
+    if confidence >= 0.85 {
+        "high".to_string()
+    } else if confidence >= 0.60 {
+        "medium".to_string()
+    } else {
+        "low".to_string()
+    }
+}
+
+fn is_more_specific_than(candidate: &str, baseline: &str) -> bool {
+    candidate.split_whitespace().count() > baseline.split_whitespace().count()
+}
+
+fn is_generic_cause(cause: &str) -> bool {
+    let normalized = cause.to_ascii_lowercase();
+    normalized.contains("run failed due to invalid output")
+        || normalized.contains("run failed")
+        || normalized.contains("parsing failed")
+        || normalized.contains("invalid output")
 }
 
 fn format_summary_sentence(is_failed: bool, cause: &str, qualifier: &str, source: &str) -> String {
@@ -785,6 +914,10 @@ pub fn build_latency_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight>
         }),
         fix_suggestions: Vec::new(),
         impact_score: 0.0,
+        related_transition_from_span_id: None,
+        related_transition_to_span_id: None,
+        cause_confidence: None,
+        derived_from_transition: false,
     })
 }
 
@@ -833,6 +966,10 @@ pub fn build_cost_insight(run: &Run, baseline_cost: f32) -> Option<RunInsight> {
         }),
         fix_suggestions: Vec::new(),
         impact_score: 0.0,
+        related_transition_from_span_id: None,
+        related_transition_to_span_id: None,
+        cause_confidence: None,
+        derived_from_transition: false,
     })
 }
 
@@ -885,6 +1022,10 @@ pub fn build_retry_insight(run_id: &str, spans: &[Span]) -> Option<RunInsight> {
         }),
         fix_suggestions: Vec::new(),
         impact_score: 0.0,
+        related_transition_from_span_id: None,
+        related_transition_to_span_id: None,
+        cause_confidence: None,
+        derived_from_transition: false,
     })
 }
 
@@ -930,6 +1071,10 @@ pub fn build_prompt_size_insight(run_id: &str, spans: &[Span]) -> Option<RunInsi
         }),
         fix_suggestions: Vec::new(),
         impact_score: 0.0,
+        related_transition_from_span_id: None,
+        related_transition_to_span_id: None,
+        cause_confidence: None,
+        derived_from_transition: false,
     })
 }
 
@@ -982,6 +1127,10 @@ pub fn build_prompt_regression_insight(run_id: &str, spans: &[Span]) -> Vec<RunI
             }),
             fix_suggestions: Vec::new(),
             impact_score: 0.0,
+            related_transition_from_span_id: None,
+            related_transition_to_span_id: None,
+            cause_confidence: None,
+            derived_from_transition: false,
         });
     }
 
@@ -1155,6 +1304,10 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                     evidence: insight.evidence,
                     fix_suggestions: Vec::new(),
                     impact_score: 0.0,
+                    related_transition_from_span_id: None,
+                    related_transition_to_span_id: None,
+                    cause_confidence: None,
+                    derived_from_transition: false,
                 },
             );
         }
@@ -1193,6 +1346,10 @@ fn build_context_insights(run_id: &str, artifacts: &[Artifact]) -> Vec<RunInsigh
                     }),
                     fix_suggestions: Vec::new(),
                     impact_score: 0.0,
+                    related_transition_from_span_id: None,
+                    related_transition_to_span_id: None,
+                    cause_confidence: None,
+                    derived_from_transition: false,
                 };
                 match by_type.get(&key) {
                     Some(current)
@@ -1247,6 +1404,10 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
                 }),
                 fix_suggestions: Vec::new(),
                 impact_score: 0.0,
+                related_transition_from_span_id: None,
+                related_transition_to_span_id: None,
+                cause_confidence: None,
+                derived_from_transition: false,
             });
         }
     }
@@ -1283,6 +1444,10 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
             }),
             fix_suggestions: Vec::new(),
             impact_score: 0.0,
+            related_transition_from_span_id: None,
+            related_transition_to_span_id: None,
+            cause_confidence: None,
+            derived_from_transition: false,
         });
     }
 
@@ -1335,6 +1500,10 @@ fn build_context_runtime_insights(run: &Run, spans: &[Span]) -> Vec<RunInsight> 
             }),
             fix_suggestions: Vec::new(),
             impact_score: 0.0,
+            related_transition_from_span_id: None,
+            related_transition_to_span_id: None,
+            cause_confidence: None,
+            derived_from_transition: false,
         });
     }
 
@@ -1379,6 +1548,10 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             }),
             fix_suggestions: Vec::new(),
             impact_score: 0.0,
+            related_transition_from_span_id: None,
+            related_transition_to_span_id: None,
+            cause_confidence: None,
+            derived_from_transition: false,
         });
     }
 
@@ -1442,6 +1615,10 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             }),
             fix_suggestions: Vec::new(),
             impact_score: 0.0,
+            related_transition_from_span_id: None,
+            related_transition_to_span_id: None,
+            cause_confidence: None,
+            derived_from_transition: false,
         });
     }
 
@@ -1498,6 +1675,10 @@ fn build_instruction_insights(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
             }),
             fix_suggestions: Vec::new(),
             impact_score: 0.0,
+            related_transition_from_span_id: None,
+            related_transition_to_span_id: None,
+            cause_confidence: None,
+            derived_from_transition: false,
         });
     }
 

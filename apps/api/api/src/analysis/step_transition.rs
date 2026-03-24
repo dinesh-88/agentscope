@@ -121,7 +121,7 @@ pub fn detect_transition_cause(
         return (
             true,
             0.85,
-            Some("Context growth may have affected model behavior".to_string()),
+            Some("Context grew significantly before the failing step".to_string()),
         );
     }
 

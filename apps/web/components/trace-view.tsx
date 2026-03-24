@@ -52,6 +52,8 @@ type TraceViewProps = {
   hoveredSpanId?: string | null;
   onSpanSelect?: (spanId: string) => void;
   onSpanHover?: (spanId: string | null) => void;
+  highlightedTransitionToSpanId?: string | null;
+  highlightedSpanId?: string | null;
   totalDurationMs?: number;
   totalTokens?: number;
   model?: string;
@@ -104,11 +106,14 @@ export function TraceView({
   hoveredSpanId,
   onSpanSelect,
   onSpanHover,
+  highlightedTransitionToSpanId,
+  highlightedSpanId,
   totalDurationMs,
   totalTokens,
   model,
 }: TraceViewProps) {
   const rowRefs = useRef(new Map<string, HTMLDivElement | null>());
+  const transitionRefs = useRef(new Map<string, HTMLButtonElement | null>());
 
   const { rows, maxEndMs } = useMemo(() => {
     const byId = new Map(spans.map((span) => [span.id, span]));
@@ -161,6 +166,14 @@ export function TraceView({
     }
   }, [selectedSpanId]);
 
+  useEffect(() => {
+    if (!highlightedTransitionToSpanId) return;
+    const el = transitionRefs.current.get(highlightedTransitionToSpanId);
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }
+  }, [highlightedTransitionToSpanId]);
+
   const runDuration = totalDurationMs ?? maxEndMs;
 
   return (
@@ -191,6 +204,8 @@ export function TraceView({
             const widthPct = Math.max((span.durationMs / maxEndMs) * 100, 2);
             const isSelected = selectedSpanId === span.id;
             const isHovered = hoveredSpanId === span.id;
+            const isTransitionLinked = highlightedTransitionToSpanId === span.id;
+            const isSpanLinked = highlightedSpanId === span.id;
             const transition = span.stepTransition;
             const prevSpan = rows[index - 1] ?? null;
             const tokenDelta = transition?.token_delta ?? 0;
@@ -213,6 +228,9 @@ export function TraceView({
               <div key={span.id} className="space-y-2">
                 {index > 0 ? (
                   <button
+                    ref={(node) => {
+                      transitionRefs.current.set(span.id, node);
+                    }}
                     type="button"
                     onClick={() => onSpanSelect?.(span.id)}
                     onMouseEnter={() => onSpanHover?.(span.id)}
@@ -222,6 +240,9 @@ export function TraceView({
                       transition?.likely_cause
                         ? "border-l-4 border-red-400 border-red-200 bg-red-50/40 dark:border-red-500/40 dark:bg-red-500/10"
                         : "border-black/10 dark:border-white/10",
+                      isTransitionLinked
+                        ? "ring-2 ring-blue-300 ring-offset-2 ring-offset-white dark:ring-blue-500/50 dark:ring-offset-slate-900"
+                        : undefined,
                     )}
                   >
                     <div className="text-xs text-neutral-500 dark:text-neutral-400">
@@ -260,6 +281,7 @@ export function TraceView({
                       ? "border-blue-300 bg-blue-50 dark:border-blue-500/40 dark:bg-blue-500/15"
                       : "border-black/10 bg-white hover:bg-neutral-50 dark:border-white/10 dark:bg-slate-900 dark:hover:bg-slate-800/70",
                     isHovered && !isSelected ? "border-blue-200 dark:border-blue-500/35" : undefined,
+                    isSpanLinked ? "ring-2 ring-blue-300 ring-offset-2 ring-offset-white dark:ring-blue-500/50 dark:ring-offset-slate-900" : undefined,
                   )}
                   onClick={() => onSpanSelect?.(span.id)}
                   onMouseEnter={() => onSpanHover?.(span.id)}

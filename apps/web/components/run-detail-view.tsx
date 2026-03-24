@@ -213,6 +213,10 @@ export function RunDetailView({
 
   const [tab, setTab] = useState<Tab>("context");
   const [hoveredSpanId, setHoveredSpanId] = useState<string | null>(null);
+  const [linkedTransitionFocus, setLinkedTransitionFocus] = useState<{
+    fromSpanId: string;
+    toSpanId: string;
+  } | null>(null);
   const treeRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const autoFocusedRef = useRef(false);
 
@@ -384,11 +388,15 @@ export function RunDetailView({
       ).slice(0, 3),
     [primarySummaryInsight, selectedInsight],
   );
+  const activeFailureInsight = primarySummaryInsight ?? selectedInsight;
   const insightSeverity = selectedInsight?.severity?.toLowerCase() ?? (selectedSpan?.status === "error" ? "high" : "low");
   const selectedInsightEvidenceSpanId = useMemo(() => {
-    const value = selectedInsight?.evidence?.span_id ?? selectedInsight?.evidence?.spanId;
+    const value =
+      activeFailureInsight?.related_transition_to_span_id ??
+      activeFailureInsight?.evidence?.span_id ??
+      activeFailureInsight?.evidence?.spanId;
     return typeof value === "string" ? value : null;
-  }, [selectedInsight?.evidence]);
+  }, [activeFailureInsight?.evidence, activeFailureInsight?.related_transition_to_span_id]);
 
   const whyFailedPoints = useMemo(() => {
     const points = [rootCause?.message, selectedInsight?.cause || selectedInsight?.message, selectedSpan?.error_type]
@@ -497,6 +505,16 @@ export function RunDetailView({
     }
   };
 
+  const focusInsightTransition = (insight: RunInsight | null) => {
+    if (!insight?.derived_from_transition) return;
+    if (!insight.related_transition_from_span_id || !insight.related_transition_to_span_id) return;
+    setLinkedTransitionFocus({
+      fromSpanId: insight.related_transition_from_span_id,
+      toSpanId: insight.related_transition_to_span_id,
+    });
+    jumpToSpan(insight.related_transition_to_span_id);
+  };
+
   return (
     <section className="space-y-4">
       <div className="rounded-xl border border-red-300 bg-red-50/95 p-3 shadow-sm dark:border-red-500/35 dark:bg-slate-900/95">
@@ -579,6 +597,8 @@ export function RunDetailView({
           hoveredSpanId={hoveredSpanId}
           onSpanSelect={setSelectedSpanId}
           onSpanHover={setHoveredSpanId}
+          highlightedTransitionToSpanId={linkedTransitionFocus?.toSpanId ?? null}
+          highlightedSpanId={linkedTransitionFocus?.toSpanId ?? null}
           totalDurationMs={runDuration}
           totalTokens={liveRun.total_tokens ?? 0}
           model={latestModel}
@@ -605,16 +625,31 @@ export function RunDetailView({
                   <Flame className="size-4 text-red-600 dark:text-red-300" />
                   Why this run failed
                 </CardTitle>
+                {activeFailureInsight?.derived_from_transition && activeFailureInsight.cause_confidence ? (
+                  <span className="inline-flex rounded border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-700 dark:border-blue-500/35 dark:bg-blue-500/15 dark:text-blue-200">
+                    Root cause ({activeFailureInsight.cause_confidence} confidence)
+                  </span>
+                ) : null}
                 <span className="inline-flex rounded border border-black/10 bg-white px-2 py-1 text-[11px] text-neutral-600 dark:border-white/15 dark:bg-slate-900 dark:text-neutral-300">
                   details
                 </span>
               </div>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
+              <button
+                type="button"
+                onClick={() => focusInsightTransition(activeFailureInsight)}
+                className={cn(
+                  "w-full rounded-lg border border-black/10 bg-white/70 p-3 text-left dark:border-white/10 dark:bg-slate-900/70",
+                  activeFailureInsight?.derived_from_transition ? "cursor-pointer hover:border-blue-300 dark:hover:border-blue-500/40" : undefined,
+                )}
+              >
                 <p className="font-semibold text-neutral-900 dark:text-neutral-100">Cause</p>
-                <p className="mt-1 text-neutral-700 dark:text-neutral-300">{rootCause?.message ?? selectedInsight?.cause ?? selectedInsight?.message ?? "No explicit cause detected."}</p>
-              </div>
+                {activeFailureInsight?.derived_from_transition ? (
+                  <p className="mt-1 text-xs font-semibold uppercase tracking-[0.15em] text-blue-700 dark:text-blue-300">Linked to previous step</p>
+                ) : null}
+                <p className="mt-1 text-neutral-700 dark:text-neutral-300">{activeFailureInsight?.cause ?? activeFailureInsight?.message ?? rootCause?.message ?? "No explicit cause detected."}</p>
+              </button>
 
               <div className="rounded-lg border border-black/10 bg-white/70 p-3 dark:border-white/10 dark:bg-slate-900/70">
                 <p className="font-semibold text-neutral-900 dark:text-neutral-100">Reasoning</p>
