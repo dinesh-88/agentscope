@@ -1,14 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, AlertTriangle, Clock, DollarSign } from "lucide-react";
+import { Activity, AlertTriangle, DollarSign, Gauge, Timer, Wrench } from "lucide-react";
 
 import { useAppTheme } from "@/components/app-shell";
-import { type Run } from "@/lib/api";
+import { type Run, type Span } from "@/lib/api";
 
 function durationMs(run: Run) {
   const start = new Date(run.started_at).getTime();
   const end = run.ended_at ? new Date(run.ended_at).getTime() : Date.now();
+  if (Number.isNaN(start) || Number.isNaN(end)) return 0;
+  return Math.max(0, end - start);
+}
+
+function spanDurationMs(span: Span) {
+  if (typeof span.latency_ms === "number" && Number.isFinite(span.latency_ms)) {
+    return Math.max(0, span.latency_ms);
+  }
+  const start = new Date(span.started_at).getTime();
+  const end = span.ended_at ? new Date(span.ended_at).getTime() : Date.now();
   if (Number.isNaN(start) || Number.isNaN(end)) return 0;
   return Math.max(0, end - start);
 }
@@ -18,72 +28,66 @@ function formatDuration(ms: number) {
   return `${(ms / 1000).toFixed(1)}s`;
 }
 
+function percentile(values: number[], p: number) {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  const index = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
+  return sorted[index] ?? 0;
+}
+
 function normalizeStatus(status: string) {
   if (status === "success") return "completed";
   if (status === "error") return "failed";
   return status;
 }
 
-export function DashboardView({ runs }: { runs: Run[] }) {
+export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: Record<string, Span[]> }) {
   const { theme } = useAppTheme();
   const dark = theme === "dark";
-  const now = new Date();
-  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
 
-  const runsToday = runs.filter((run) => {
-    const started = new Date(run.started_at).getTime();
-    return !Number.isNaN(started) && started >= todayStart;
-  });
+  const totalRuns = runs.length;
+  const successfulRuns = runs.filter((run) => normalizeStatus(run.status) === "completed").length;
+  const failedRuns = runs.filter((run) => normalizeStatus(run.status) === "failed").length;
+  const runLatencies = runs.map(durationMs).filter((value) => Number.isFinite(value));
+  const avgLatency = runLatencies.length > 0 ? runLatencies.reduce((sum, value) => sum + value, 0) / runLatencies.length : 0;
+  const p95Latency = percentile(runLatencies, 95);
+  const tokenUsage = runs.reduce((sum, run) => sum + (run.total_tokens ?? 0), 0);
+  const avgCost = runs.length > 0 ? runs.reduce((sum, run) => sum + (run.total_cost_usd ?? 0), 0) / runs.length : 0;
 
-  const failedRuns = runsToday.filter((run) => normalizeStatus(run.status) === "failed").length;
-  const avgLatency = runsToday.length > 0 ? runsToday.reduce((sum, run) => sum + durationMs(run), 0) / runsToday.length : 0;
-  const tokenUsage = runsToday.reduce((sum, run) => sum + (run.total_tokens ?? 0), 0);
-  const totalCost = runsToday.reduce((sum, run) => sum + (run.total_cost_usd ?? 0), 0);
+  const allSpans = Object.values(spansByRun).flat();
+  const failureTypeCounts = new Map<string, number>();
+  const rootCauseCounts = new Map<string, number>();
+  const dayFailures = new Map<string, number>();
 
-  const runsByStatusMap = runsToday.reduce<Record<string, number>>((acc, run) => {
-    const key = normalizeStatus(run.status);
-    acc[key] = (acc[key] ?? 0) + 1;
-    return acc;
-  }, {});
+  for (const span of allSpans) {
+    const isFailed = span.status === "failed" || span.status === "error";
+    if (!isFailed) continue;
+    const failureType = span.error_type ?? span.error_source ?? "unknown_failure";
+    failureTypeCounts.set(failureType, (failureTypeCounts.get(failureType) ?? 0) + 1);
 
-  const runsByStatus = [
-    { status: "completed", count: runsByStatusMap.completed ?? 0 },
-    { status: "running", count: runsByStatusMap.running ?? 0 },
-    { status: "failed", count: runsByStatusMap.failed ?? 0 },
-    { status: "pending", count: runsByStatusMap.pending ?? 0 },
-  ];
+    const rootCause =
+      span.step_transition?.cause_reason ??
+      (span.step_transition?.likely_cause ? "step transition likely caused failure" : null) ??
+      span.error_source ??
+      "unknown_root_cause";
+    rootCauseCounts.set(rootCause, (rootCauseCounts.get(rootCause) ?? 0) + 1);
+
+    const day = new Date(span.started_at).toISOString().slice(0, 10);
+    dayFailures.set(day, (dayFailures.get(day) ?? 0) + 1);
+  }
+
+  const topFailureTypes = [...failureTypeCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const topRootCauses = [...rootCauseCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5);
+  const failureTrend = [...dayFailures.entries()].sort(([a], [b]) => a.localeCompare(b)).slice(-7);
+  const slowestSpans = [...allSpans].sort((a, b) => spanDurationMs(b) - spanDurationMs(a)).slice(0, 6);
 
   const recentRuns = [...runs].sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at)).slice(0, 5);
 
-  const statCards = [
-    {
-      title: "Runs Today",
-      value: runsToday.length,
-      icon: Activity,
-      color: dark ? "text-blue-300" : "text-blue-600",
-      bgColor: dark ? "bg-blue-500/20" : "bg-blue-50",
-    },
-    {
-      title: "Failed Runs",
-      value: failedRuns,
-      icon: AlertTriangle,
-      color: dark ? "text-red-300" : "text-red-600",
-      bgColor: dark ? "bg-red-500/20" : "bg-red-50",
-    },
-    {
-      title: "Avg Latency",
-      value: `${(avgLatency / 1000).toFixed(1)}s`,
-      icon: Clock,
-      color: dark ? "text-yellow-300" : "text-yellow-600",
-      bgColor: dark ? "bg-yellow-500/20" : "bg-yellow-50",
-    },
-    {
-      title: "Token Usage",
-      value: tokenUsage.toLocaleString(),
-      icon: DollarSign,
-      color: dark ? "text-green-300" : "text-green-600",
-      bgColor: dark ? "bg-green-500/20" : "bg-green-50",
-    },
+  const runHealthCards = [
+    { title: "Total Runs", value: totalRuns.toLocaleString(), icon: Activity },
+    { title: "Success / Failed", value: `${successfulRuns} / ${failedRuns}`, icon: AlertTriangle },
+    { title: "Avg Latency", value: formatDuration(avgLatency), icon: Timer },
+    { title: "Avg Cost", value: `$${avgCost.toFixed(4)}`, icon: DollarSign },
   ];
 
   function statusBadge(status: string) {
@@ -104,68 +108,125 @@ export function DashboardView({ runs }: { runs: Run[] }) {
   return (
     <div className={dark ? "bg-[#0B0F14] p-8" : "bg-gray-50 p-8"}>
       <div className="mb-8">
-        <h1 className={dark ? "mb-2 text-2xl font-semibold text-gray-100" : "mb-2 text-2xl font-semibold text-gray-900"}>Dashboard</h1>
-        <p className={dark ? "text-gray-400" : "text-gray-600"}>Monitor your agent workflows and performance</p>
+        <h1 className={dark ? "mb-2 text-2xl font-semibold text-gray-100" : "mb-2 text-2xl font-semibold text-gray-900"}>Debug Dashboards</h1>
+        <p className={dark ? "text-gray-400" : "text-gray-600"}>Focus on failure clarity, trend shifts, and performance bottlenecks.</p>
       </div>
 
-      <div className="mb-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-        {statCards.map((stat) => {
-          const Icon = stat.icon;
-          return (
-            <div key={stat.title} className={dark ? "rounded-xl border border-white/10 bg-[#101722] p-6" : "rounded-xl border border-gray-200 bg-white p-6"}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className={dark ? "text-sm text-gray-400" : "text-sm text-gray-600"}>{stat.title}</p>
-                  <p className={dark ? "mt-2 text-3xl font-semibold text-gray-100" : "mt-2 text-3xl font-semibold text-gray-900"}>{stat.value}</p>
-                </div>
-                <div className={`rounded-lg p-3 ${stat.bgColor}`}>
-                  <Icon className={`h-6 w-6 ${stat.color}`} />
+      <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <Activity className="size-4 text-blue-300" />
+          <h2 className="text-base font-medium text-gray-100">Run Health</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {runHealthCards.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <div key={stat.title} className={dark ? "rounded-xl border border-white/10 bg-[#0f1520] p-4" : "rounded-xl border border-gray-200 bg-white p-4"}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className={dark ? "text-sm text-gray-400" : "text-sm text-gray-600"}>{stat.title}</p>
+                    <p className={dark ? "mt-2 text-2xl font-semibold text-gray-100" : "mt-2 text-2xl font-semibold text-gray-900"}>{stat.value}</p>
+                  </div>
+                  <div className="rounded-lg bg-white/5 p-2">
+                    <Icon className="h-5 w-5 text-gray-200" />
+                  </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
-      <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className={dark ? "rounded-xl border border-white/10 bg-[#101722]" : "rounded-xl border border-gray-200 bg-white"}>
-          <div className="p-6 pb-4">
-            <h2 className={dark ? "text-base font-medium text-gray-100" : "text-base font-medium text-gray-900"}>Run Status Distribution</h2>
-          </div>
-          <div className="px-6 pb-6">
-            <div className="space-y-3">
-              {runsByStatus.map(({ status, count }) => (
-                <div key={status} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`h-3 w-3 rounded-full ${status === "completed" ? "bg-green-500" : status === "running" ? "bg-blue-500" : status === "failed" ? "bg-red-500" : "bg-gray-500"}`} />
-                    <span className={dark ? "text-sm text-gray-300 capitalize" : "text-sm text-gray-700 capitalize"}>{status}</span>
+      <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <Wrench className="size-4 text-amber-300" />
+          <h2 className="text-base font-medium text-gray-100">Failure Analysis</h2>
+        </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-[0.2em] text-gray-400">Failure Types</p>
+            <div className="space-y-2">
+              {topFailureTypes.length === 0 ? (
+                <p className="text-sm text-gray-400">No failure spans found in recent runs.</p>
+              ) : (
+                topFailureTypes.map(([type, count]) => (
+                  <div key={type} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-gray-200">
+                    <span className="truncate">{type}</span>
+                    <span>{count}</span>
                   </div>
-                  <span className={dark ? "text-sm font-semibold text-gray-100" : "text-sm font-semibold text-gray-900"}>{count}</span>
-                </div>
-              ))}
+                ))
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-[0.2em] text-gray-400">Failure Trend (7d)</p>
+            <div className="space-y-2">
+              {failureTrend.length === 0 ? (
+                <p className="text-sm text-gray-400">Not enough data for trend.</p>
+              ) : (
+                failureTrend.map(([day, count]) => (
+                  <div key={day} className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-gray-200">
+                    <span>{day}</span>
+                    <span>{count}</span>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+          <div>
+            <p className="mb-2 text-xs uppercase tracking-[0.2em] text-gray-400">Top Root Causes</p>
+            <div className="space-y-2">
+              {topRootCauses.length === 0 ? (
+                <p className="text-sm text-gray-400">No root-cause signals captured.</p>
+              ) : (
+                topRootCauses.map(([reason, count]) => (
+                  <div key={reason} className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-gray-200">
+                    <div className="line-clamp-2">{reason}</div>
+                    <div className="mt-1 text-xs text-gray-400">{count} spans</div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
+      </div>
 
-        <div className={dark ? "rounded-xl border border-white/10 bg-[#101722]" : "rounded-xl border border-gray-200 bg-white"}>
-          <div className="p-6 pb-4">
-            <h2 className={dark ? "text-base font-medium text-gray-100" : "text-base font-medium text-gray-900"}>Cost Summary</h2>
+      <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <Gauge className="size-4 text-emerald-300" />
+          <h2 className="text-base font-medium text-gray-100">Performance</h2>
+        </div>
+        <div className="mb-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm text-gray-400">Avg Latency</p>
+            <p className="mt-1 text-xl font-semibold text-gray-100">{formatDuration(avgLatency)}</p>
           </div>
-          <div className="space-y-4 px-6 pb-6">
-            <div>
-              <p className={dark ? "text-sm text-gray-400" : "text-sm text-gray-600"}>Total Cost Today</p>
-              <p className={dark ? "mt-1 text-2xl font-semibold text-gray-100" : "mt-1 text-2xl font-semibold text-gray-900"}>${totalCost.toFixed(3)}</p>
-            </div>
-            <div>
-              <p className={dark ? "text-sm text-gray-400" : "text-sm text-gray-600"}>Tokens Used</p>
-              <p className={dark ? "mt-1 text-xl font-semibold text-gray-100" : "mt-1 text-xl font-semibold text-gray-900"}>{tokenUsage.toLocaleString()}</p>
-            </div>
-            <div>
-              <p className={dark ? "text-sm text-gray-400" : "text-sm text-gray-600"}>Avg Cost per Run</p>
-              <p className={dark ? "mt-1 text-xl font-semibold text-gray-100" : "mt-1 text-xl font-semibold text-gray-900"}>
-                ${runsToday.length > 0 ? (totalCost / runsToday.length).toFixed(4) : "0.0000"}
-              </p>
-            </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm text-gray-400">P95 Latency</p>
+            <p className="mt-1 text-xl font-semibold text-gray-100">{formatDuration(p95Latency)}</p>
+          </div>
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <p className="text-sm text-gray-400">Token Usage</p>
+            <p className="mt-1 text-xl font-semibold text-gray-100">{tokenUsage.toLocaleString()}</p>
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-xs uppercase tracking-[0.2em] text-gray-400">Slowest Spans</p>
+          <div className="space-y-2">
+            {slowestSpans.length === 0 ? (
+              <p className="text-sm text-gray-400">No span latency data available.</p>
+            ) : (
+              slowestSpans.map((span) => (
+                <Link
+                  key={span.id}
+                  href={`/runs/${span.run_id}`}
+                  className="flex items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-gray-200 hover:bg-white/[0.05]"
+                >
+                  <span className="truncate">{span.name}</span>
+                  <span className="ml-3">{formatDuration(spanDurationMs(span))}</span>
+                </Link>
+              ))
+            )}
           </div>
         </div>
       </div>
