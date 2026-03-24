@@ -44,6 +44,36 @@ pub fn classify_root_cause(detections: &[Detection]) -> Classification {
             ],
             evidence: primary.unwrap().evidence.clone(),
         },
+        Some("INSTRUCTION_DRIFT") => Classification {
+            root_cause_category: "INSTRUCTION_DRIFT",
+            summary: primary.unwrap().summary.clone(),
+            suggested_fixes: vec![
+                "Keep instruction files and runtime overrides consistent across spans in a run.".to_string(),
+                "Version instruction bundles explicitly when changes are intentional.".to_string(),
+                "Pin instruction hashes for stable run behavior.".to_string(),
+            ],
+            evidence: primary.unwrap().evidence.clone(),
+        },
+        Some("MISSING_OUTPUT_CONSTRAINT") => Classification {
+            root_cause_category: "INSTRUCTION_OUTPUT_CONSTRAINT_MISSING",
+            summary: primary.unwrap().summary.clone(),
+            suggested_fixes: vec![
+                "Add explicit output format constraints (for example strict JSON schema).".to_string(),
+                "Provide concise examples of valid output in runtime instructions.".to_string(),
+                "Validate model output and retry with stricter constraints on failure.".to_string(),
+            ],
+            evidence: primary.unwrap().evidence.clone(),
+        },
+        Some("INSTRUCTION_CONFLICT") => Classification {
+            root_cause_category: "INSTRUCTION_CONFLICT",
+            summary: primary.unwrap().summary.clone(),
+            suggested_fixes: vec![
+                "Resolve conflicting instruction files and remove duplicate contradictory sources.".to_string(),
+                "Enforce precedence rules runtime > local > global with explicit audit logs.".to_string(),
+                "Use a single canonical instruction source per path/version.".to_string(),
+            ],
+            evidence: primary.unwrap().evidence.clone(),
+        },
         Some("TIMEOUT") => Classification {
             root_cause_category: "TIMEOUT",
             summary: primary.unwrap().summary.clone(),

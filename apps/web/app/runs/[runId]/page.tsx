@@ -48,6 +48,10 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
     insights.find((insight) => insight.severity === "medium") ??
     insights[0] ??
     null;
+  const criticalSummary =
+    rootCause?.message ??
+    highlightInsight?.message ??
+    (hasFailedSpan ? "Run failed due to an error in a downstream span." : "No critical failures detected.");
 
   return (
     <AppShell activePath="/runs">
@@ -57,52 +61,43 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
             Back to runs
           </Link>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-3xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-100">{run.workflow_name}</h1>
-            <span className={`inline-flex rounded-lg border px-3 py-1 text-sm font-medium capitalize ${statusTone}`}>
-              {run.status}
-            </span>
-          </div>
+          <div className="space-y-3 rounded-xl border border-black/8 bg-white/90 p-4 shadow-sm dark:border-white/10 dark:bg-slate-900/80">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight text-neutral-950 dark:text-neutral-100">{run.workflow_name}</h1>
+              <span className={`inline-flex rounded-lg border px-3 py-1 text-sm font-medium uppercase ${statusTone}`}>
+                {run.status}
+              </span>
+            </div>
 
-          <p className="text-sm text-neutral-600 dark:text-neutral-400">Run ID: {run.id}</p>
-
-          <div className="grid grid-cols-2 gap-3 rounded-xl border border-black/5 bg-white/90 p-4 shadow-sm sm:grid-cols-4 dark:border-white/10 dark:bg-slate-900/80">
-            <div className="text-center">
-              <div className="mb-1 flex items-center justify-center gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+            <div className="flex flex-wrap items-center gap-2 text-sm">
+              <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-neutral-700 dark:bg-slate-800 dark:text-neutral-300">
                 <Clock className="size-3.5" />
-                Duration
-              </div>
-              <p className="text-sm font-semibold text-neutral-950 dark:text-neutral-100">{runDurationLabel}</p>
-            </div>
-            <div className="text-center">
-              <div className="mb-1 flex items-center justify-center gap-1 text-xs text-neutral-500 dark:text-neutral-400">
-                <DollarSign className="size-3.5" />
-                Cost
-              </div>
-              <p className="text-sm font-semibold text-neutral-950 dark:text-neutral-100">${(run.total_cost_usd ?? 0).toFixed(4)}</p>
-            </div>
-            <div className="text-center">
-              <div className="mb-1 flex items-center justify-center gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+                {runDurationLabel}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-neutral-700 dark:bg-slate-800 dark:text-neutral-300">
                 <BarChart3 className="size-3.5" />
-                Tokens
-              </div>
-              <p className="text-sm font-semibold text-neutral-950 dark:text-neutral-100">{(run.total_tokens ?? 0).toLocaleString()}</p>
-            </div>
-            <div className="text-center">
-              <div className="mb-1 flex items-center justify-center gap-1 text-xs text-neutral-500 dark:text-neutral-400">
+                {(run.total_tokens ?? 0).toLocaleString()} tokens
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-neutral-700 dark:bg-slate-800 dark:text-neutral-300">
+                <DollarSign className="size-3.5" />
+                ${(run.total_cost_usd ?? 0).toFixed(4)}
+              </span>
+              <span className="inline-flex items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-neutral-700 dark:bg-slate-800 dark:text-neutral-300">
                 <Zap className="size-3.5" />
-                Model
-              </div>
-              <p className="truncate text-sm font-semibold text-neutral-950 dark:text-neutral-100">{latestModel}</p>
+                {latestModel}
+              </span>
+            </div>
+
+            <div className={hasFailedSpan ? "rounded-lg border border-red-300 bg-red-50 p-3" : "rounded-lg border border-emerald-300 bg-emerald-50 p-3"}>
+              <p className={hasFailedSpan ? "text-xs font-semibold uppercase tracking-wide text-red-700" : "text-xs font-semibold uppercase tracking-wide text-emerald-700"}>
+                Critical
+              </p>
+              <p className={hasFailedSpan ? "mt-1 text-sm font-medium text-red-700" : "mt-1 text-sm font-medium text-emerald-700"}>
+                {criticalSummary}
+              </p>
             </div>
           </div>
-
-          {hasFailedSpan && highlightInsight ? (
-            <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4">
-              <p className="text-sm font-semibold text-red-700 dark:text-red-300">{highlightInsight.message}</p>
-              <p className="mt-1 text-xs text-red-700/90 dark:text-red-300/90">{highlightInsight.recommendation}</p>
-            </div>
-          ) : null}
+          <p className="text-xs text-neutral-500 dark:text-neutral-400">Run ID: {run.id}</p>
         </div>
         <RunDetailView run={run} spans={spans} artifacts={artifacts} insights={insights} rootCause={rootCause} />
       </section>

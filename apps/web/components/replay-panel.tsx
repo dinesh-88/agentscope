@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { RotateCcw } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
 type ReplayPanelProps = {
   runId: string;
   selectedArtifacts: Artifact[];
+  selectedSpanId?: string | null;
 };
 
 function formatMode(state: Record<string, unknown> | null | undefined) {
@@ -25,7 +26,7 @@ function formatMode(state: Record<string, unknown> | null | undefined) {
   return `${mode} · ${status}`;
 }
 
-export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
+export function ReplayPanel({ runId, selectedArtifacts, selectedSpanId }: ReplayPanelProps) {
   const [replay, setReplay] = useState<ReplayResponse | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -38,6 +39,12 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
     () => selectedArtifacts.map((artifact) => ({ id: artifact.id, kind: artifact.kind, spanId: artifact.span_id })),
     [selectedArtifacts],
   );
+
+  useEffect(() => {
+    if (selectedSpanId) {
+      setSpanId(selectedSpanId);
+    }
+  }, [selectedSpanId]);
 
   async function withAction(action: () => Promise<ReplayResponse>) {
     setBusy(true);
@@ -67,7 +74,7 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <RotateCcw className="size-4 text-indigo-600" />
-          Replay Engine
+          Try Fix
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-3 pb-4">
@@ -75,18 +82,37 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
           <button
             type="button"
             disabled={busy}
-            onClick={() => withAction(() => startReplay({ original_run_id: runId }))}
+            onClick={() => {
+              if (!replay) {
+                withAction(() => startReplay({ original_run_id: runId }));
+                return;
+              }
+              withAction(() =>
+                modifyReplay(replay.replay.id, {
+                  artifact_id: artifactId || undefined,
+                  span_id: spanId || undefined,
+                  kind: kind || undefined,
+                  payload: parsePayload(),
+                }),
+              );
+            }}
             className="rounded-md bg-indigo-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
           >
-            Start Replay
+            Modify input
           </button>
           <button
             type="button"
-            disabled={busy || !replay}
-            onClick={() => replay && withAction(() => stepReplay(replay.replay.id))}
+            disabled={busy}
+            onClick={() => {
+              if (!replay) {
+                withAction(() => startReplay({ original_run_id: runId }));
+                return;
+              }
+              withAction(() => stepReplay(replay.replay.id));
+            }}
             className="rounded-md border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 disabled:opacity-60 dark:border-white/20 dark:bg-slate-900 dark:text-neutral-100"
           >
-            Step
+            Re-run span
           </button>
           <button
             type="button"
@@ -94,7 +120,7 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
             onClick={() => replay && withAction(() => resumeReplay(replay.replay.id))}
             className="rounded-md border border-black/10 bg-white px-3 py-1.5 text-xs font-medium text-neutral-900 disabled:opacity-60 dark:border-white/20 dark:bg-slate-900 dark:text-neutral-100"
           >
-            Resume
+            Resume run
           </button>
         </div>
 
@@ -126,7 +152,7 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
         ) : null}
 
         <div className="space-y-2 rounded-lg border border-black/10 p-3">
-          <p className="text-xs font-medium text-neutral-700">Modify artifact payload</p>
+          <p className="text-xs font-medium text-neutral-700">Patch payload (JSON)</p>
           <select
             value={artifactId}
             onChange={(event) => {
@@ -165,24 +191,7 @@ export function ReplayPanel({ runId, selectedArtifacts }: ReplayPanelProps) {
             rows={5}
             className="w-full rounded-md border border-black/10 px-2 py-1.5 font-mono text-xs"
           />
-          <button
-            type="button"
-            disabled={busy || !replay}
-            onClick={() =>
-              replay &&
-              withAction(() =>
-                modifyReplay(replay.replay.id, {
-                  artifact_id: artifactId || undefined,
-                  span_id: spanId || undefined,
-                  kind: kind || undefined,
-                  payload: parsePayload(),
-                }),
-              )
-            }
-            className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-60"
-          >
-            Apply modification
-          </button>
+          <p className="text-[11px] text-neutral-500">Use “Modify input” to apply this JSON patch.</p>
         </div>
 
         {replay?.diff.modified_artifacts.length ? (

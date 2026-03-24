@@ -8,7 +8,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY Cargo.toml Cargo.lock ./
-COPY apps ./apps
+COPY apps/api ./apps/api
+COPY apps/llm-proxy ./apps/llm-proxy
 COPY examples ./examples
 
 RUN cargo build --release -p agentscope-api

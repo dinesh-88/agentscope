@@ -52,7 +52,7 @@ Web UI will be available at `http://localhost:3000`.
 ## Run With Docker
 
 ```bash
-docker compose -f docker/docker-compose.yml up --build
+docker compose -f docker-compose.yml up --build
 ```
 
 API will be available at `http://localhost:8080` and Postgres at `localhost:5432`.

@@ -104,6 +104,7 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
                 evaluation: None,
                 metadata: None,
                 error: None,
+            step_transition: None,
             },
             Span {
                 id: tool_span_id.clone(),
@@ -144,6 +145,7 @@ async fn replay_supports_step_modify_resume_and_diff(pool: PgPool) {
                 evaluation: None,
                 metadata: None,
                 error: None,
+            step_transition: None,
             },
         ],
         artifacts: vec![

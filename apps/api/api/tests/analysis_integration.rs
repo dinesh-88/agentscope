@@ -104,6 +104,7 @@ async fn computes_run_analysis_and_project_insights(pool: PgPool) {
                 evaluation: None,
                 metadata: None,
                 error: None,
+            step_transition: None,
             },
             Span {
                 id: tool_span_id.clone(),
@@ -144,6 +145,7 @@ async fn computes_run_analysis_and_project_insights(pool: PgPool) {
                 evaluation: None,
                 metadata: Some(json!({"timed_out": false})),
                 error: None,
+                step_transition: None,
             },
         ]
         .into_iter()
@@ -186,6 +188,7 @@ async fn computes_run_analysis_and_project_insights(pool: PgPool) {
             evaluation: None,
             metadata: None,
             error: None,
+            step_transition: None,
         }))
         .collect(),
         artifacts: vec![

@@ -102,6 +102,7 @@ async fn ingest_and_query_runs(pool: PgPool) {
             evaluation: None,
             metadata: Some(json!({"file_path": "/tmp/demo.txt"})),
             error: None,
+            step_transition: None,
         }],
         artifacts: vec![Artifact {
             id: "artifact_008_prompt".to_string(),

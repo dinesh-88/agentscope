@@ -1184,7 +1184,12 @@ async fn get_run_spans(
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<Vec<Span>>, ApiError> {
     ensure_run_access(&state, &id, &user.id).await?;
-    let spans = state.storage.get_spans(&id).await?;
+    let mut spans = state.storage.get_spans(&id).await?;
+    let artifacts = state.storage.get_artifacts(&id).await?;
+    let transitions = analysis::step_transition::build_step_transitions(&spans, &artifacts);
+    for span in &mut spans {
+        span.step_transition = transitions.get(&span.id).cloned();
+    }
     Ok(Json(spans))
 }
 

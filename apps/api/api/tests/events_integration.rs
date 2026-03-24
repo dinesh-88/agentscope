@@ -129,6 +129,7 @@ async fn streams_span_created_events_to_multiple_subscribers(pool: PgPool) {
             evaluation: None,
             metadata: Some(json!({"streamed": true})),
             error: None,
+            step_transition: None,
         }],
         artifacts: vec![],
     };

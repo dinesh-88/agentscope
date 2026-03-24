@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sqlx::FromRow;
 
+use crate::StepTransition;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpanError {
     #[serde(default)]
@@ -78,4 +80,7 @@ pub struct Span {
     #[serde(default)]
     #[sqlx(skip)]
     pub error: Option<SpanError>,
+    #[serde(default)]
+    #[sqlx(skip)]
+    pub step_transition: Option<StepTransition>,
 }

@@ -12,6 +12,7 @@ pub mod run_replay;
 pub mod run_root_cause;
 pub mod search;
 pub mod span;
+pub mod step_transition;
 pub mod trend;
 
 pub use active_alert::ActiveAlert;
@@ -28,4 +29,5 @@ pub use run_replay::RunReplay;
 pub use run_root_cause::RunRootCause;
 pub use search::{ArtifactSearchResponse, ArtifactSearchResult};
 pub use span::Span;
+pub use step_transition::StepTransition;
 pub use trend::{CostMetrics, LatencyMetrics, PromptMetric, TrendInsight, TrendReport};

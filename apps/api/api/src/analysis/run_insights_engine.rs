@@ -544,6 +544,16 @@ fn recommendation_for_failure(failure_type: &str) -> &'static str {
         "TIMEOUT" => "Set tighter execution budgets and add bounded retry logic.",
         "API_ERROR" => "Handle rate limits and upstream failures with backoff and fallback.",
         "TOKEN_OVERFLOW" => "Reduce prompt context and truncate low-signal content.",
+        "INSTRUCTION_DRIFT" => "Stabilize instruction bundles and avoid untracked mid-run instruction changes.",
+        "MISSING_OUTPUT_CONSTRAINT" => {
+            "Add strict output-format constraints and validate output against the required schema."
+        }
+        "INSTRUCTION_CONFLICT" => {
+            "Resolve contradictory instruction sources and keep a single canonical instruction set."
+        }
+        "STEP_TRANSITION_ISSUE" => {
+            "Inspect the previous step transition, remove noisy context/tool output, and keep only required messages."
+        }
         _ => "Inspect span and artifact evidence and patch the failing step.",
     }
 }

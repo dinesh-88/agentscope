@@ -110,6 +110,7 @@ async fn compare_endpoint_returns_prompt_response_and_metric_diffs(pool: PgPool)
                 evaluation: None,
                 metadata: None,
                 error: None,
+            step_transition: None,
             }],
             artifacts: vec![
                 Artifact {

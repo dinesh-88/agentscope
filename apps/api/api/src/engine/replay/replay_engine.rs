@@ -388,6 +388,7 @@ impl<'a> ReplayEngine<'a> {
                 evaluation: span.evaluation,
                 metadata: span.metadata,
                 error: None,
+                step_transition: None,
             };
             self.storage.insert_span(&cloned_span).await?;
             if let Some(sender) = &self.span_events {

@@ -1,8 +1,7 @@
 "use client";
 
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { type MouseEvent, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useMemo, useRef } from "react";
+import { AlertTriangle, ArrowDown, CheckCircle2, Circle, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,6 +9,7 @@ export type TraceSpan = {
   id: string;
   name: string;
   parentId?: string;
+  spanType?: string;
   startMs: number;
   durationMs: number;
   status: "success" | "running" | "error";
@@ -17,6 +17,15 @@ export type TraceSpan = {
   response: string;
   tokens: number;
   latencyMs: number;
+  contextUsagePercent?: number | null;
+  stepTransition?: {
+    added_messages: string[];
+    removed_messages: string[];
+    token_delta: number;
+    tool_outputs_added: string[];
+    instruction_changes: string[];
+    warnings: string[];
+  } | null;
   rca?: {
     summary: string;
     rootCause: string;
@@ -29,9 +38,13 @@ export type TraceSpan = {
 type TraceViewProps = {
   spans: TraceSpan[];
   className?: string;
-  title?: string;
   selectedSpanId?: string | null;
+  hoveredSpanId?: string | null;
   onSpanSelect?: (spanId: string) => void;
+  onSpanHover?: (spanId: string | null) => void;
+  totalDurationMs?: number;
+  totalTokens?: number;
+  model?: string;
 };
 
 type EnrichedSpan = TraceSpan & {
@@ -39,16 +52,61 @@ type EnrichedSpan = TraceSpan & {
   ancestors: string[];
 };
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
+function formatMs(value: number) {
+  if (value < 1000) return `${Math.round(value)}ms`;
+  return `${(value / 1000).toFixed(2)}s`;
 }
 
-export function TraceView({ spans, className, title = "Run Trace", selectedSpanId, onSpanSelect }: TraceViewProps) {
-  const shouldReduceMotion = useReducedMotion();
-  const [tooltip, setTooltip] = useState<{ span: TraceSpan; x: number; y: number } | null>(null);
-  const [openRcaSpanId, setOpenRcaSpanId] = useState<string | null>(null);
+function compact(values: string[], maxItems: number = 4) {
+  const cleaned = values.map((value) => value.trim()).filter(Boolean);
+  return {
+    shown: cleaned.slice(0, maxItems),
+    overflow: Math.max(cleaned.length - maxItems, 0),
+  };
+}
 
-  const { rows, maxEndMs, maxDurationMs } = useMemo(() => {
+function normalizeWarning(value: string) {
+  if (value === "context_size_high") return "Context nearing limit";
+  if (value === "context_truncated") return "Context was truncated";
+  if (value === "missing_validation") return "No validation before next step";
+  return value;
+}
+
+function statusBadgeTone(status: TraceSpan["status"]) {
+  if (status === "error") return "border-red-300 bg-red-50 text-red-700";
+  if (status === "running") return "border-amber-300 bg-amber-50 text-amber-700";
+  return "border-emerald-300 bg-emerald-50 text-emerald-700";
+}
+
+function statusIcon(status: TraceSpan["status"]) {
+  if (status === "error") return AlertTriangle;
+  if (status === "running") return Loader2;
+  return CheckCircle2;
+}
+
+function barTone(span: TraceSpan, selected: boolean, hovered: boolean) {
+  if (selected) return "bg-blue-500";
+  if (span.status === "error") return "bg-red-500";
+  if (hovered) return "bg-blue-400";
+  if ((span.spanType ?? "").toLowerCase().includes("tool")) return "bg-amber-500";
+  if ((span.spanType ?? "").toLowerCase().includes("llm")) return "bg-sky-500";
+  return "bg-slate-500";
+}
+
+export function TraceView({
+  spans,
+  className,
+  selectedSpanId,
+  hoveredSpanId,
+  onSpanSelect,
+  onSpanHover,
+  totalDurationMs,
+  totalTokens,
+  model,
+}: TraceViewProps) {
+  const rowRefs = useRef(new Map<string, HTMLDivElement | null>());
+
+  const { rows, maxEndMs } = useMemo(() => {
     const byId = new Map(spans.map((span) => [span.id, span]));
     const depthMemo = new Map<string, number>();
 
@@ -76,333 +134,180 @@ export function TraceView({ spans, className, title = "Run Trace", selectedSpanI
       }
       return { ...span, depth, ancestors };
     });
+
     const sorted = [...enriched].sort((a, b) => {
       const startDelta = a.startMs - b.startMs;
       if (startDelta !== 0) return startDelta;
-
-      const aIsAncestorOfB = b.ancestors.includes(a.id);
-      const bIsAncestorOfA = a.ancestors.includes(b.id);
-      if (aIsAncestorOfB && !bIsAncestorOfA) return -1;
-      if (bIsAncestorOfA && !aIsAncestorOfB) return 1;
-
       const depthDelta = a.depth - b.depth;
       if (depthDelta !== 0) return depthDelta;
-
-      const durationDelta = b.durationMs - a.durationMs;
-      if (durationDelta !== 0) return durationDelta;
-
-      const nameDelta = a.name.localeCompare(b.name);
-      if (nameDelta !== 0) return nameDelta;
       return a.id.localeCompare(b.id);
     });
 
     return {
       rows: sorted,
       maxEndMs: Math.max(...sorted.map((span) => span.startMs + span.durationMs), 1),
-      maxDurationMs: Math.max(...sorted.map((span) => span.durationMs), 1),
     };
   }, [spans]);
 
-  const handleHover = (event: MouseEvent<HTMLDivElement>, span: TraceSpan) => {
-    setTooltip({ span, x: event.clientX, y: event.clientY });
-  };
-
-  const axisTicks = useMemo(() => {
-    const steps = 4;
-    return Array.from({ length: steps + 1 }).map((_, i) => {
-      const ratio = i / steps;
-      return { ratio, label: `${Math.round(maxEndMs * ratio)}ms` };
-    });
-  }, [maxEndMs]);
-
-  const focusPath = useMemo(() => {
-    if (!openRcaSpanId) return null;
-    const byId = new Map(rows.map((span) => [span.id, span]));
-    const openSpan = byId.get(openRcaSpanId);
-    if (!openSpan) return null;
-
-    const path = new Set<string>([openSpan.id, ...openSpan.ancestors]);
-    for (const span of rows) {
-      if (span.ancestors.includes(openSpan.id)) path.add(span.id);
+  useEffect(() => {
+    if (!selectedSpanId) return;
+    const el = rowRefs.current.get(selectedSpanId);
+    if (el) {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
     }
-    return path;
-  }, [rows, openRcaSpanId]);
+  }, [selectedSpanId]);
 
-  const inferFallbackFix = (text: string) => {
-    const normalized = text.toLowerCase();
-    if (normalized.includes("timeout")) return "Increase timeout, add retry with backoff, and monitor upstream latency.";
-    if (normalized.includes("401") || normalized.includes("403") || normalized.includes("auth")) {
-      return "Verify credentials/token scope and refresh auth before this call.";
-    }
-    if (normalized.includes("429") || normalized.includes("rate")) {
-      return "Add rate limiting and backoff, and reduce burst concurrency for this step.";
-    }
-    if (normalized.includes("json") || normalized.includes("parse")) {
-      return "Validate response schema and add strict parsing with fallback handling.";
-    }
-    return "Inspect the failing span inputs/outputs and apply the run-level RCA recommendation.";
-  };
-
-  const getRca = (span: TraceSpan) => {
-    if (span.rca) return span.rca;
-    const fallbackRootCause = span.response || "A dependency/tool call failed during execution.";
-    return {
-      summary: "Failure detected during span execution.",
-      rootCause: fallbackRootCause,
-      location: span.name,
-      suggestedFix: inferFallbackFix(fallbackRootCause),
-    };
-  };
+  const runDuration = totalDurationMs ?? maxEndMs;
 
   return (
-    <div
-      className={cn(
-        "relative overflow-hidden rounded-xl border border-white/10 bg-[#0B0F14] p-4 shadow-[0_14px_40px_rgba(0,0,0,0.35)]",
-        className,
-      )}
-    >
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="text-sm font-medium text-slate-200">{title}</h3>
-        <span className="text-xs text-slate-500">{maxEndMs}ms total</span>
-      </div>
-
-      <div className="grid grid-cols-[280px_minmax(0,1fr)] items-end gap-3 px-2 text-[11px] uppercase tracking-[0.14em] text-slate-500">
-        <div>Span</div>
-        <div>Timeline</div>
-      </div>
-      <div className="mt-2 grid grid-cols-[280px_minmax(0,1fr)] gap-3">
-        <div />
-        <div className="relative h-10 rounded-md bg-[#0F1620]">
-          {axisTicks.map((tick) => (
-            <div key={tick.label} className="absolute inset-y-1" style={{ left: `${tick.ratio * 100}%` }}>
-              <div className="absolute -translate-x-1/2 text-[10px] text-slate-500">{tick.label}</div>
-              <div className="absolute bottom-0 top-4 w-px bg-slate-700/60" />
-            </div>
-          ))}
+    <div className={cn("space-y-4", className)}>
+      <div className="rounded-xl border border-black/10 bg-white p-4">
+        <p className="text-sm font-semibold text-neutral-900">Timeline Header</p>
+        <div className="mt-2 grid gap-2 text-sm text-neutral-700 sm:grid-cols-3">
+          <div className="rounded-lg bg-neutral-50 px-3 py-2">
+            <p className="text-xs text-neutral-500">Total duration</p>
+            <p className="font-medium text-neutral-900">{formatMs(runDuration)}</p>
+          </div>
+          <div className="rounded-lg bg-neutral-50 px-3 py-2">
+            <p className="text-xs text-neutral-500">Token usage</p>
+            <p className="font-medium text-neutral-900">{(totalTokens ?? spans.reduce((sum, span) => sum + (span.tokens ?? 0), 0)).toLocaleString()}</p>
+          </div>
+          <div className="rounded-lg bg-neutral-50 px-3 py-2">
+            <p className="text-xs text-neutral-500">Model</p>
+            <p className="truncate font-medium text-neutral-900">{model ?? "n/a"}</p>
+          </div>
         </div>
       </div>
 
-      <div className="mt-3 space-y-1.5">
-        {rows.map((span, index) => {
-          const leftPct = (span.startMs / maxEndMs) * 100;
-          const widthPct = Math.max((span.durationMs / maxEndMs) * 100, 1.8);
-          const rowBarLeft = `calc(${leftPct}% + 8px)`;
-          const rowBarWidth = `calc(${widthPct}% - 6px)`;
-          const fillDuration = 0.45 + (span.durationMs / maxDurationMs) * 1.2;
-          const revealDelay = shouldReduceMotion ? 0 : index * 0.09;
-          const isRunning = span.status === "running";
-          const isError = span.status === "error";
-          const isSelected = selectedSpanId === span.id;
-          const isRcaOpen = openRcaSpanId === span.id;
-          const isDimmed = Boolean(openRcaSpanId && focusPath && !focusPath.has(span.id));
-          const rca = getRca(span);
+      <div className="space-y-2 rounded-xl border border-black/10 bg-white p-4">
+        <p className="text-sm font-semibold text-neutral-900">Span Timeline</p>
+        <div className="space-y-2">
+          {rows.map((span, index) => {
+            const leftPct = (span.startMs / maxEndMs) * 100;
+            const widthPct = Math.max((span.durationMs / maxEndMs) * 100, 2);
+            const isSelected = selectedSpanId === span.id;
+            const isHovered = hoveredSpanId === span.id;
+            const transition = span.stepTransition;
+            const prevSpan = rows[index - 1] ?? null;
+            const addedItems = compact([...(transition?.tool_outputs_added ?? []), ...(transition?.added_messages ?? [])]);
+            const removedItems = compact(transition?.removed_messages ?? []);
+            const warningItems = compact((transition?.warnings ?? []).map(normalizeWarning));
+            const instructionItems = compact(transition?.instruction_changes ?? []);
+            const SpanStatusIcon = statusIcon(span.status);
 
-          return (
-            <div key={span.id}>
-              <motion.div
-                initial={shouldReduceMotion ? false : { opacity: 0, y: 6 }}
-                animate={{ opacity: isDimmed ? 0.38 : 1, y: 0 }}
-                transition={{ duration: 0.28, delay: revealDelay, ease: "easeOut" }}
-                data-testid="span-item"
-                className={cn("grid grid-cols-[280px_minmax(0,1fr)] items-center gap-3", onSpanSelect ? "cursor-pointer" : undefined)}
-                onClick={onSpanSelect ? () => onSpanSelect(span.id) : undefined}
-              >
-                <div className="relative h-9 rounded-md bg-[#101722] px-2 py-1.5">
-                  {Array.from({ length: span.depth }).map((_, guideIndex) => (
-                    <span
-                      key={`${span.id}-guide-${guideIndex}`}
-                      className={cn(
-                        "absolute top-1/2 h-4 w-px -translate-y-1/2",
-                        focusPath?.has(span.id) ? "bg-amber-300/45" : "bg-slate-600/80",
-                      )}
-                      style={{ left: 12 + guideIndex * 10 }}
-                    />
-                  ))}
-                  {span.depth > 0 && (
-                    <span
-                      className={cn("absolute h-px", focusPath?.has(span.id) ? "bg-amber-300/45" : "bg-slate-600/80")}
-                      style={{ left: 12 + (span.depth - 1) * 10, top: "50%", width: 8 }}
-                    />
-                  )}
-                  <div
-                    className="absolute top-1/2 -translate-y-1/2 truncate font-mono text-[11px] text-slate-200"
-                    style={{ left: 24 + span.depth * 10, right: 12 }}
-                  >
-                    {span.name}
-                  </div>
-                </div>
-
-                <div className="relative h-9 rounded-md bg-[#101722] px-2 py-1.5">
-                  <div className="absolute inset-y-1.5 left-2 right-2 rounded bg-[#0F1620]" />
-                  <motion.div
-                    className={cn(
-                      "absolute inset-y-1.5 rounded-md border",
-                      isSelected
-                        ? "border-blue-300/80 bg-blue-500/16"
-                        : isError
-                          ? "border-red-500/65 bg-red-500/12"
-                          : isRunning
-                            ? "border-blue-400/65 bg-blue-500/15"
-                            : "border-slate-600/70 bg-slate-500/12",
-                    )}
-                    style={{ left: rowBarLeft, width: rowBarWidth }}
-                    animate={
-                      shouldReduceMotion
-                        ? undefined
-                        : isError
-                          ? {
-                              boxShadow: [
-                                "0 0 0 rgba(239,68,68,0)",
-                                "0 0 16px rgba(239,68,68,0.26)",
-                                "0 0 0 rgba(239,68,68,0)",
-                              ],
-                            }
-                          : isRunning
-                            ? {
-                                boxShadow: [
-                                  "0 0 0 rgba(96,165,250,0)",
-                                  "0 0 18px rgba(96,165,250,0.24)",
-                                  "0 0 0 rgba(96,165,250,0)",
-                                ],
-                              }
-                            : undefined
-                    }
-                    transition={
-                      shouldReduceMotion
-                        ? undefined
-                        : isError
-                          ? { duration: 1.6, repeat: Infinity, ease: "easeInOut" }
-                          : isRunning
-                            ? { duration: 2.2, repeat: Infinity, ease: "easeInOut" }
-                            : undefined
-                    }
-                    onMouseEnter={(event) => handleHover(event, span)}
-                    onMouseMove={(event) => handleHover(event, span)}
-                    onMouseLeave={() => setTooltip(null)}
-                  >
-                    <motion.div
-                      className={cn(
-                        "h-full rounded-md",
-                        isSelected
-                          ? "bg-gradient-to-r from-indigo-400/80 to-blue-300/90"
-                          : isError
-                            ? "bg-gradient-to-r from-red-500/70 to-red-400/80"
-                            : isRunning
-                              ? "bg-gradient-to-r from-purple-500/80 to-blue-400/85"
-                              : "bg-gradient-to-r from-violet-500/70 to-blue-500/75",
-                      )}
-                      initial={shouldReduceMotion ? false : { width: 0, opacity: 0.85 }}
-                      animate={{ width: "100%", opacity: 1 }}
-                      transition={{ duration: fillDuration, delay: revealDelay + 0.06, ease: "easeOut" }}
-                    />
-                  </motion.div>
-
-                  {isError && (
-                    <button
-                      type="button"
-                      className={cn(
-                        "absolute right-16 top-1/2 -translate-y-1/2 rounded border px-1.5 py-0.5 text-[10px] font-medium transition",
-                        isRcaOpen
-                          ? "border-amber-300/70 bg-amber-400/20 text-amber-200"
-                          : "border-amber-400/45 bg-amber-500/15 text-amber-300 hover:bg-amber-500/22",
-                      )}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onSpanSelect?.(span.id);
-                        setOpenRcaSpanId((current) => (current === span.id ? null : span.id));
-                      }}
-                    >
-                      ⚠ RCA
-                    </button>
-                  )}
-
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-slate-400">{span.durationMs}ms</div>
-                </div>
-              </motion.div>
-
-              <AnimatePresence initial={false}>
-                {isRcaOpen && (
-                  <motion.div
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: "auto", opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    transition={{ duration: 0.22, ease: "easeOut" }}
-                    className="grid grid-cols-[280px_minmax(0,1fr)] gap-3 overflow-hidden pt-1"
-                  >
-                    <div />
-                    <motion.div
-                      initial={{ y: 6, opacity: 0 }}
-                      animate={{ y: 0, opacity: 1 }}
-                      exit={{ y: 4, opacity: 0 }}
-                      transition={{ duration: 0.18, ease: "easeOut" }}
-                      className="rounded-lg border border-amber-400/35 bg-amber-500/8 p-3 text-xs"
-                    >
-                      <div className="mb-2 flex items-center justify-between">
-                        <span className="font-medium text-amber-200">Root Cause Analysis</span>
-                        {typeof rca.confidence === "number" && (
-                          <span className="text-[11px] text-amber-300/90">confidence {Math.round(rca.confidence * 100)}%</span>
+            return (
+              <div key={span.id} className="space-y-2">
+                {index > 0 ? (
+                  <div className="space-y-1 rounded-lg border border-black/10 bg-neutral-50 p-3 transition-shadow hover:shadow-sm">
+                    <div className="text-xs text-neutral-500">
+                      <span className="font-medium text-neutral-700">{prevSpan?.name}</span>
+                      <ArrowDown className="mx-1 inline size-3 align-middle text-neutral-400" />
+                      <span className="font-medium text-neutral-700">{span.name}</span>
+                    </div>
+                    <p className="text-sm font-semibold text-neutral-900">Changes after this step</p>
+                    <div className="grid gap-2 text-xs text-neutral-700 sm:grid-cols-2">
+                      <div className="rounded-md bg-white p-2">
+                        <p className="font-medium text-emerald-700">+ Added</p>
+                        {addedItems.shown.length > 0 ? (
+                          <ul className="mt-1 space-y-1">
+                            {addedItems.shown.map((item) => (
+                              <li key={item} className="truncate">{item}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-1 text-neutral-500">No additions</p>
                         )}
+                        {addedItems.overflow > 0 ? (
+                          <details className="mt-1 text-neutral-500">
+                            <summary className="cursor-pointer">+{addedItems.overflow} more</summary>
+                          </details>
+                        ) : null}
                       </div>
-                      <div className="space-y-2 text-slate-200">
-                        <div>
-                          <span className="text-amber-300">Failure:</span> {rca.summary}
-                        </div>
-                        <div>
-                          <span className="text-amber-300">Root cause:</span> {rca.rootCause}
-                        </div>
-                        <div>
-                          <span className="text-amber-300">Location:</span> {rca.location}
-                        </div>
-                        <div>
-                          <span className="text-amber-300">Suggested fix:</span> {rca.suggestedFix}
-                        </div>
+                      <div className="rounded-md bg-white p-2">
+                        <p className="font-medium text-red-700">- Removed</p>
+                        {removedItems.shown.length > 0 ? (
+                          <ul className="mt-1 space-y-1">
+                            {removedItems.shown.map((item) => (
+                              <li key={item} className="truncate">{item}</li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-1 text-neutral-500">No removals</p>
+                        )}
+                        {removedItems.overflow > 0 ? (
+                          <details className="mt-1 text-neutral-500">
+                            <summary className="cursor-pointer">+{removedItems.overflow} more</summary>
+                          </details>
+                        ) : null}
                       </div>
-                    </motion.div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-          );
-        })}
-      </div>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-neutral-600">
+                      <span className="rounded bg-white px-2 py-1">Token delta: {(transition?.token_delta ?? 0) >= 0 ? "+" : ""}{transition?.token_delta ?? 0}</span>
+                      <span className="rounded bg-white px-2 py-1">Context usage: {typeof span.contextUsagePercent === "number" ? `${span.contextUsagePercent.toFixed(0)}%` : "n/a"}</span>
+                    </div>
+                    {instructionItems.shown.length > 0 ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                        <p className="font-medium">Instruction changes</p>
+                        <ul className="mt-1 space-y-1">
+                          {instructionItems.shown.map((item) => (
+                            <li key={item} className="truncate">{item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                    {warningItems.shown.length > 0 ? (
+                      <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-xs text-amber-800">
+                        <p className="font-medium">Warnings</p>
+                        <ul className="mt-1 space-y-1">
+                          {warningItems.shown.map((item) => (
+                            <li key={item}>⚠ {item}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
 
-      {typeof document !== "undefined" &&
-        createPortal(
-          <AnimatePresence>
-            {tooltip && (
-              <motion.div
-                initial={{ opacity: 0, y: 6 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 4 }}
-                transition={{ duration: 0.14, ease: "easeOut" }}
-                className="pointer-events-none fixed z-[9999] w-80 rounded-lg border border-slate-600/60 bg-[#0E1520]/95 p-3 text-xs text-slate-200 shadow-[0_20px_48px_rgba(0,0,0,0.45)]"
-                style={{
-                  left: clamp(tooltip.x + 14, 12, window.innerWidth - 340),
-                  top: clamp(tooltip.y - 18, 10, window.innerHeight - 180),
-                }}
-              >
-                <div className="mb-2 text-[11px] uppercase tracking-[0.14em] text-slate-400">{tooltip.span.name}</div>
-                <div className="space-y-1.5">
-                  <div>
-                    <span className="text-slate-500">prompt:</span> {tooltip.span.prompt}
+                <div
+                  ref={(node) => {
+                    rowRefs.current.set(span.id, node);
+                  }}
+                  className={cn(
+                    "grid cursor-pointer items-center gap-3 rounded-lg border p-3 transition",
+                    isSelected ? "border-blue-300 bg-blue-50" : "border-black/10 bg-white hover:bg-neutral-50",
+                    isHovered && !isSelected ? "border-blue-200" : undefined,
+                  )}
+                  onClick={() => onSpanSelect?.(span.id)}
+                  onMouseEnter={() => onSpanHover?.(span.id)}
+                  onMouseLeave={() => onSpanHover?.(null)}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${span.depth * 14}px` }}>
+                      <Circle className="size-3 text-neutral-400" />
+                      <p className={cn("truncate text-sm", span.status === "error" ? "font-semibold text-red-700" : "font-medium text-neutral-900")}>
+                        {span.name}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase", statusBadgeTone(span.status))}>
+                        <SpanStatusIcon className={cn("size-3", span.status === "running" ? "animate-spin" : undefined)} />
+                        {span.status}
+                      </span>
+                      <span className="text-xs text-neutral-500">{formatMs(span.durationMs)}</span>
+                    </div>
                   </div>
-                  <div>
-                    <span className="text-slate-500">response:</span> {tooltip.span.response}
-                  </div>
-                  <div className="flex gap-3 text-slate-300">
-                    <span>
-                      <span className="text-slate-500">tokens:</span> {tooltip.span.tokens}
-                    </span>
-                    <span>
-                      <span className="text-slate-500">latency:</span> {tooltip.span.latencyMs}ms
-                    </span>
+
+                  <div className="relative h-3 overflow-hidden rounded bg-neutral-100">
+                    <div className="absolute inset-y-0" style={{ left: `${leftPct}%`, width: `${widthPct}%` }}>
+                      <div className={cn("h-full rounded", barTone(span, isSelected, isHovered))} />
+                    </div>
                   </div>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>,
-          document.body,
-        )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

@@ -351,6 +351,7 @@ mod tests {
             evaluation: None,
             metadata: None,
             error: None,
+            step_transition: None,
         }
     }
 

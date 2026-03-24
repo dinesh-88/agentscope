@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashMap};
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::Storage;
@@ -21,17 +21,48 @@ pub struct RunCompareSummary {
     pub token_delta: i64,
     pub cost_delta: f64,
     pub span_count_delta: i64,
+    pub instruction_change_count: usize,
+    pub instruction_impact_level: String,
 }
 
 #[derive(Debug, Serialize)]
 pub struct RunCompareDiffs {
     pub prompts: Vec<ArtifactDiff>,
     pub responses: Vec<ArtifactDiff>,
-    pub instruction_diff: Vec<ArtifactDiff>,
+    pub instruction_diff: InstructionDiff,
     pub models: Vec<String>,
     pub artifacts: Vec<ArtifactDiff>,
     pub metrics: MetricsDiff,
     pub spans: Vec<String>,
+}
+
+#[derive(Debug, Serialize, Clone, Default)]
+pub struct InstructionDiff {
+    pub added: Vec<InstructionChange>,
+    pub removed: Vec<InstructionChange>,
+    pub changed: Vec<InstructionChanged>,
+    pub removed_constraints: Vec<String>,
+    pub impact_level: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct InstructionChange {
+    pub source_id: String,
+    pub source_type: String,
+    pub path: String,
+    pub name: String,
+    pub hash: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct InstructionChanged {
+    pub source_id: String,
+    pub source_type: String,
+    pub path: String,
+    pub name: String,
+    pub previous_hash: String,
+    pub current_hash: String,
+    pub impact_level: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -100,16 +131,22 @@ pub async fn compare_runs(
         .cloned()
         .collect::<Vec<_>>();
 
+    let instruction_diff = diff_instruction_context(&spans_a, &spans_b);
+    let instruction_change_count =
+        instruction_diff.added.len() + instruction_diff.removed.len() + instruction_diff.changed.len();
+
     let summary = RunCompareSummary {
         status_changed: run_a.status != run_b.status,
         token_delta: metrics_b.total_tokens - metrics_a.total_tokens,
         cost_delta: metrics_b.estimated_cost - metrics_a.estimated_cost,
         span_count_delta: spans_b.len() as i64 - spans_a.len() as i64,
+        instruction_change_count,
+        instruction_impact_level: instruction_diff.impact_level.clone(),
     };
     let diffs = RunCompareDiffs {
         prompts: diff_artifacts("llm.prompt", &artifacts_a, &artifacts_b),
         responses: diff_artifacts("llm.response", &artifacts_a, &artifacts_b),
-        instruction_diff: diff_instruction_context(&spans_a, &spans_b),
+        instruction_diff,
         models: model_names,
         artifacts: collect_artifact_kinds(&artifacts_a, &artifacts_b),
         metrics: MetricsDiff {
@@ -223,6 +260,20 @@ fn build_compare_insights(
             diffs.spans.len()
         ));
     }
+    let instruction_change_count =
+        diffs.instruction_diff.added.len()
+            + diffs.instruction_diff.removed.len()
+            + diffs.instruction_diff.changed.len();
+    if instruction_change_count > 0 {
+        let removed_constraints = diffs.instruction_diff.removed_constraints.len();
+        key_changes.push(format!(
+            "Instruction Changes: {instruction_change_count} change(s), {removed_constraints} removed constraint(s), impact {}.",
+            diffs.instruction_diff.impact_level
+        ));
+        if removed_constraints > 0 {
+            score_b -= 1;
+        }
+    }
 
     let (winner, verdict, recommendation, summary_text) = if score_b > 0 {
         (
@@ -333,11 +384,13 @@ mod tests {
             token_delta: -120,
             cost_delta: -0.002,
             span_count_delta: 0,
+            instruction_change_count: 0,
+            instruction_impact_level: "low".to_string(),
         };
         let diffs = RunCompareDiffs {
             prompts: Vec::new(),
             responses: Vec::new(),
-            instruction_diff: Vec::new(),
+            instruction_diff: InstructionDiff::default(),
             models: Vec::new(),
             artifacts: Vec::new(),
             metrics: MetricsDiff {
@@ -364,11 +417,13 @@ mod tests {
             token_delta: 0,
             cost_delta: 0.0,
             span_count_delta: 0,
+            instruction_change_count: 0,
+            instruction_impact_level: "low".to_string(),
         };
         let diffs = RunCompareDiffs {
             prompts: Vec::new(),
             responses: Vec::new(),
-            instruction_diff: Vec::new(),
+            instruction_diff: InstructionDiff::default(),
             models: Vec::new(),
             artifacts: Vec::new(),
             metrics: MetricsDiff {
@@ -441,28 +496,100 @@ fn collect_artifact_kinds(artifacts_a: &[Artifact], artifacts_b: &[Artifact]) ->
         .collect()
 }
 
-fn diff_instruction_context(spans_a: &[Span], spans_b: &[Span]) -> Vec<ArtifactDiff> {
-    let sources_a = collect_instruction_sources(spans_a);
-    let sources_b = collect_instruction_sources(spans_b);
-    let precedence_a = collect_precedence_stack(spans_a);
-    let precedence_b = collect_precedence_stack(spans_b);
+fn diff_instruction_context(spans_a: &[Span], spans_b: &[Span]) -> InstructionDiff {
+    let map_a = collect_instruction_source_map(spans_a);
+    let map_b = collect_instruction_source_map(spans_b);
 
-    vec![
-        ArtifactDiff {
-            label: "instruction.sources".to_string(),
-            run_a: sources_a,
-            run_b: sources_b,
-        },
-        ArtifactDiff {
-            label: "instruction.precedence".to_string(),
-            run_a: precedence_a,
-            run_b: precedence_b,
-        },
-    ]
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let mut changed = Vec::new();
+    let mut removed_constraints = Vec::new();
+
+    for (id, source) in &map_b {
+        if !map_a.contains_key(id) {
+            added.push(InstructionChange {
+                source_id: id.clone(),
+                source_type: source.source_type.clone(),
+                path: source.path.clone(),
+                name: source.name.clone(),
+                hash: source.hash.clone(),
+            });
+        }
+    }
+
+    for (id, source) in &map_a {
+        match map_b.get(id) {
+            None => {
+                if has_output_constraint(&source.content) {
+                    removed_constraints.push(source.path.clone());
+                }
+                removed.push(InstructionChange {
+                    source_id: id.clone(),
+                    source_type: source.source_type.clone(),
+                    path: source.path.clone(),
+                    name: source.name.clone(),
+                    hash: source.hash.clone(),
+                });
+            }
+            Some(next) => {
+                if source.hash != next.hash || source.content != next.content {
+                    let mut impact = "low".to_string();
+                    let had_constraint = has_output_constraint(&source.content);
+                    let has_constraint_now = has_output_constraint(&next.content);
+                    if had_constraint && !has_constraint_now {
+                        removed_constraints.push(source.path.clone());
+                        impact = "high".to_string();
+                    } else if source.source_type != next.source_type {
+                        impact = "medium".to_string();
+                    }
+                    changed.push(InstructionChanged {
+                        source_id: id.clone(),
+                        source_type: next.source_type.clone(),
+                        path: next.path.clone(),
+                        name: next.name.clone(),
+                        previous_hash: source.hash.clone(),
+                        current_hash: next.hash.clone(),
+                        impact_level: impact,
+                    });
+                }
+            }
+        }
+    }
+
+    added.sort_by(|left, right| left.source_id.cmp(&right.source_id));
+    removed.sort_by(|left, right| left.source_id.cmp(&right.source_id));
+    changed.sort_by(|left, right| left.source_id.cmp(&right.source_id));
+    removed_constraints.sort();
+    removed_constraints.dedup();
+
+    let impact_level = if !removed_constraints.is_empty() {
+        "high".to_string()
+    } else if !changed.is_empty() || !added.is_empty() || !removed.is_empty() {
+        "medium".to_string()
+    } else {
+        "low".to_string()
+    };
+
+    InstructionDiff {
+        added,
+        removed,
+        changed,
+        removed_constraints,
+        impact_level,
+    }
 }
 
-fn collect_instruction_sources(spans: &[Span]) -> Vec<String> {
-    let mut items = BTreeSet::new();
+#[derive(Clone)]
+struct InstructionSourceData {
+    source_type: String,
+    name: String,
+    path: String,
+    hash: String,
+    content: String,
+}
+
+fn collect_instruction_source_map(spans: &[Span]) -> HashMap<String, InstructionSourceData> {
+    let mut items = HashMap::new();
     for span in spans {
         let Some(context) = span.instruction_context.as_ref().and_then(serde_json::Value::as_object) else {
             continue;
@@ -490,43 +617,24 @@ fn collect_instruction_sources(spans: &[Span]) -> Vec<String> {
                 .get("hash")
                 .and_then(serde_json::Value::as_str)
                 .unwrap_or("-");
-            items.insert(format!("{source_type} | {name} | {path} | {hash}"));
+            let content = object
+                .get("content")
+                .map(stringify_json)
+                .unwrap_or_default();
+            let id = format!("{source_type}:{path}:{name}");
+            items.insert(
+                id,
+                InstructionSourceData {
+                    source_type: source_type.to_string(),
+                    name: name.to_string(),
+                    path: path.to_string(),
+                    hash: hash.to_string(),
+                    content,
+                },
+            );
         }
     }
-    items.into_iter().collect()
-}
-
-fn collect_precedence_stack(spans: &[Span]) -> Vec<String> {
-    for span in spans.iter().rev() {
-        let Some(context) = span.instruction_context.as_ref().and_then(serde_json::Value::as_object) else {
-            continue;
-        };
-        let Some(entries) = context
-            .get("precedence_stack")
-            .and_then(serde_json::Value::as_array) else {
-            continue;
-        };
-        let stack = entries
-            .iter()
-            .enumerate()
-            .filter_map(|(index, entry)| {
-                let object = entry.as_object()?;
-                let source_type = object
-                    .get("type")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("unknown");
-                let name = object
-                    .get("name")
-                    .and_then(serde_json::Value::as_str)
-                    .unwrap_or("unknown");
-                Some(format!("{}: {} ({})", index + 1, name, source_type))
-            })
-            .collect::<Vec<_>>();
-        if !stack.is_empty() {
-            return stack;
-        }
-    }
-    Vec::new()
+    items
 }
 
 fn flatten_payload(value: &serde_json::Value) -> Vec<String> {
@@ -541,4 +649,18 @@ fn stringify_json(value: &serde_json::Value) -> String {
         serde_json::Value::String(text) => text.clone(),
         _ => serde_json::to_string_pretty(value).unwrap_or_else(|_| value.to_string()),
     }
+}
+
+fn has_output_constraint(content: &str) -> bool {
+    let normalized = content.to_lowercase();
+    [
+        "json",
+        "schema",
+        "format",
+        "must output",
+        "respond with",
+        "structured output",
+    ]
+    .iter()
+    .any(|needle| normalized.contains(needle))
 }

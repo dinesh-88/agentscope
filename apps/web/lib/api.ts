@@ -74,6 +74,16 @@ export type Span = {
   tool_success?: boolean | null;
   evaluation?: Record<string, unknown> | null;
   metadata?: Record<string, unknown> | null;
+  step_transition?: {
+    added_messages: string[];
+    removed_messages: string[];
+    token_delta: number;
+    tool_outputs_added: string[];
+    instruction_changes: string[];
+    context_diff: Record<string, unknown>;
+    instruction_diff: Record<string, unknown>;
+    warnings: string[];
+  } | null;
 };
 
 export type Artifact = {
@@ -173,6 +183,32 @@ export type ArtifactDiff = {
   run_b: string[];
 };
 
+export type InstructionChange = {
+  source_id: string;
+  source_type: string;
+  path: string;
+  name: string;
+  hash: string;
+};
+
+export type InstructionChanged = {
+  source_id: string;
+  source_type: string;
+  path: string;
+  name: string;
+  previous_hash: string;
+  current_hash: string;
+  impact_level: "low" | "medium" | "high" | string;
+};
+
+export type InstructionDiff = {
+  added: InstructionChange[];
+  removed: InstructionChange[];
+  changed: InstructionChanged[];
+  removed_constraints: string[];
+  impact_level: "low" | "medium" | "high" | string;
+};
+
 export type RunComparison = {
   run_a: Run;
   run_b: Run;
@@ -181,11 +217,13 @@ export type RunComparison = {
     token_delta: number;
     cost_delta: number;
     span_count_delta: number;
+    instruction_change_count: number;
+    instruction_impact_level: "low" | "medium" | "high" | string;
   };
   diffs: {
     prompts: ArtifactDiff[];
     responses: ArtifactDiff[];
-    instruction_diff: ArtifactDiff[];
+    instruction_diff: InstructionDiff;
     models: string[];
     artifacts: ArtifactDiff[];
     metrics: {

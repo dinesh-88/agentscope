@@ -57,6 +57,12 @@ function verdictTone(winner: "run_a" | "run_b" | "tie") {
   return "border-amber-400/30 bg-amber-500/10 text-amber-200";
 }
 
+function impactTone(level: string) {
+  if (level === "high") return "border-rose-400/40 bg-rose-500/10 text-rose-200";
+  if (level === "medium") return "border-amber-400/30 bg-amber-500/10 text-amber-200";
+  return "border-emerald-400/30 bg-emerald-500/10 text-emerald-200";
+}
+
 function DiffBlock({ title, left, right }: { title: string; left: string[]; right: string[] }) {
   const leftText = left.join("\n\n").trim();
   const rightText = right.join("\n\n").trim();
@@ -142,6 +148,16 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
       : comparison.insights.winner === "run_b"
         ? `/runs/${comparison.run_b.id}`
         : "/runs/compare";
+  const instructionDiff = comparison.diffs.instruction_diff;
+  const instructionChangeCount =
+    instructionDiff.added.length + instructionDiff.removed.length + instructionDiff.changed.length;
+  const changedInstructionFiles = Array.from(
+    new Set([
+      ...instructionDiff.added.map((item) => item.path),
+      ...instructionDiff.removed.map((item) => item.path),
+      ...instructionDiff.changed.map((item) => item.path),
+    ]),
+  ).filter((path) => path && path !== "-");
 
   return (
     <div className="space-y-6">
@@ -208,7 +224,7 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
         <CardHeader>
           <CardTitle className="text-gray-100">Comparison Summary</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-3 md:grid-cols-4">
+        <CardContent className="grid gap-3 md:grid-cols-5">
           <div className={cn("rounded-xl border p-4", metricTone(statusTrend))}>
             <div className="text-xs uppercase tracking-[0.18em] text-gray-300">Status</div>
             <div className="mt-2 text-sm text-gray-300">
@@ -238,6 +254,20 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
               ${comparison.diffs.metrics.run_a.estimated_cost.toFixed(6)} → ${comparison.diffs.metrics.run_b.estimated_cost.toFixed(6)}
             </div>
             <div className="mt-2 text-xs text-gray-400">Delta ${formatDelta(comparison.summary.cost_delta, 6)}</div>
+          </div>
+          <div
+            className={cn(
+              "rounded-xl border p-4",
+              comparison.summary.instruction_impact_level === "high"
+                ? metricTone("regressed")
+                : comparison.summary.instruction_change_count > 0
+                  ? metricTone("changed")
+                  : metricTone("neutral"),
+            )}
+          >
+            <div className="text-xs uppercase tracking-[0.18em] text-gray-300">Instruction Changes</div>
+            <div className="mt-2 text-sm text-gray-300">{comparison.summary.instruction_change_count}</div>
+            <div className="mt-2 text-xs text-gray-400">Impact {comparison.summary.instruction_impact_level}</div>
           </div>
         </CardContent>
       </Card>
@@ -328,15 +358,63 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
 
       <Card className="border border-white/10 bg-[#101722] shadow-none">
         <CardHeader>
-          <CardTitle className="text-gray-100">Instruction Diff</CardTitle>
+          <CardTitle className="text-gray-100">Instruction Changes</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
-          {comparison.diffs.instruction_diff.length === 0 ? (
+        <CardContent className="space-y-4">
+          {instructionChangeCount === 0 ? (
             <p className="text-sm text-gray-400">No instruction changes detected.</p>
           ) : (
-            comparison.diffs.instruction_diff.map((diff) => (
-              <DiffBlock key={diff.label} title={diff.label} left={diff.run_a} right={diff.run_b} />
-            ))
+            <>
+              <div className="flex flex-wrap items-center gap-2 text-sm text-gray-300">
+                <span className={cn("rounded-full border px-2.5 py-1 text-xs font-medium", impactTone(instructionDiff.impact_level))}>
+                  Impact {instructionDiff.impact_level}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs">
+                  Added {instructionDiff.added.length}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs">
+                  Removed {instructionDiff.removed.length}
+                </span>
+                <span className="rounded-full border border-white/10 bg-white/[0.03] px-2.5 py-1 text-xs">
+                  Changed {instructionDiff.changed.length}
+                </span>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  <div className="text-xs uppercase tracking-[0.18em] text-gray-400">Changed Files</div>
+                  <div className="mt-3 max-h-48 space-y-2 overflow-auto">
+                    {changedInstructionFiles.length === 0 ? (
+                      <p className="text-sm text-gray-500">No file paths available.</p>
+                    ) : (
+                      changedInstructionFiles.map((path) => (
+                        <div key={path} className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-xs text-gray-200">
+                          {path}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  <div className="text-xs uppercase tracking-[0.18em] text-gray-400">Removed Constraints</div>
+                  <div className="mt-3 max-h-48 space-y-2 overflow-auto">
+                    {instructionDiff.removed_constraints.length === 0 ? (
+                      <p className="text-sm text-gray-500">No constraint removals detected.</p>
+                    ) : (
+                      instructionDiff.removed_constraints.map((constraint) => (
+                        <div
+                          key={constraint}
+                          className="rounded-md border border-rose-400/30 bg-rose-500/10 px-3 py-2 font-mono text-xs text-rose-100"
+                        >
+                          {constraint}
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>

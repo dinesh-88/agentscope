@@ -88,13 +88,13 @@ const CONFIG = {
 };
 
 const PAUSE_DURATIONS = {
-  short: 500,
-  medium: 1100,
-  long: 1800,
-  sceneHold: 2400,
-  beforeClick: 350,
+  short: 700,
+  medium: 1400,
+  long: 2200,
+  sceneHold: 3000,
+  beforeClick: 550,
   afterNavigation: 1400,
-  outroHold: 5000,
+  verdictHold: 10_000,
 } as const;
 
 const SELECTORS = {
@@ -154,25 +154,23 @@ async function ensureCinematicStyles(page: Page) {
 async function smoothScrollToLocator(page: Page, locator: Locator, durationMs = 900) {
   const target = locator.first();
   await target.waitFor({ state: "visible", timeout: 30_000 });
-  await target.evaluate(async (el, ms) => {
-    const rect = el.getBoundingClientRect();
-    const startY = window.scrollY;
-    const targetY = startY + rect.top - window.innerHeight / 2 + rect.height / 2;
-    const diff = targetY - startY;
-    if (Math.abs(diff) < 6) return;
-    const start = performance.now();
-    const easeInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - ((-2 * t + 2) ** 3) / 2);
-    await new Promise<void>((resolve) => {
-      const step = (now: number) => {
-        const progress = Math.min((now - start) / ms, 1);
-        const eased = easeInOut(progress);
-        window.scrollTo(0, startY + diff * eased);
-        if (progress < 1) requestAnimationFrame(step);
-        else resolve();
-      };
-      requestAnimationFrame(step);
-    });
-  }, durationMs);
+  const box = await target.boundingBox();
+  const viewport = page.viewportSize();
+  if (!box || !viewport) return;
+
+  const offsetToCenter = box.y + box.height / 2 - viewport.height / 2;
+  if (Math.abs(offsetToCenter) < 6) return;
+
+  const steps = Math.max(8, Math.floor(durationMs / 35));
+  const stepDelta = offsetToCenter / steps;
+  const stepPause = Math.max(12, Math.floor(durationMs / steps));
+
+  for (let i = 0; i < steps; i += 1) {
+    await page.evaluate((delta) => {
+      window.scrollBy(0, delta);
+    }, stepDelta);
+    await page.waitForTimeout(stepPause);
+  }
 }
 
 async function focusFadeBackground(page: Page, locator: Locator) {
@@ -371,13 +369,9 @@ async function slowHover(page: Page, locator: Locator, durationMs = 1000) {
   }
 }
 
-async function spotlight(page: Page, locator: Locator, holdMs: number = PAUSE_DURATIONS.medium) {
-  await highlightElement(page, locator, holdMs);
-}
-
 async function hoverThenClick(page: Page, locator: Locator) {
   await waitForVisible(locator);
-  await moveMouseToLocator(page, locator, 18);
+  await moveMouseToLocator(page, locator, 38);
   await pause(page, PAUSE_DURATIONS.beforeClick);
   await locator.first().click();
 }
@@ -442,7 +436,7 @@ async function pickRunByStatus(page: Page, status: RunStatus): Promise<RunSelect
 
 async function openFailedRun(page: Page): Promise<string> {
   const failedRun = await pickRunByStatus(page, "failed");
-  await spotlight(page, failedRun.row, PAUSE_DURATIONS.long);
+  // Effect 1 of 3: failure zoom
   await zoomInto(page, failedRun.row, 1400, 1.05);
   await hoverThenClick(page, failedRun.row.locator('a[href*="/runs/"]').first());
   await page.waitForURL(/\/runs\/[^/]+$/);
@@ -451,36 +445,35 @@ async function openFailedRun(page: Page): Promise<string> {
 }
 
 async function focusFailureSummary(page: Page): Promise<void> {
-  const candidates: Locator[] = [
-    page.locator("span").filter({ hasText: /failed|error/i }),
-    ...SELECTORS.failureSummaryCandidates.map((selector) => page.locator(selector)),
-    page.locator(SELECTORS.insightsPanel),
-  ];
-  const target = await firstVisible(candidates);
-  if (target) {
-    await spotlight(page, target, PAUSE_DURATIONS.sceneHold);
+  const insightsPanel = page.locator(SELECTORS.insightsPanel).first();
+  if (await insightsPanel.isVisible().catch(() => false)) {
+    // Effect 2 of 3: insights highlight
+    await highlightElement(page, insightsPanel, PAUSE_DURATIONS.sceneHold);
     return;
   }
-
-  // TODO: Replace with app-specific selector when available.
-  await pause(page, PAUSE_DURATIONS.sceneHold);
+  await smoothScrollToLocator(page, insightsPanel, 900).catch(() => {});
+  if (await insightsPanel.isVisible().catch(() => false)) {
+    await highlightElement(page, insightsPanel, PAUSE_DURATIONS.sceneHold);
+  }
 }
 
 async function focusTraceView(page: Page): Promise<void> {
   const spanTimelineHeader = page.getByText(/^span timeline$/i).first();
   await waitForVisible(spanTimelineHeader);
-  await zoomInto(page, spanTimelineHeader, 1600, 1.06);
+  await moveMouseToLocator(page, spanTimelineHeader, 36);
+  await pause(page, PAUSE_DURATIONS.medium);
 
   const traceItem = page.locator(SELECTORS.spanItem).first();
   await waitForVisible(traceItem);
-  await slowHover(page, traceItem, 900);
   await hoverThenClick(page, traceItem);
   await pause(page, PAUSE_DURATIONS.medium);
 
   const failingTraceItem = page.locator(SELECTORS.spanItem).filter({ hasText: /error|failed|rca/i }).first();
   if (await failingTraceItem.isVisible().catch(() => false)) {
-    await zoomInto(page, failingTraceItem, 1800, 1.08);
+    await moveMouseToLocator(page, failingTraceItem, 40);
+    await pause(page, PAUSE_DURATIONS.medium);
     await hoverThenClick(page, failingTraceItem);
+    await pause(page, PAUSE_DURATIONS.long);
   }
 }
 
@@ -499,10 +492,10 @@ async function focusProblemStep(page: Page): Promise<void> {
   ]);
 
   if (likelyRootCause) {
-    await zoomInto(page, likelyRootCause, PAUSE_DURATIONS.sceneHold, 1.09);
+    await moveMouseToLocator(page, likelyRootCause, 34);
+    await pause(page, PAUSE_DURATIONS.long);
   } else {
-    // TODO: Replace with your exact failing LLM/tool call panel selector if different.
-    await pause(page, PAUSE_DURATIONS.sceneHold);
+    await pause(page, PAUSE_DURATIONS.long);
   }
 
   const metadataTab = page.getByRole("button", { name: /^metadata$/i }).first();
@@ -510,24 +503,6 @@ async function focusProblemStep(page: Page): Promise<void> {
     await hoverThenClick(page, metadataTab);
     await pause(page, PAUSE_DURATIONS.short);
   }
-}
-
-async function openSuccessfulRun(page: Page): Promise<string> {
-  await openRunsPage(page);
-  await pause(page, PAUSE_DURATIONS.medium);
-
-  const successRun = await pickRunByStatus(page, "success");
-  await spotlight(page, successRun.row, PAUSE_DURATIONS.long);
-  await hoverThenClick(page, successRun.row.locator('a[href*="/runs/"]').first());
-  await page.waitForURL(/\/runs\/[^/]+$/);
-  await pause(page, PAUSE_DURATIONS.afterNavigation);
-
-  const successBadge = page.locator("span").filter({ hasText: /success|completed/i }).first();
-  if (await successBadge.isVisible().catch(() => false)) {
-    await spotlight(page, successBadge, PAUSE_DURATIONS.medium);
-  }
-
-  return successRun.runId;
 }
 
 async function openComparisonView(page: Page, failedRunId: string, successfulRunId: string): Promise<void> {
@@ -539,22 +514,49 @@ async function openComparisonView(page: Page, failedRunId: string, successfulRun
   await page.waitForURL(new RegExp(`/runs/compare/${failedRunId}/${successfulRunId}`));
   await pause(page, PAUSE_DURATIONS.afterNavigation);
 
-  const insightsHeader = page.getByText(/^comparison insights$/i).first();
-  await waitForVisible(insightsHeader);
-  await zoomInto(page, insightsHeader, PAUSE_DURATIONS.long, 1.06);
-
   const summaryHeader = page.getByText(/^comparison summary$/i).first();
   await waitForVisible(summaryHeader);
+  // Effect 3 of 3: comparison zoom
   await zoomInto(page, summaryHeader, PAUSE_DURATIONS.long, 1.08);
+}
 
+async function scrollInsights(page: Page): Promise<void> {
+  const insightsPanel = page.locator(SELECTORS.insightsPanel).first();
+  if (!(await insightsPanel.isVisible().catch(() => false))) return;
+  await insightsPanel.evaluate((el) => {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+  await pause(page, PAUSE_DURATIONS.medium);
+  await page.evaluate(() => window.scrollBy({ top: 240, left: 0, behavior: "smooth" }));
+  await pause(page, PAUSE_DURATIONS.medium);
+  await page.evaluate(() => window.scrollBy({ top: 240, left: 0, behavior: "smooth" }));
+  await pause(page, PAUSE_DURATIONS.medium);
+}
+
+async function hoverComparisonMetrics(page: Page): Promise<void> {
+  const metricTargets = [
+    page.getByText(/^latency$/i).first(),
+    page.getByText(/token usage/i).first(),
+  ];
+  for (const metric of metricTargets) {
+    if (await metric.isVisible().catch(() => false)) {
+      await moveMouseToLocator(page, metric, 46);
+      await pause(page, PAUSE_DURATIONS.long);
+    }
+  }
+}
+
+async function holdVerdict(page: Page): Promise<void> {
   const verdict = await firstVisible([
-    page.getByText(/run b|winner|better|verdict/i),
+    page.getByText(/run b is better|run b|winner|better|verdict/i),
     page.getByRole("link", { name: /use this version/i }),
   ]);
   if (verdict) {
-    await slowHover(page, verdict, 1000);
-    await zoomInto(page, verdict, PAUSE_DURATIONS.sceneHold, 1.1);
+    await moveMouseToLocator(page, verdict, 40);
+    await pause(page, PAUSE_DURATIONS.verdictHold);
+    return;
   }
+  await pause(page, PAUSE_DURATIONS.verdictHold);
 }
 
 async function applySessionCookieIfProvided(page: Page): Promise<void> {
@@ -586,23 +588,30 @@ async function main() {
   try {
     await applySessionCookieIfProvided(page);
 
-    // Scene 1: Open runs page and establish context.
+    // 0–3s: FAILED run (zoom)
     await openRunsPage(page);
+    const successfulRunId = (await pickRunByStatus(page, "success")).runId;
 
-    // Scene 2 + 3: Show failed run and failure summary.
     const failedRunId = await openFailedRun(page);
-    await focusFailureSummary(page);
 
-    // Scene 4 + 5: Trace and root cause detail.
+    // 3–10s: open trace -> show failure
     await focusTraceView(page);
     await focusProblemStep(page);
 
-    // Scene 6: Show successful run after fix.
-    const successfulRunId = await openSuccessfulRun(page);
+    // 10–20s: open insights -> highlight
+    await focusFailureSummary(page);
 
-    // Scene 7: Compare failed vs fixed run and end here.
+    // 20–35s: scroll insights (2 items max)
+    await scrollInsights(page);
+
+    // 35–55s: open comparison -> zoom summary
     await openComparisonView(page, failedRunId, successfulRunId);
-    await pause(page, PAUSE_DURATIONS.outroHold);
+
+    // 55–65s: hover metrics
+    await hoverComparisonMetrics(page);
+
+    // 65–75s: pause on "Run B is better"
+    await holdVerdict(page);
   } finally {
     await context.close();
     await browser.close();
