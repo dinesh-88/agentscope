@@ -12,6 +12,7 @@ pub struct RunCompareResponse {
     pub run_b: Run,
     pub summary: RunCompareSummary,
     pub diffs: RunCompareDiffs,
+    pub recommendation: ComparisonRecommendation,
     pub insights: CompareInsights,
 }
 
@@ -82,11 +83,22 @@ pub struct MetricsDiff {
 
 #[derive(Debug, Serialize)]
 pub struct CompareInsights {
+    pub insight_type: String,
     pub summary: String,
     pub key_changes: Vec<String>,
     pub verdict: String,
     pub recommendation: String,
     pub winner: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ComparisonRecommendation {
+    pub winner: String,
+    pub confidence: f32,
+    pub reasons: Vec<String>,
+    pub improvements: Vec<String>,
+    pub regressions: Vec<String>,
+    pub summary: String,
 }
 
 pub async fn compare_runs(
@@ -132,8 +144,9 @@ pub async fn compare_runs(
         .collect::<Vec<_>>();
 
     let instruction_diff = diff_instruction_context(&spans_a, &spans_b);
-    let instruction_change_count =
-        instruction_diff.added.len() + instruction_diff.removed.len() + instruction_diff.changed.len();
+    let instruction_change_count = instruction_diff.added.len()
+        + instruction_diff.removed.len()
+        + instruction_diff.changed.len();
 
     let summary = RunCompareSummary {
         status_changed: run_a.status != run_b.status,
@@ -157,13 +170,15 @@ pub async fn compare_runs(
         },
         spans,
     };
-    let insights = build_compare_insights(&run_a, &run_b, &summary, &diffs);
+    let recommendation = build_comparison_recommendation(&run_a, &run_b, &summary, &diffs);
+    let insights = build_compare_insights(&run_a, &run_b, &summary, &diffs, &recommendation);
 
     Ok(RunCompareResponse {
         run_a,
         run_b,
         summary,
         diffs,
+        recommendation,
         insights,
     })
 }
@@ -173,22 +188,20 @@ fn build_compare_insights(
     run_b: &Run,
     summary: &RunCompareSummary,
     diffs: &RunCompareDiffs,
+    recommendation: &ComparisonRecommendation,
 ) -> CompareInsights {
     let latency_a = latency_ms(run_a);
     let latency_b = latency_ms(run_b);
 
-    let mut score_b = 0_i32;
     let mut key_changes = Vec::new();
 
     let status_delta = status_score(&run_b.status) - status_score(&run_a.status);
     if status_delta > 0 {
-        score_b += 2;
         key_changes.push(format!(
             "Reliability improved: status changed from {} to {}.",
             run_a.status, run_b.status
         ));
     } else if status_delta < 0 {
-        score_b -= 2;
         key_changes.push(format!(
             "Reliability regressed: status changed from {} to {}.",
             run_a.status, run_b.status
@@ -202,14 +215,12 @@ fn build_compare_insights(
 
     if let (Some(a), Some(b)) = (latency_a, latency_b) {
         if b < a {
-            score_b += 1;
             let pct = percent_change(a, b);
             key_changes.push(format!(
                 "Latency reduced by {:.1}% ({}ms -> {}ms).",
                 pct, a, b
             ));
         } else if b > a {
-            score_b -= 1;
             let pct = percent_change(a, b);
             key_changes.push(format!(
                 "Latency increased by {:.1}% ({}ms -> {}ms).",
@@ -223,13 +234,11 @@ fn build_compare_insights(
     }
 
     if summary.token_delta < 0 {
-        score_b += 1;
         key_changes.push(format!(
             "Token usage decreased by {} tokens.",
             summary.token_delta.abs()
         ));
     } else if summary.token_delta > 0 {
-        score_b -= 1;
         key_changes.push(format!(
             "Token usage increased by {} tokens.",
             summary.token_delta
@@ -239,13 +248,11 @@ fn build_compare_insights(
     }
 
     if summary.cost_delta < 0.0 {
-        score_b += 1;
         key_changes.push(format!(
             "Estimated cost decreased by ${:.6}.",
             summary.cost_delta.abs()
         ));
     } else if summary.cost_delta > 0.0 {
-        score_b -= 1;
         key_changes.push(format!(
             "Estimated cost increased by ${:.6}.",
             summary.cost_delta
@@ -260,52 +267,196 @@ fn build_compare_insights(
             diffs.spans.len()
         ));
     }
-    let instruction_change_count =
-        diffs.instruction_diff.added.len()
-            + diffs.instruction_diff.removed.len()
-            + diffs.instruction_diff.changed.len();
+    let instruction_change_count = diffs.instruction_diff.added.len()
+        + diffs.instruction_diff.removed.len()
+        + diffs.instruction_diff.changed.len();
     if instruction_change_count > 0 {
         let removed_constraints = diffs.instruction_diff.removed_constraints.len();
         key_changes.push(format!(
             "Instruction Changes: {instruction_change_count} change(s), {removed_constraints} removed constraint(s), impact {}.",
             diffs.instruction_diff.impact_level
         ));
-        if removed_constraints > 0 {
-            score_b -= 1;
-        }
     }
 
-    let (winner, verdict, recommendation, summary_text) = if score_b > 0 {
-        (
-            "run_b".to_string(),
-            "Run B is better".to_string(),
-            "Use Run B configuration".to_string(),
-            "Run B improves reliability and/or efficiency versus Run A.".to_string(),
-        )
-    } else if score_b < 0 {
-        (
-            "run_a".to_string(),
-            "Run A is better".to_string(),
-            "Keep Run A and investigate regressions in Run B".to_string(),
-            "Run A remains the safer baseline; Run B introduces net regressions.".to_string(),
-        )
+    let winner = recommendation.winner.clone();
+    let verdict = if winner == "run_b" {
+        "Run B is better".to_string()
     } else {
-        (
-            "tie".to_string(),
-            "No clear winner".to_string(),
-            "Run targeted evaluations and choose the run that best matches production priorities"
-                .to_string(),
-            "Both runs are comparable with mixed or minimal impact differences.".to_string(),
-        )
+        "Run A is better".to_string()
     };
+    let recommendation_text = if winner == "run_b" {
+        "Use Run B configuration".to_string()
+    } else {
+        "Use Run A configuration".to_string()
+    };
+    let summary_text = recommendation.summary.clone();
 
     CompareInsights {
+        insight_type: "COMPARISON_RECOMMENDATION".to_string(),
         summary: summary_text,
         key_changes: key_changes.into_iter().take(5).collect(),
         verdict,
-        recommendation,
+        recommendation: recommendation_text,
         winner,
     }
+}
+
+fn build_comparison_recommendation(
+    run_a: &Run,
+    run_b: &Run,
+    summary: &RunCompareSummary,
+    diffs: &RunCompareDiffs,
+) -> ComparisonRecommendation {
+    const SUCCESS_WEIGHT: f32 = 0.5;
+    const LATENCY_WEIGHT: f32 = 0.2;
+    const COST_WEIGHT: f32 = 0.2;
+    const RELIABILITY_WEIGHT: f32 = 0.1;
+
+    let success_a = success_score(run_a);
+    let success_b = success_score(run_b);
+
+    let latency_a = latency_ms(run_a).map(|value| value as f64);
+    let latency_b = latency_ms(run_b).map(|value| value as f64);
+    let latency_score_a = normalize_inverse_pair(latency_a, latency_b, true);
+    let latency_score_b = normalize_inverse_pair(latency_b, latency_a, true);
+
+    let cost_a = Some(diffs.metrics.run_a.estimated_cost);
+    let cost_b = Some(diffs.metrics.run_b.estimated_cost);
+    let cost_score_a = normalize_inverse_pair(cost_a, cost_b, true);
+    let cost_score_b = normalize_inverse_pair(cost_b, cost_a, true);
+
+    let reliability_a = reliability_score(run_a);
+    let reliability_b = reliability_score(run_b);
+
+    let score_a = SUCCESS_WEIGHT * success_a
+        + LATENCY_WEIGHT * latency_score_a
+        + COST_WEIGHT * cost_score_a
+        + RELIABILITY_WEIGHT * reliability_a;
+    let score_b = SUCCESS_WEIGHT * success_b
+        + LATENCY_WEIGHT * latency_score_b
+        + COST_WEIGHT * cost_score_b
+        + RELIABILITY_WEIGHT * reliability_b;
+
+    let winner = if score_b > score_a { "run_b" } else { "run_a" }.to_string();
+    let confidence = ((score_b - score_a).abs() / 1.0).clamp(0.05, 0.99);
+
+    let mut reasons = Vec::<String>::new();
+    let mut improvements = Vec::<String>::new();
+    let mut regressions = Vec::<String>::new();
+
+    if success_b > success_a {
+        improvements.push("Improved success rate".to_string());
+    } else if success_b < success_a {
+        regressions.push("Reduced success rate".to_string());
+    }
+
+    if let (Some(a), Some(b)) = (latency_a, latency_b) {
+        if b < a {
+            improvements.push(format!(
+                "Reduced latency by {:.0}%",
+                percent_change_f64(a, b)
+            ));
+        } else if b > a {
+            regressions.push(format!(
+                "Increased latency by {:.0}%",
+                percent_change_f64(a, b)
+            ));
+        }
+    }
+
+    if summary.token_delta < 0 {
+        improvements.push("Reduced token usage".to_string());
+    } else if summary.token_delta > 0 {
+        regressions.push("Increased token usage".to_string());
+    }
+
+    if diffs.metrics.cost_delta < 0.0 {
+        improvements.push("Lower cost".to_string());
+    } else if diffs.metrics.cost_delta > 0.0 {
+        regressions.push("Higher cost".to_string());
+    }
+
+    if summary.instruction_change_count > 0 {
+        reasons.push("Improvement likely caused by updated instructions".to_string());
+    }
+
+    reasons.extend(improvements.iter().cloned());
+    reasons.truncate(4);
+    improvements.truncate(4);
+    regressions.truncate(4);
+
+    let winner_name = if winner == "run_b" { "Run B" } else { "Run A" };
+    let short_reasons = if reasons.is_empty() {
+        "better overall performance and reliability".to_string()
+    } else {
+        reasons
+            .iter()
+            .take(2)
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" and ")
+            .to_lowercase()
+    };
+    let mut summary_text = format!("{winner_name} is recommended due to {short_reasons}");
+    if summary.instruction_change_count > 0 {
+        summary_text.push_str(". Improvement likely caused by updated instructions");
+    }
+
+    ComparisonRecommendation {
+        winner,
+        confidence,
+        reasons,
+        improvements,
+        regressions,
+        summary: summary_text,
+    }
+}
+
+fn success_score(run: &Run) -> f32 {
+    if run.status == "success" || run.status == "completed" || run.success == Some(true) {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+fn reliability_score(run: &Run) -> f32 {
+    let has_errors = run.status == "failed"
+        || run.status == "error"
+        || run.success == Some(false)
+        || run.error_count.unwrap_or_default() > 0;
+    if has_errors {
+        0.0
+    } else {
+        1.0
+    }
+}
+
+fn normalize_inverse_pair(value: Option<f64>, other: Option<f64>, lower_is_better: bool) -> f32 {
+    let (Some(value), Some(other)) = (value, other) else {
+        return 0.5;
+    };
+    if (value - other).abs() < f64::EPSILON {
+        return 0.5;
+    }
+    if lower_is_better {
+        if value < other {
+            1.0
+        } else {
+            0.0
+        }
+    } else if value > other {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+fn percent_change_f64(old: f64, new: f64) -> f64 {
+    if old <= 0.0 {
+        return 0.0;
+    }
+    ((new - old).abs() / old) * 100.0
 }
 
 fn status_score(status: &str) -> i32 {
@@ -402,13 +553,14 @@ mod tests {
             spans: vec!["respond [success]".to_string()],
         };
 
-        let insights = build_compare_insights(&run_a, &run_b, &summary, &diffs);
+        let recommendation = build_comparison_recommendation(&run_a, &run_b, &summary, &diffs);
+        let insights = build_compare_insights(&run_a, &run_b, &summary, &diffs, &recommendation);
         assert_eq!(insights.winner, "run_b");
         assert_eq!(insights.verdict, "Run B is better");
     }
 
     #[test]
-    fn compare_insights_can_return_tie() {
+    fn compare_insights_returns_clear_winner() {
         let run_a = make_run("a", "success", 1_000);
         let run_b = make_run("b", "success", 1_000);
 
@@ -435,9 +587,10 @@ mod tests {
             spans: Vec::new(),
         };
 
-        let insights = build_compare_insights(&run_a, &run_b, &summary, &diffs);
-        assert_eq!(insights.winner, "tie");
-        assert_eq!(insights.verdict, "No clear winner");
+        let recommendation = build_comparison_recommendation(&run_a, &run_b, &summary, &diffs);
+        let insights = build_compare_insights(&run_a, &run_b, &summary, &diffs, &recommendation);
+        assert_eq!(insights.winner, "run_a");
+        assert_eq!(insights.verdict, "Run A is better");
     }
 }
 
@@ -591,7 +744,11 @@ struct InstructionSourceData {
 fn collect_instruction_source_map(spans: &[Span]) -> HashMap<String, InstructionSourceData> {
     let mut items = HashMap::new();
     for span in spans {
-        let Some(context) = span.instruction_context.as_ref().and_then(serde_json::Value::as_object) else {
+        let Some(context) = span
+            .instruction_context
+            .as_ref()
+            .and_then(serde_json::Value::as_object)
+        else {
             continue;
         };
         let Some(entries) = context.get("sources").and_then(serde_json::Value::as_array) else {

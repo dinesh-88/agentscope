@@ -221,6 +221,14 @@ export type InstructionDiff = {
 export type RunComparison = {
   run_a: Run;
   run_b: Run;
+  recommendation: {
+    winner: "run_a" | "run_b";
+    confidence: number;
+    reasons: string[];
+    improvements: string[];
+    regressions: string[];
+    summary: string;
+  };
   summary: {
     status_changed: boolean;
     token_delta: number;
@@ -244,11 +252,12 @@ export type RunComparison = {
     spans: string[];
   };
   insights: {
+    insight_type: string;
     summary: string;
     key_changes: string[];
     verdict: string;
     recommendation: string;
-    winner: "run_a" | "run_b" | "tie";
+    winner: "run_a" | "run_b";
   };
 };
 

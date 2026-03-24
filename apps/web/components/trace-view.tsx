@@ -45,6 +45,7 @@ export type TraceSpan = {
 
 type TraceViewProps = {
   spans: TraceSpan[];
+  title?: string;
   className?: string;
   selectedSpanId?: string | null;
   hoveredSpanId?: string | null;
@@ -100,6 +101,7 @@ function barTone(span: TraceSpan, selected: boolean, hovered: boolean) {
 
 export function TraceView({
   spans,
+  title,
   className,
   selectedSpanId,
   hoveredSpanId,
@@ -167,7 +169,7 @@ export function TraceView({
   return (
     <div className={cn("space-y-4", className)}>
       <div className="rounded-xl border border-black/10 bg-white p-4">
-        <p className="text-sm font-semibold text-neutral-900">Timeline Header</p>
+        <p className="text-sm font-semibold text-neutral-900">{title ?? "Timeline Header"}</p>
         <div className="mt-2 grid gap-2 text-sm text-neutral-700 sm:grid-cols-3">
           <div className="rounded-lg bg-neutral-50 px-3 py-2">
             <p className="text-xs text-neutral-500">Total duration</p>

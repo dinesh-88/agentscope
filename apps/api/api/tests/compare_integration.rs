@@ -110,7 +110,7 @@ async fn compare_endpoint_returns_prompt_response_and_metric_diffs(pool: PgPool)
                 evaluation: None,
                 metadata: None,
                 error: None,
-            step_transition: None,
+                step_transition: None,
             }],
             artifacts: vec![
                 Artifact {
@@ -177,10 +177,17 @@ async fn compare_endpoint_returns_prompt_response_and_metric_diffs(pool: PgPool)
     let compare: serde_json::Value = serde_json::from_slice(&body).unwrap();
     assert_eq!(compare["summary"]["status_changed"], false);
     assert!(compare["summary"]["token_delta"].as_i64().unwrap() > 0);
+    assert_eq!(
+        compare["insights"]["insight_type"],
+        "COMPARISON_RECOMMENDATION"
+    );
     assert!(compare["insights"]["summary"].as_str().is_some());
     assert!(compare["insights"]["verdict"].as_str().is_some());
     assert!(compare["insights"]["recommendation"].as_str().is_some());
     assert!(compare["insights"]["winner"].as_str().is_some());
+    assert!(compare["recommendation"]["winner"].as_str().is_some());
+    assert!(compare["recommendation"]["summary"].as_str().is_some());
+    assert!(compare["recommendation"]["reasons"].is_array());
     assert_eq!(
         compare["diffs"]["prompts"][0]["run_a"][0],
         "{\"role\":\"user\",\"content\":\"Summarize the outage\"}"

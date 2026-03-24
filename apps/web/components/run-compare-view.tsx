@@ -51,10 +51,9 @@ function TrendBadge({ trend }: { trend: Trend }) {
   return <span className={cn("rounded-full border px-2 py-0.5 text-xs", metricTone(trend))}>{label}</span>;
 }
 
-function verdictTone(winner: "run_a" | "run_b" | "tie") {
+function verdictTone(winner: "run_a" | "run_b") {
   if (winner === "run_b") return "border-emerald-400/40 bg-emerald-500/10 text-emerald-200";
-  if (winner === "run_a") return "border-rose-400/40 bg-rose-500/10 text-rose-200";
-  return "border-amber-400/30 bg-amber-500/10 text-amber-200";
+  return "border-rose-400/40 bg-rose-500/10 text-rose-200";
 }
 
 function impactTone(level: string) {
@@ -141,13 +140,12 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
 
   const versionA = parseRunVersion(comparison.run_a);
   const versionB = parseRunVersion(comparison.run_b);
-  const winnerLabel = comparison.insights.winner === "run_b" ? "Run B" : comparison.insights.winner === "run_a" ? "Run A" : "Tie";
+  const winner = comparison.recommendation.winner;
+  const winnerLabel = winner === "run_b" ? "Run B" : "Run A";
   const winnerHref =
-    comparison.insights.winner === "run_a"
+    winner === "run_a"
       ? `/runs/${comparison.run_a.id}`
-      : comparison.insights.winner === "run_b"
-        ? `/runs/${comparison.run_b.id}`
-        : "/runs/compare";
+      : `/runs/${comparison.run_b.id}`;
   const instructionDiff = comparison.diffs.instruction_diff;
   const instructionChangeCount =
     instructionDiff.added.length + instructionDiff.removed.length + instructionDiff.changed.length;
@@ -161,14 +159,50 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
 
   return (
     <div className="space-y-6">
-      <Card className="border border-white/10 bg-[#101722] shadow-none">
+      <Card className={cn("border-2 shadow-none", winner === "run_b" ? "border-emerald-400/50 bg-emerald-500/10" : "border-rose-400/50 bg-rose-500/10")}>
+        <CardHeader className="space-y-2">
+          <CardTitle className="text-gray-100">Recommended: {winnerLabel}</CardTitle>
+          <p className="text-sm text-gray-200">
+            {comparison.recommendation.improvements.length > 0
+              ? "Better performance and reliability"
+              : "Better overall run quality"}
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {comparison.recommendation.reasons.length > 0 ? (
+            <ul className="space-y-2 text-sm text-gray-100">
+              {comparison.recommendation.reasons.slice(0, 4).map((reason) => (
+                <li key={reason}>✓ {reason}</li>
+              ))}
+            </ul>
+          ) : null}
+
+          {comparison.recommendation.regressions.length > 0 ? (
+            <div className="rounded-lg border border-amber-400/40 bg-amber-500/10 p-3 text-sm text-amber-100">
+              {comparison.recommendation.regressions.slice(0, 2).map((item) => (
+                <p key={item}>⚠ {item}</p>
+              ))}
+            </div>
+          ) : null}
+
+          <p className="text-sm text-gray-200">{comparison.recommendation.summary}</p>
+          <a
+            href="#comparison-key-differences"
+            className="inline-flex h-8 items-center rounded-lg border border-white/20 bg-white/5 px-3 text-sm text-gray-100 hover:bg-white/10"
+          >
+            View key differences
+          </a>
+        </CardContent>
+      </Card>
+
+      <Card id="comparison-key-differences" className="border border-white/10 bg-[#101722] shadow-none">
         <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="text-gray-100">Comparison Insights</CardTitle>
             <p className="mt-2 text-sm text-gray-300">{comparison.insights.summary}</p>
           </div>
-          <div className={cn("inline-flex rounded-full border px-3 py-1 text-xs font-medium", verdictTone(comparison.insights.winner))}>
-            {comparison.insights.winner === "tie" ? "⚖️ No winner" : `🏆 ${winnerLabel}`}
+          <div className={cn("inline-flex rounded-full border px-3 py-1 text-xs font-medium", verdictTone(winner))}>
+            {`🏆 ${winnerLabel}`}
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -194,7 +228,7 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
             <div className="space-y-4">
               <div className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
                 <div className="text-xs uppercase tracking-[0.18em] text-gray-400">Verdict</div>
-                <div className={cn("mt-2 inline-flex rounded-full border px-2.5 py-1 text-sm font-medium", verdictTone(comparison.insights.winner))}>
+                <div className={cn("mt-2 inline-flex rounded-full border px-2.5 py-1 text-sm font-medium", verdictTone(winner))}>
                   {comparison.insights.verdict}
                 </div>
               </div>
@@ -205,14 +239,12 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
                   href={winnerHref}
                   className={cn(
                     "mt-4 inline-flex h-8 items-center rounded-lg border px-3 text-sm font-medium transition-colors",
-                    comparison.insights.winner === "run_a"
+                    winner === "run_a"
                       ? "border-rose-400/40 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20"
-                      : comparison.insights.winner === "run_b"
-                        ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20"
-                        : "border-amber-400/40 bg-amber-500/10 text-amber-100 hover:bg-amber-500/20",
+                      : "border-emerald-400/40 bg-emerald-500/10 text-emerald-100 hover:bg-emerald-500/20",
                   )}
                 >
-                  {comparison.insights.winner === "tie" ? "Review both versions" : "Use this version"}
+                  Use this version
                 </Link>
               </div>
             </div>
@@ -277,13 +309,29 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
           <CardTitle className="text-gray-100">Runs</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-3 md:grid-cols-2">
-          <Link href={`/runs/${comparison.run_a.id}`} className="rounded-xl border border-white/10 bg-white/[0.02] p-4 hover:bg-white/[0.04]">
+          <Link
+            href={`/runs/${comparison.run_a.id}`}
+            className={cn(
+              "rounded-xl border p-4",
+              winner === "run_a"
+                ? "border-emerald-400/40 bg-emerald-500/10 hover:bg-emerald-500/20"
+                : "border-white/10 bg-white/[0.02] opacity-70 hover:bg-white/[0.04]",
+            )}
+          >
             <div className="text-xs uppercase tracking-[0.2em] text-gray-400">Run A</div>
             <div className="mt-2 font-medium text-gray-100">{comparison.run_a.workflow_name}</div>
             <div className="text-sm text-gray-400">{comparison.run_a.id}</div>
             <div className="mt-2 text-xs text-gray-500">{comparison.run_a.status}{versionA ? ` · ${versionA}` : ""}</div>
           </Link>
-          <Link href={`/runs/${comparison.run_b.id}`} className="rounded-xl border border-white/10 bg-white/[0.02] p-4 hover:bg-white/[0.04]">
+          <Link
+            href={`/runs/${comparison.run_b.id}`}
+            className={cn(
+              "rounded-xl border p-4",
+              winner === "run_b"
+                ? "border-emerald-400/40 bg-emerald-500/10 hover:bg-emerald-500/20"
+                : "border-white/10 bg-white/[0.02] opacity-70 hover:bg-white/[0.04]",
+            )}
+          >
             <div className="text-xs uppercase tracking-[0.2em] text-gray-400">Run B</div>
             <div className="mt-2 font-medium text-gray-100">{comparison.run_b.workflow_name}</div>
             <div className="text-sm text-gray-400">{comparison.run_b.id}</div>
@@ -293,7 +341,7 @@ export function RunCompareView({ comparison }: RunCompareViewProps) {
       </Card>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <Card className="border border-white/10 bg-[#101722] shadow-none">
+        <Card id="comparison-spans" className="border border-white/10 bg-[#101722] shadow-none">
           <CardHeader>
             <CardTitle className="text-gray-100">Prompt Diffs</CardTitle>
           </CardHeader>
