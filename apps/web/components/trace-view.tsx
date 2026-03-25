@@ -289,7 +289,6 @@ export function TraceView({
                 >
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${span.depth * 14}px` }}>
-                      <Circle className="size-3 text-neutral-400 dark:text-neutral-500" />
                       <p className={cn("truncate text-sm", span.status === "error" ? "font-semibold text-red-700 dark:text-red-300" : "font-medium text-neutral-900 dark:text-neutral-100")}>
                         {span.name}
                       </p>
