@@ -2,11 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  AlertTriangle,
-  CheckCircle2,
   Flame,
-  GitBranch,
-  Loader2,
 } from "lucide-react";
 
 import { ReplayPanel } from "@/components/replay-panel";
@@ -18,10 +14,6 @@ import { useRunStream } from "@/lib/use-run-stream";
 import { cn } from "@/lib/utils";
 
 type Tab = "context" | "output" | "metadata";
-
-type DecoratedSpan = Span & {
-  level: number;
-};
 
 type InstructionSource = {
   name: string;
@@ -75,34 +67,6 @@ function roleBubbleTone(role: string) {
   return "border-blue-100 bg-blue-50 text-blue-900 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-200";
 }
 
-function buildTree(spans: Span[]): DecoratedSpan[] {
-  const byParent = new Map<string | null, Span[]>();
-
-  for (const span of spans) {
-    const bucket = byParent.get(span.parent_span_id ?? null) ?? [];
-    bucket.push(span);
-    byParent.set(span.parent_span_id ?? null, bucket);
-  }
-
-  for (const [key, bucket] of byParent.entries()) {
-    byParent.set(
-      key,
-      bucket.sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime()),
-    );
-  }
-
-  const ordered: DecoratedSpan[] = [];
-
-  function walk(parentId: string | null, level: number) {
-    for (const span of byParent.get(parentId) ?? []) {
-      ordered.push({ ...span, level });
-      walk(span.id, level + 1);
-    }
-  }
-
-  walk(null, 0);
-  return ordered;
-}
 
 function normalizeStatus(status: string, isRcaFailingSpan: boolean): TraceSpan["status"] {
   if (status === "error" || status === "failed" || isRcaFailingSpan) return "error";
@@ -154,12 +118,6 @@ function pickInstructionSource(
   matcher: (source: InstructionSource) => boolean,
 ): InstructionSource | null {
   return sources.find(matcher) ?? null;
-}
-
-function statusTone(status: TraceSpan["status"]) {
-  if (status === "error") return "border-red-300 bg-red-50 text-red-700 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200";
-  if (status === "running") return "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/40 dark:bg-amber-500/15 dark:text-amber-200";
-  return "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-500/40 dark:bg-emerald-500/15 dark:text-emerald-200";
 }
 
 export function RunDetailView({
@@ -217,7 +175,6 @@ export function RunDetailView({
     fromSpanId: string;
     toSpanId: string;
   } | null>(null);
-  const treeRefs = useRef(new Map<string, HTMLButtonElement | null>());
   const autoFocusedRef = useRef(false);
 
   const ordered = useMemo(() => {
@@ -226,17 +183,7 @@ export function RunDetailView({
   }, [liveSpans, spans]);
 
   const runStarted = new Date(liveRun.started_at).getTime();
-  const runDuration = durationMs(liveRun.started_at, liveRun.ended_at);
   const isFailedRun = liveRun.status === "failed" || liveRun.status === "error";
-
-  const latestModel = useMemo(
-    () =>
-      ordered
-        .slice()
-        .reverse()
-        .find((span) => typeof span.model === "string" && span.model.length > 0)?.model ?? "n/a",
-    [ordered],
-  );
 
   const rcaBySpan = useMemo(() => {
     const map = new Map<string, TraceSpan["rca"]>();
@@ -288,20 +235,10 @@ export function RunDetailView({
     autoFocusedRef.current = true;
   }, [firstFailingSpanId, setSelectedSpanId]);
 
-  useEffect(() => {
-    if (!selectedSpanId) return;
-    const target = treeRefs.current.get(selectedSpanId);
-    if (target) {
-      target.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
-  }, [selectedSpanId]);
-
   const selectedSpan = useMemo(
     () => ordered.find((span) => span.id === selectedSpanId) ?? ordered[0] ?? null,
     [ordered, selectedSpanId],
   );
-
-  const orderedTree = useMemo(() => buildTree(ordered), [ordered]);
 
   const traceSpans = useMemo<TraceSpan[]>(() => {
     const promptBySpan = new Map<string, string>();
@@ -477,26 +414,10 @@ export function RunDetailView({
     selectedSpan?.context && typeof selectedSpan.context === "object" && selectedSpan.context.variables && typeof selectedSpan.context.variables === "object"
       ? (selectedSpan.context.variables as Record<string, unknown>)
       : null;
-  const primaryFailingSpan = useMemo(() => ordered.find((span) => span.id === firstFailingSpanId) ?? null, [firstFailingSpanId, ordered]);
-  const rootCauseSentence = useMemo(() => {
-    const message =
-      rootCause?.message ??
-      primarySummaryInsight?.message ??
-      selectedInsight?.cause ??
-      selectedInsight?.message ??
-      (primaryFailingSpan ? `${primaryFailingSpan.name} failed during execution` : "Run completed without a detected failure");
-    return message.endsWith(".") ? message : `${message}.`;
-  }, [primaryFailingSpan, primarySummaryInsight?.message, rootCause?.message, selectedInsight?.cause, selectedInsight?.message]);
-
   const jumpToSpan = (spanId: string | null) => {
     if (!spanId) return;
     setSelectedSpanId(spanId);
     setHoveredSpanId(spanId);
-    const node = treeRefs.current.get(spanId);
-    if (node) {
-      node.scrollIntoView({ behavior: "smooth", block: "center" });
-      return;
-    }
     if (typeof window !== "undefined") {
       const el = document.getElementById(`span-${spanId}`);
       if (el) {
@@ -517,79 +438,7 @@ export function RunDetailView({
 
   return (
     <section className="space-y-4">
-      <div className="rounded-xl border border-red-300 bg-red-50/95 p-3 shadow-sm dark:border-red-500/35 dark:bg-slate-900/95">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-red-700 dark:text-red-300">Run Summary</p>
-            <p className="mt-1 truncate text-sm font-medium text-red-900 dark:text-red-100">{rootCauseSentence}</p>
-          </div>
-          <button
-            type="button"
-            onClick={() => jumpToSpan(firstFailingSpanId)}
-            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 dark:border-red-500/40 dark:bg-slate-800 dark:text-red-200 dark:hover:bg-slate-700"
-          >
-            Jump to failing span
-          </button>
-        </div>
-      </div>
-
-      <div className="grid gap-4 2xl:grid-cols-[260px_minmax(0,1fr)_380px]">
-      <aside className="min-w-0">
-        <Card className="border border-black/8 bg-white shadow-sm dark:border-white/10 dark:bg-slate-900">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-sm">
-              <GitBranch className="size-4 text-neutral-700 dark:text-neutral-300" />
-              Span Tree
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="max-h-[78vh] space-y-2 overflow-auto pr-2">
-            {orderedTree.map((span) => {
-              const status = normalizeStatus(span.status, rcaBySpan.has(span.id));
-              const isSelected = selectedSpan?.id === span.id;
-              const isHovered = hoveredSpanId === span.id;
-              const isFailing = status === "error";
-              const Icon = status === "error" ? AlertTriangle : status === "running" ? Loader2 : CheckCircle2;
-
-              return (
-                <button
-                  key={span.id}
-                  ref={(node) => {
-                    treeRefs.current.set(span.id, node);
-                  }}
-                  type="button"
-                  onClick={() => setSelectedSpanId(span.id)}
-                  onMouseEnter={() => setHoveredSpanId(span.id)}
-                  onMouseLeave={() => setHoveredSpanId(null)}
-                  className={cn(
-                    "flex w-full items-center justify-between rounded-lg border px-2 py-2 text-left transition",
-                    isSelected
-                      ? "border-blue-300 bg-blue-50 dark:border-blue-500/40 dark:bg-blue-500/15"
-                      : isFailing
-                        ? "border-red-200 bg-red-50/50 dark:border-red-500/40 dark:bg-red-500/10"
-                        : "border-black/10 bg-white hover:bg-neutral-50 dark:border-white/10 dark:bg-slate-900 dark:hover:bg-slate-800/70",
-                    isHovered && !isSelected ? "border-blue-200 dark:border-blue-500/40" : undefined,
-                  )}
-                  style={{ paddingLeft: `${span.level * 14 + 8}px` }}
-                >
-                  <div className="min-w-0">
-                    <p className={cn("truncate text-sm", isFailing ? "font-semibold text-red-700 dark:text-red-300" : "font-medium text-neutral-900 dark:text-neutral-100")}>
-                      {span.name}
-                    </p>
-                    <div className="mt-1 flex items-center gap-1 text-[11px] text-neutral-500 dark:text-neutral-400">
-                      <Icon className={cn("size-3", status === "running" ? "animate-spin" : undefined)} />
-                      <span>{formatMs(durationMs(span.started_at, span.ended_at))}</span>
-                    </div>
-                  </div>
-                  <span className={cn("rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase", statusTone(status))}>
-                    {status === "error" ? "failed" : status}
-                  </span>
-                </button>
-              );
-            })}
-          </CardContent>
-        </Card>
-      </aside>
-
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_380px]">
       <main className="min-w-0">
         <TraceView
           spans={traceSpans}
@@ -599,9 +448,6 @@ export function RunDetailView({
           onSpanHover={setHoveredSpanId}
           highlightedTransitionToSpanId={linkedTransitionFocus?.toSpanId ?? null}
           highlightedSpanId={linkedTransitionFocus?.toSpanId ?? null}
-          totalDurationMs={runDuration}
-          totalTokens={liveRun.total_tokens ?? 0}
-          model={latestModel}
         />
       </main>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef } from "react";
-import { AlertTriangle, ArrowDown, CheckCircle2, Circle, Loader2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, CheckCircle2, Loader2 } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 
@@ -46,7 +46,6 @@ export type TraceSpan = {
 
 type TraceViewProps = {
   spans: TraceSpan[];
-  title?: string;
   className?: string;
   selectedSpanId?: string | null;
   hoveredSpanId?: string | null;
@@ -54,9 +53,6 @@ type TraceViewProps = {
   onSpanHover?: (spanId: string | null) => void;
   highlightedTransitionToSpanId?: string | null;
   highlightedSpanId?: string | null;
-  totalDurationMs?: number;
-  totalTokens?: number;
-  model?: string;
 };
 
 type EnrichedSpan = TraceSpan & {
@@ -100,7 +96,6 @@ function barTone(span: TraceSpan, selected: boolean, hovered: boolean) {
 
 export function TraceView({
   spans,
-  title,
   className,
   selectedSpanId,
   hoveredSpanId,
@@ -108,9 +103,6 @@ export function TraceView({
   onSpanHover,
   highlightedTransitionToSpanId,
   highlightedSpanId,
-  totalDurationMs,
-  totalTokens,
-  model,
 }: TraceViewProps) {
   const rowRefs = useRef(new Map<string, HTMLDivElement | null>());
   const transitionRefs = useRef(new Map<string, HTMLButtonElement | null>());
@@ -174,28 +166,8 @@ export function TraceView({
     }
   }, [highlightedTransitionToSpanId]);
 
-  const runDuration = totalDurationMs ?? maxEndMs;
-
   return (
     <div className={cn("space-y-4", className)}>
-      <div className="rounded-xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
-        <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{title ?? "Timeline Header"}</p>
-        <div className="mt-2 grid gap-2 text-sm text-neutral-700 dark:text-neutral-300 sm:grid-cols-3">
-          <div className="rounded-lg bg-neutral-50 px-3 py-2 dark:bg-slate-800">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">Total duration</p>
-            <p className="font-medium text-neutral-900 dark:text-neutral-100">{formatMs(runDuration)}</p>
-          </div>
-          <div className="rounded-lg bg-neutral-50 px-3 py-2 dark:bg-slate-800">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">Token usage</p>
-            <p className="font-medium text-neutral-900 dark:text-neutral-100">{(totalTokens ?? spans.reduce((sum, span) => sum + (span.tokens ?? 0), 0)).toLocaleString()}</p>
-          </div>
-          <div className="rounded-lg bg-neutral-50 px-3 py-2 dark:bg-slate-800">
-            <p className="text-xs text-neutral-500 dark:text-neutral-400">Model</p>
-            <p className="truncate font-medium text-neutral-900 dark:text-neutral-100">{model ?? "n/a"}</p>
-          </div>
-        </div>
-      </div>
-
       <div className="space-y-2 rounded-xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-slate-900">
         <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Span Timeline</p>
         <div className="space-y-2">
