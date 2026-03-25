@@ -237,8 +237,26 @@ export function TraceView({
                   </div>
                 </div>
 
-                {isSelected ? (
-                  <div className="space-y-2 rounded-lg border border-black/10 bg-neutral-50 p-3 text-xs dark:border-white/10 dark:bg-slate-800/60">
+                <div
+                  className={cn(
+                    "overflow-hidden transition-all duration-300 ease-out",
+                    isSelected ? "max-h-[520px] opacity-100" : "max-h-0 opacity-0",
+                  )}
+                  aria-hidden={!isSelected}
+                >
+                  <div
+                    role="button"
+                    tabIndex={isSelected ? 0 : -1}
+                    onClick={() => onSpanSelect?.(span.id)}
+                    onKeyDown={(event) => {
+                      if (!isSelected) return;
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSpanSelect?.(span.id);
+                      }
+                    }}
+                    className="mt-1 space-y-2 rounded-lg border border-black/10 bg-neutral-50 p-3 text-xs dark:border-white/10 dark:bg-slate-800/60"
+                  >
                     <div className="flex items-center justify-between gap-2">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100">{span.name}</p>
@@ -284,7 +302,7 @@ export function TraceView({
 
                     <p className="text-neutral-500 dark:text-neutral-400">{transitionPairLabel}</p>
                   </div>
-                ) : null}
+                </div>
               </div>
             );
           })}
