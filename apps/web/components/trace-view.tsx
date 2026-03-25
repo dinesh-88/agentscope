@@ -106,7 +106,7 @@ export function TraceView({
   highlightedSpanId,
 }: TraceViewProps) {
   const rowRefs = useRef(new Map<string, HTMLDivElement | null>());
-  const transitionRefs = useRef(new Map<string, HTMLButtonElement | null>());
+  const transitionRefs = useRef(new Map<string, HTMLDivElement | null>());
 
   const { rows, maxEndMs } = useMemo(() => {
     const byId = new Map(spans.map((span) => [span.id, span]));
@@ -196,60 +196,22 @@ export function TraceView({
             );
             const SpanStatusIcon = statusIcon(span.status);
             const hasMeaningfulChanges = summaryItems.shown.length > 0;
+            const transitionPairLabel = prevSpan
+              ? `${prevSpan.name} -> ${span.name}`
+              : span.name;
 
             return (
               <div key={span.id} className="space-y-2">
-                {index > 0 ? (
-                  <button
-                    ref={(node) => {
-                      transitionRefs.current.set(span.id, node);
-                    }}
-                    type="button"
-                    onClick={() => onSpanSelect?.(span.id)}
-                    onMouseEnter={() => onSpanHover?.(span.id)}
-                    onMouseLeave={() => onSpanHover?.(null)}
-                    className={cn(
-                      "my-2 w-full space-y-2 rounded-lg border bg-neutral-50 p-3 text-left shadow-sm transition-all hover:-translate-y-[1px] hover:shadow dark:bg-slate-800/70",
-                      transition?.likely_cause
-                        ? "border-l-4 border-red-400 border-red-200 bg-red-50/40 dark:border-red-500/40 dark:bg-red-500/10"
-                        : "border-black/10 dark:border-white/10",
-                      isTransitionLinked
-                        ? "ring-2 ring-blue-300 ring-offset-2 ring-offset-white dark:ring-blue-500/50 dark:ring-offset-slate-900"
-                        : undefined,
-                    )}
-                  >
-                    <div className="text-xs text-neutral-500 dark:text-neutral-400">
-                      <span className="font-medium text-neutral-700 dark:text-neutral-200">{prevSpan?.name}</span>
-                      <ArrowDown className="mx-1 inline size-3 align-middle text-neutral-400 dark:text-neutral-500" />
-                      <span className="font-medium text-neutral-700 dark:text-neutral-200">{span.name}</span>
-                    </div>
-                    <p className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">Changes after this step</p>
-                    {hasMeaningfulChanges ? (
-                      <ul className="space-y-1 text-xs text-neutral-700 dark:text-neutral-300">
-                        {summaryItems.shown.map((item) => (
-                          <li key={item}>+ {item}</li>
-                        ))}
-                        {summaryItems.overflow > 0 ? <li className="text-neutral-500 dark:text-neutral-400">+{summaryItems.overflow} more changes</li> : null}
-                      </ul>
-                    ) : (
-                      <p className="text-xs text-neutral-500 dark:text-neutral-400">No significant changes</p>
-                    )}
-                    {transition?.likely_cause ? (
-                      <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200">
-                        <p className="font-semibold">Likely contributed to failure</p>
-                        <p className="mt-1">{transition.cause_reason ?? "A transition change likely contributed to this failure"}</p>
-                      </div>
-                    ) : null}
-                  </button>
-                ) : null}
-
                 <div
                   id={`span-${span.id}`}
                   ref={(node) => {
                     rowRefs.current.set(span.id, node);
+                    transitionRefs.current.set(span.id, node);
                   }}
+                  role="button"
+                  tabIndex={0}
                   className={cn(
-                    "grid cursor-pointer items-center gap-3 rounded-lg border p-3 transition",
+                    "cursor-pointer rounded-lg border p-2 transition",
                     isSelected
                       ? "border-blue-300 bg-blue-50 dark:border-blue-500/40 dark:bg-blue-500/15"
                       : "border-black/10 bg-white hover:bg-neutral-50 dark:border-white/10 dark:bg-slate-900 dark:hover:bg-slate-800/70",
@@ -257,30 +219,72 @@ export function TraceView({
                     isSpanLinked ? "ring-2 ring-blue-300 ring-offset-2 ring-offset-white dark:ring-blue-500/50 dark:ring-offset-slate-900" : undefined,
                   )}
                   onClick={() => onSpanSelect?.(span.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      onSpanSelect?.(span.id);
+                    }
+                  }}
                   onMouseEnter={() => onSpanHover?.(span.id)}
                   onMouseLeave={() => onSpanHover?.(null)}
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2" style={{ paddingLeft: `${span.depth * 14}px` }}>
-                      <p className={cn("truncate text-sm", span.status === "error" ? "font-semibold text-red-700 dark:text-red-300" : "font-medium text-neutral-900 dark:text-neutral-100")}>
-                        {span.name}
-                      </p>
+                  <div className="relative h-5 overflow-hidden rounded bg-neutral-100 dark:bg-slate-800">
+                    <div className="absolute inset-y-0" style={{ left: `${leftPct}%`, width: `${widthPct}%` }}>
+                      <div className={cn("flex h-full items-center justify-end rounded pr-1 text-[10px] font-medium text-white/90", barTone(span, isSelected, isHovered))}>
+                        {formatMs(span.durationMs)}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                  </div>
+                </div>
+
+                {isSelected ? (
+                  <div className="space-y-2 rounded-lg border border-black/10 bg-neutral-50 p-3 text-xs dark:border-white/10 dark:bg-slate-800/60">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-neutral-900 dark:text-neutral-100">{span.name}</p>
+                        <p className="mt-1 text-neutral-500 dark:text-neutral-400">
+                          Step {index + 1} • {span.spanType ?? "span"}
+                        </p>
+                      </div>
                       <span className={cn("inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase", statusBadgeTone(span.status))}>
                         <SpanStatusIcon className={cn("size-3", span.status === "running" ? "animate-spin" : undefined)} />
                         {span.status}
                       </span>
-                      <span className="text-xs text-neutral-500 dark:text-neutral-400">{formatMs(span.durationMs)}</span>
                     </div>
-                  </div>
 
-                  <div className="relative h-3 overflow-hidden rounded bg-neutral-100 dark:bg-slate-800">
-                    <div className="absolute inset-y-0" style={{ left: `${leftPct}%`, width: `${widthPct}%` }}>
-                      <div className={cn("h-full rounded", barTone(span, isSelected, isHovered))} />
-                    </div>
+                    {index > 0 ? (
+                      <div className="rounded-md border border-black/10 bg-white p-2 dark:border-white/10 dark:bg-slate-900/70">
+                        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                          <span className="font-medium text-neutral-700 dark:text-neutral-200">{prevSpan?.name}</span>
+                          <ArrowDown className="mx-1 inline size-3 align-middle text-neutral-400 dark:text-neutral-500" />
+                          <span className="font-medium text-neutral-700 dark:text-neutral-200">{span.name}</span>
+                        </div>
+                        {hasMeaningfulChanges ? (
+                          <ul className="mt-2 space-y-1 text-neutral-700 dark:text-neutral-300">
+                            {summaryItems.shown.map((item) => (
+                              <li key={item}>+ {item}</li>
+                            ))}
+                            {summaryItems.overflow > 0 ? <li className="text-neutral-500 dark:text-neutral-400">+{summaryItems.overflow} more changes</li> : null}
+                          </ul>
+                        ) : (
+                          <p className="mt-2 text-neutral-500 dark:text-neutral-400">No significant transition changes</p>
+                        )}
+                      </div>
+                    ) : null}
+
+                    {transition?.likely_cause ? (
+                      <div className={cn(
+                        "rounded-md border border-red-300 bg-red-50 p-2 text-red-800 dark:border-red-500/40 dark:bg-red-500/15 dark:text-red-200",
+                        isTransitionLinked ? "ring-2 ring-blue-300 dark:ring-blue-500/50" : undefined,
+                      )}>
+                        <p className="font-semibold">Likely contributed to failure</p>
+                        <p className="mt-1">{transition.cause_reason ?? "A transition change likely contributed to this failure"}</p>
+                      </div>
+                    ) : null}
+
+                    <p className="text-neutral-500 dark:text-neutral-400">{transitionPairLabel}</p>
                   </div>
-                </div>
+                ) : null}
               </div>
             );
           })}
