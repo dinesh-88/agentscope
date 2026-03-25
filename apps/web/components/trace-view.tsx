@@ -46,6 +46,7 @@ export type TraceSpan = {
 
 type TraceViewProps = {
   spans: TraceSpan[];
+  title?: string;
   className?: string;
   selectedSpanId?: string | null;
   hoveredSpanId?: string | null;
