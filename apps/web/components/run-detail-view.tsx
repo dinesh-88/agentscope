@@ -165,6 +165,7 @@ export function RunDetailView({
 
   const causeText =
     insights.find((insight) => insight.cause)?.cause ?? rootCause?.message ?? "Tool output introduced invalid data into the model context.";
+  const failureSummary = `Failure caused by ${causeText.charAt(0).toLowerCase()}${causeText.slice(1)}`;
 
   const fixItems =
     insights
@@ -177,7 +178,6 @@ export function RunDetailView({
   return (
     <section className="space-y-6 bg-[#0B0F1A] p-6 text-white">
       <header className="rounded-xl border border-white/10 bg-gradient-to-b from-[#0F1629] to-[#0B1220] p-6">
-        <p className="mb-3 text-sm text-gray-400">Back to runs</p>
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-5xl font-bold text-white">{runTitle}</h1>
           <span className={`rounded-xl border border-white/10 px-3 py-1 text-sm font-semibold uppercase ${failedRun ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"}`}>
@@ -196,7 +196,7 @@ export function RunDetailView({
         </div>
       </header>
 
-      <div className="border-l-4 border-red-500 bg-red-500/5 px-4 py-3 text-lg text-red-400">{keyChange}</div>
+      <div className="border-l-4 border-red-500 bg-red-500/5 px-4 py-3 text-lg text-red-400">{failedRun ? failureSummary : keyChange}</div>
 
       <div className="grid gap-6 xl:grid-cols-[65fr_35fr]">
         <main className="space-y-0 rounded-xl border border-white/10 bg-gradient-to-b from-[#0F1629] to-[#0B1220] p-5">
@@ -223,7 +223,10 @@ export function RunDetailView({
                   {item.stepType === "failure" ? <p className="ml-6 mt-2 text-2xl font-semibold text-red-400">FAILED STEP</p> : null}
                 </div>
               ) : (
-                <div className="border-l-4 border-yellow-500 bg-yellow-500/10 pb-3 pl-4 pt-2 text-base text-yellow-400">⚠ {item.text}</div>
+                <div className="mb-3 ml-2 flex items-start gap-2 border-l-4 border-yellow-500 bg-yellow-500/5 py-2 pl-3 text-base text-yellow-400">
+                  <AlertTriangle className="mt-0.5 size-4 shrink-0 text-yellow-400" />
+                  <span>{item.text}</span>
+                </div>
               )}
             </div>
           ))}
@@ -231,14 +234,14 @@ export function RunDetailView({
 
         <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
           <section className="rounded-xl border border-white/10 bg-gradient-to-b from-[#0F1629] to-[#0B1220] p-5">
-            <h3 className="text-3xl font-semibold text-red-400">Invalid JSON from tool_call</h3>
+            <h3 className="text-3xl font-semibold text-red-400">{rootCause?.message ?? insights.find((insight) => insight.title)?.title ?? "Run failure detected"}</h3>
             <div className="mt-5 border-t border-white/10 pt-4">
               <p className="text-sm font-semibold tracking-wide text-gray-400">CAUSE</p>
-              <p className="mt-2 max-w-prose text-lg text-white">{causeText}</p>
+              <p className="mt-2 max-w-prose text-base text-white">{causeText}</p>
             </div>
             <div className="mt-4 border-t border-white/10 pt-4">
               <p className="text-sm font-semibold tracking-wide text-gray-400">FIX</p>
-              <ul className="mt-2 space-y-2 text-lg text-white">
+              <ul className="mt-2 space-y-2 text-base text-white">
                 {finalFixItems.slice(0, 3).map((item) => (
                   <li key={item} className="flex items-start gap-2">
                     <AlertTriangle className="mt-1 size-4 text-yellow-400" />
