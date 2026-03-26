@@ -149,12 +149,18 @@ export function RunDetailView({
   const runDuration = formatMs(durationMs(liveRun.started_at, liveRun.ended_at));
   const runTokens = `${(liveRun.total_tokens ?? 0).toLocaleString()} tokens`;
   const runCost = formatCurrency(liveRun.total_cost_usd ?? 0);
-  const runModel = liveRun.model ?? "gpt-4.1-mini";
+  const runModel =
+    [...ordered]
+      .reverse()
+      .find((span) => typeof span.model === "string" && span.model.trim().length > 0)
+      ?.model ?? "gpt-4.1-mini";
+  const runTitle = liveRun.workflow_name || liveRun.agent_name || liveRun.id;
   const failedRun = liveRun.status === "failed" || liveRun.status === "error";
 
   const primaryInsight =
-    insights.find((insight) => insight.is_primary)?.summary ??
-    insights.find((insight) => insight.summary)?.summary ??
+    insights.find((insight) => insight.is_primary)?.message ??
+    insights.find((insight) => insight.message)?.message ??
+    insights.find((insight) => insight.title)?.title ??
     (failedRun ? "Latency is elevated around the failing step." : "Run completed with stable execution.");
 
   const causeText =
@@ -173,7 +179,7 @@ export function RunDetailView({
       <header className="rounded-xl border border-white/10 bg-gradient-to-b from-[#0F1629] to-[#0B1220] p-6">
         <p className="mb-3 text-sm text-gray-400">Back to runs</p>
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-5xl font-bold text-white">{liveRun.name}</h1>
+          <h1 className="text-5xl font-bold text-white">{runTitle}</h1>
           <span className={`rounded-xl border border-white/10 px-3 py-1 text-sm font-semibold uppercase ${failedRun ? "bg-red-500/10 text-red-400" : "bg-green-500/10 text-green-400"}`}>
             {failedRun ? "FAILED" : "SUCCESS"}
           </span>
