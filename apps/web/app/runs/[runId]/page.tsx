@@ -100,14 +100,14 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
               </span>
             </div>
 
-            <a href="#insights-panel" className={`block rounded-lg border-l-4 p-3 ${summaryTone}`}>
+            <a href="#failure-span" className={`block rounded-lg border-l-4 p-3 ${summaryTone}`}>
               <p className="text-xs font-semibold uppercase tracking-wide">
                 Run Summary
               </p>
               <p className="mt-1 text-sm font-medium">
                 {summaryMessage}
               </p>
-              <p className="mt-1 text-xs opacity-80">View details in insights</p>
+              <p className="mt-1 text-xs opacity-80">Jump to failing step</p>
             </a>
           </div>
           <p className="text-xs text-neutral-500 dark:text-neutral-400">Run ID: {run.id}</p>
