@@ -10,6 +10,7 @@ type RunExecutionFlowProps = {
   toolTokens: number;
   contextNote: string;
   failedState: string;
+  isFailure: boolean;
 };
 
 export function RunExecutionFlow({
@@ -22,6 +23,7 @@ export function RunExecutionFlow({
   toolTokens,
   contextNote,
   failedState,
+  isFailure,
 }: RunExecutionFlowProps) {
   return (
     <div className="rounded-lg border border-gray-800 bg-[#0f0f1e] p-6">
@@ -82,10 +84,18 @@ export function RunExecutionFlow({
           <div />
         </div>
 
-        <div className="rounded-lg border border-red-900/50 bg-red-950/30 p-4">
+        <div
+          className={
+            isFailure
+              ? "rounded-lg border border-red-900/50 bg-red-950/30 p-4"
+              : "rounded-lg border border-emerald-900/50 bg-emerald-950/30 p-4"
+          }
+        >
           <div className="mb-3 flex items-start gap-3">
-            <span className="text-lg text-red-500">✕</span>
-            <span className="text-sm font-medium uppercase tracking-wide text-red-400">FAILED STEP</span>
+            <span className={isFailure ? "text-lg text-red-500" : "text-lg text-emerald-500"}>{isFailure ? "✕" : "✓"}</span>
+            <span className={isFailure ? "text-sm font-medium uppercase tracking-wide text-red-400" : "text-sm font-medium uppercase tracking-wide text-emerald-400"}>
+              {isFailure ? "FAILED STEP" : "FINAL STEP"}
+            </span>
           </div>
 
           <div className="ml-8 flex items-start gap-3">
@@ -96,7 +106,9 @@ export function RunExecutionFlow({
               </div>
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-sm text-gray-500">Execution halted ({failedDuration})</span>
-                <span className="rounded bg-red-900/50 px-2 py-1 text-xs text-red-400">{failedState}</span>
+                <span className={isFailure ? "rounded bg-red-900/50 px-2 py-1 text-xs text-red-400" : "rounded bg-emerald-900/50 px-2 py-1 text-xs text-emerald-400"}>
+                  {failedState}
+                </span>
               </div>
             </div>
           </div>

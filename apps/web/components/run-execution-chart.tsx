@@ -34,6 +34,7 @@ type RunExecutionChartProps = {
   toolLegend: string;
   failureLegend: string;
   contextDeltaLabel: string;
+  outcomeLabel: string;
 };
 
 function clamp(value: number, min: number, max: number) {
@@ -99,6 +100,7 @@ export function RunExecutionChart({
   toolLegend,
   failureLegend,
   contextDeltaLabel,
+  outcomeLabel,
 }: RunExecutionChartProps) {
   const safeData = data.length > 0 ? data : [{ time: 0, latency: 0, llm: 0, tool: null, failed: null }];
   const maxTime = Math.max(...safeData.map((point) => point.time), 1);
@@ -196,7 +198,7 @@ export function RunExecutionChart({
         <div className="flex items-center gap-2">
           <div className="h-3 w-3 text-red-500">✕</div>
           <span className="text-gray-400">
-            <span className="font-medium text-white">Failure</span> · {failureLegend}
+            <span className="font-medium text-white">{outcomeLabel}</span> · {failureLegend}
           </span>
         </div>
       </div>

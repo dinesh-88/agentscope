@@ -51,7 +51,8 @@ export function RunDetailView({
   const ordered = [...spans].sort((a, b) => new Date(a.started_at).getTime() - new Date(b.started_at).getTime());
   const llmStep = ordered.find((span) => !isToolSpan(span)) ?? ordered[0] ?? null;
   const toolStep = ordered.find((span) => isToolSpan(span)) ?? null;
-  const failedStep = ordered.find((span) => isFailedSpan(span)) ?? ordered.at(-1) ?? null;
+  const failedStep = ordered.find((span) => isFailedSpan(span)) ?? null;
+  const terminalStep = failedStep ?? ordered.at(-1) ?? null;
   const transitionStep =
     ordered.find((span) => (span.step_transition?.token_delta ?? 0) > 0 && span.step_transition?.tool_output_added) ??
     ordered.find((span) => span.step_transition?.tool_output_added) ??
@@ -61,7 +62,7 @@ export function RunDetailView({
   const runTokens = run.total_tokens ?? ordered.reduce((sum, span) => sum + (span.total_tokens ?? 0), 0);
   const runCost = run.total_cost_usd ?? 0;
   const runModel =
-    failedStep?.model ??
+    terminalStep?.model ??
     ordered
       .slice()
       .reverse()
@@ -69,12 +70,17 @@ export function RunDetailView({
     "gpt-4.1-mini";
 
   const title = run.workflow_name || run.agent_name || run.id;
+  const isFailure = run.status === "failed" || run.status === "error" || Boolean(failedStep);
 
   const insightTitle =
-    rootCause?.root_cause_type
+    isFailure && rootCause?.root_cause_type
       ? `Invalid ${rootCause.root_cause_type.replaceAll("_", " ")}`
-      : insights.find((insight) => insight.title)?.title || "Invalid JSON from tool_call";
-  const causeLine = rootCause?.message ?? insights.find((insight) => insight.cause)?.cause ?? "Tool output introduced invalid data into context";
+      : insights.find((insight) => insight.title)?.title || (isFailure ? "Run failure detected" : "Execution completed");
+  const causeLine =
+    rootCause?.message ??
+    insights.find((insight) => insight.cause)?.cause ??
+    insights.find((insight) => insight.message)?.message ??
+    (isFailure ? "Tool output introduced invalid data into context" : "Run completed without critical failures");
 
   const fixes = insights
     .flatMap((insight) => [...insight.fix_suggestions.map((item) => item.description), ...insight.fix, insight.recommendation])
@@ -94,7 +100,6 @@ export function RunDetailView({
         : "bg-emerald-950/40 border border-emerald-500/40 text-emerald-400";
 
   const statusLabel = run.status.toUpperCase();
-  const isFailure = run.status === "failed" || run.status === "error";
   const summaryLine = isFailure
     ? `Failure caused by ${causeLine.charAt(0).toLowerCase()}${causeLine.slice(1)}`
     : `Execution completed: ${causeLine}`;
@@ -154,10 +159,10 @@ export function RunDetailView({
     "amber"
   );
   const failedMarker = eventMarkerFromSpan(
-    failedStep,
+    terminalStep,
     isFailure ? "FAILED" : "COMPLETED",
-    failedStep ? formatDurationSeconds(durationMs(failedStep.started_at, failedStep.ended_at)) : "n/a",
-    "red"
+    terminalStep ? formatDurationSeconds(durationMs(terminalStep.started_at, terminalStep.ended_at)) : "n/a",
+    isFailure ? "red" : "blue"
   );
 
   return (
@@ -178,23 +183,35 @@ export function RunDetailView({
               </span>
             </div>
 
-            <div className="min-w-[280px] rounded-lg border border-red-900/50 bg-gradient-to-br from-red-950/40 to-purple-950/30 px-4 py-3">
+            <div
+              className={
+                isFailure
+                  ? "min-w-[280px] rounded-lg border border-red-900/50 bg-gradient-to-br from-red-950/40 to-purple-950/30 px-4 py-3"
+                  : "min-w-[280px] rounded-lg border border-emerald-900/50 bg-gradient-to-br from-emerald-950/40 to-slate-950/30 px-4 py-3"
+              }
+            >
               <div className="flex items-start gap-2">
                 <div className="mt-0.5 h-5 w-5">
                   <svg viewBox="0 0 20 20" fill="none" className="h-full w-full">
-                    <path d="M10 2L3 18h14L10 2z" fill="currentColor" className="text-red-500" />
+                    <path
+                      d="M10 2L3 18h14L10 2z"
+                      fill="currentColor"
+                      className={isFailure ? "text-red-500" : "text-emerald-500"}
+                    />
                   </svg>
                 </div>
                 <div>
-                  <div className="mb-0.5 text-sm font-medium text-red-400">Primary Insight</div>
+                  <div className={isFailure ? "mb-0.5 text-sm font-medium text-red-400" : "mb-0.5 text-sm font-medium text-emerald-400"}>
+                    Primary Insight
+                  </div>
                   <div className="text-sm text-gray-300">{causeLine}</div>
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="mb-3 flex items-center gap-2 text-sm text-red-400">
-            <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
+          <div className={isFailure ? "mb-3 flex items-center gap-2 text-sm text-red-400" : "mb-3 flex items-center gap-2 text-sm text-emerald-400"}>
+            <div className={isFailure ? "h-1.5 w-1.5 rounded-full bg-red-500" : "h-1.5 w-1.5 rounded-full bg-emerald-500"} />
             <span>{summaryLine}</span>
           </div>
 
@@ -234,21 +251,23 @@ export function RunDetailView({
           failedMarker={failedMarker}
           llmLegend={llmStep?.name ?? "router"}
           toolLegend={toolStep?.tool_name ?? toolStep?.name ?? "tool_call"}
-          failureLegend={failedStep?.name ?? "llm_call"}
+          failureLegend={terminalStep?.name ?? "final_step"}
           contextDeltaLabel={`+${transitionDelta.toLocaleString()} tokens`}
+          outcomeLabel={isFailure ? "Failure" : "Outcome"}
         />
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr,380px]">
           <RunExecutionFlow
             llmLabel={llmStep?.name ?? "router"}
             toolLabel={toolStep?.tool_name ?? toolStep?.name ?? "get_order_status"}
-            failedLabel={failedStep?.name ?? "llm_call"}
+            failedLabel={terminalStep?.name ?? "final_step"}
             llmDuration={llmStep ? formatDuration(durationMs(llmStep.started_at, llmStep.ended_at)) : "n/a"}
             toolDuration={toolStep ? formatDuration(durationMs(toolStep.started_at, toolStep.ended_at)) : "n/a"}
-            failedDuration={failedStep ? formatDuration(durationMs(failedStep.started_at, failedStep.ended_at)) : "n/a"}
+            failedDuration={terminalStep ? formatDuration(durationMs(terminalStep.started_at, terminalStep.ended_at)) : "n/a"}
             toolTokens={toolTokens}
             contextNote={causeLine}
             failedState={isFailure ? "Step failed" : "Completed"}
+            isFailure={isFailure}
           />
           <RunInsightPanel
             insightTitle={insightTitle}
