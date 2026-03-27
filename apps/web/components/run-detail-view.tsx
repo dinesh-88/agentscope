@@ -19,6 +19,10 @@ function formatDuration(ms: number) {
   return `${(ms / 1000).toFixed(ms > 10_000 ? 0 : 1)}s`;
 }
 
+function formatDurationSeconds(ms: number) {
+  return `${(ms / 1000).toFixed(1)}s`;
+}
+
 function isToolSpan(span: Span) {
   const value = `${span.span_type} ${span.name} ${span.tool_name ?? ""}`.toLowerCase();
   return value.includes("tool");
@@ -48,6 +52,10 @@ export function RunDetailView({
   const llmStep = ordered.find((span) => !isToolSpan(span)) ?? ordered[0] ?? null;
   const toolStep = ordered.find((span) => isToolSpan(span)) ?? null;
   const failedStep = ordered.find((span) => isFailedSpan(span)) ?? ordered.at(-1) ?? null;
+  const transitionStep =
+    ordered.find((span) => (span.step_transition?.token_delta ?? 0) > 0 && span.step_transition?.tool_output_added) ??
+    ordered.find((span) => span.step_transition?.tool_output_added) ??
+    toolStep;
 
   const runDuration = formatDuration(durationMs(run.started_at, run.ended_at));
   const runTokens = run.total_tokens ?? ordered.reduce((sum, span) => sum + (span.total_tokens ?? 0), 0);
@@ -75,6 +83,7 @@ export function RunDetailView({
   const fixTwo = fixes[1] ?? "Add retry with schema enforcement";
 
   const toolTokens = toolStep?.total_tokens ?? 0;
+  const transitionDelta = Math.max(transitionStep?.step_transition?.token_delta ?? 0, toolTokens, 0);
   const contextTokens = ordered.reduce((sum, span) => sum + (span.context_tokens ?? 0), 0) || runTokens;
 
   const statusClass =
@@ -85,6 +94,71 @@ export function RunDetailView({
         : "bg-emerald-950/40 border border-emerald-500/40 text-emerald-400";
 
   const statusLabel = run.status.toUpperCase();
+  const isFailure = run.status === "failed" || run.status === "error";
+  const summaryLine = isFailure
+    ? `Failure caused by ${causeLine.charAt(0).toLowerCase()}${causeLine.slice(1)}`
+    : `Execution completed: ${causeLine}`;
+
+  const baseStartMs = new Date(run.started_at).getTime();
+  const chartData = [
+    { time: 0, latency: 0, llm: 0, tool: null, failed: null },
+    ...ordered.map((span) => {
+      const spanStart = new Date(span.started_at).getTime();
+      const spanEnd = span.ended_at
+        ? new Date(span.ended_at).getTime()
+        : run.ended_at
+          ? new Date(run.ended_at).getTime()
+          : spanStart;
+      const elapsed = Math.max(0, spanStart - baseStartMs) / 1000;
+      const latency = Math.max(0, spanEnd - spanStart) / 1000;
+      const tool = isToolSpan(span);
+      const failed = isFailedSpan(span);
+
+      return {
+        time: Number(elapsed.toFixed(2)),
+        latency: Number(latency.toFixed(2)),
+        llm: !tool ? Number(latency.toFixed(2)) : null,
+        tool: tool ? Number(latency.toFixed(2)) : null,
+        failed: failed ? Number(latency.toFixed(2)) : null,
+      };
+    }),
+  ];
+
+  const eventMarkerFromSpan = (
+    span: Span | null,
+    title: string,
+    value: string,
+    tone: "blue" | "amber" | "red"
+  ) => {
+    if (!span) return undefined;
+    const x = Math.max(0, new Date(span.started_at).getTime() - baseStartMs) / 1000;
+    return {
+      x: Number(x.toFixed(2)),
+      title,
+      subtitle: span.tool_name ?? span.name,
+      value,
+      tone,
+    };
+  };
+
+  const llmMarker = eventMarkerFromSpan(
+    llmStep,
+    "LLM Call",
+    llmStep ? formatDurationSeconds(durationMs(llmStep.started_at, llmStep.ended_at)) : "n/a",
+    "blue"
+  );
+  const toolMarker = eventMarkerFromSpan(
+    toolStep,
+    "Tool Call",
+    `+${Math.max(toolTokens, 0).toLocaleString()} tokens`,
+    "amber"
+  );
+  const failedMarker = eventMarkerFromSpan(
+    failedStep,
+    isFailure ? "FAILED" : "COMPLETED",
+    failedStep ? formatDurationSeconds(durationMs(failedStep.started_at, failedStep.ended_at)) : "n/a",
+    "red"
+  );
 
   return (
     <div className="min-h-screen bg-[#0a0a14] text-white">
@@ -121,7 +195,7 @@ export function RunDetailView({
 
           <div className="mb-3 flex items-center gap-2 text-sm text-red-400">
             <div className="h-1.5 w-1.5 rounded-full bg-red-500" />
-            <span>Failure caused by invalid tool output injected into context</span>
+            <span>{summaryLine}</span>
           </div>
 
           <div className="flex items-center gap-3 text-sm text-gray-400">
@@ -153,7 +227,16 @@ export function RunDetailView({
           </div>
         </div>
 
-        <RunExecutionChart />
+        <RunExecutionChart
+          data={chartData}
+          llmMarker={llmMarker}
+          toolMarker={toolMarker}
+          failedMarker={failedMarker}
+          llmLegend={llmStep?.name ?? "router"}
+          toolLegend={toolStep?.tool_name ?? toolStep?.name ?? "tool_call"}
+          failureLegend={failedStep?.name ?? "llm_call"}
+          contextDeltaLabel={`+${transitionDelta.toLocaleString()} tokens`}
+        />
 
         <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-[1fr,380px]">
           <RunExecutionFlow
@@ -164,6 +247,8 @@ export function RunDetailView({
             toolDuration={toolStep ? formatDuration(durationMs(toolStep.started_at, toolStep.ended_at)) : "n/a"}
             failedDuration={failedStep ? formatDuration(durationMs(failedStep.started_at, failedStep.ended_at)) : "n/a"}
             toolTokens={toolTokens}
+            contextNote={causeLine}
+            failedState={isFailure ? "Step failed" : "Completed"}
           />
           <RunInsightPanel
             insightTitle={insightTitle}

@@ -8,6 +8,8 @@ type RunExecutionFlowProps = {
   toolDuration: string;
   failedDuration: string;
   toolTokens: number;
+  contextNote: string;
+  failedState: string;
 };
 
 export function RunExecutionFlow({
@@ -18,6 +20,8 @@ export function RunExecutionFlow({
   toolDuration,
   failedDuration,
   toolTokens,
+  contextNote,
+  failedState,
 }: RunExecutionFlowProps) {
   return (
     <div className="rounded-lg border border-gray-800 bg-[#0f0f1e] p-6">
@@ -64,7 +68,7 @@ export function RunExecutionFlow({
           <div className="flex items-start gap-3">
             <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-500" />
             <div className="flex-1">
-              <div className="mb-2 font-medium text-white">Tool output injected into context</div>
+              <div className="mb-2 font-medium text-white">{contextNote}</div>
               <div className="flex items-center justify-between">
                 <span className="text-sm text-gray-400">Context expanded</span>
                 <span className="rounded bg-amber-900/50 px-2 py-1 text-xs text-amber-400">+{Math.max(toolTokens, 0).toLocaleString()} tokens</span>
@@ -92,7 +96,7 @@ export function RunExecutionFlow({
               </div>
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-sm text-gray-500">Execution halted ({failedDuration})</span>
-                <span className="rounded bg-red-900/50 px-2 py-1 text-xs text-red-400">Step failed</span>
+                <span className="rounded bg-red-900/50 px-2 py-1 text-xs text-red-400">{failedState}</span>
               </div>
             </div>
           </div>
