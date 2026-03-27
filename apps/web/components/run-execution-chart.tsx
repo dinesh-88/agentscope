@@ -126,7 +126,16 @@ export function RunExecutionChart({
             domain={[0, Math.max(5, yMax)]}
           />
           <Tooltip
-            formatter={(value: number) => `${Number(value).toFixed(2)}s`}
+            formatter={(value) => {
+              if (typeof value === "number") {
+                return `${value.toFixed(2)}s`;
+              }
+              if (typeof value === "string") {
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? `${parsed.toFixed(2)}s` : value;
+              }
+              return "0.00s";
+            }}
             labelFormatter={(value) => `t=${value}s`}
             contentStyle={{
               backgroundColor: "#1a1a2e",
