@@ -1,4 +1,5 @@
 import { Activity, CheckCircle, Clock } from "lucide-react";
+import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
 import { getRuns } from "@/lib/server-api";
@@ -162,6 +163,15 @@ export default async function AgentsPage() {
                       <p className="text-sm text-gray-900">{formatDate(agent.lastRunAt)}</p>
                     </div>
                   ) : null}
+
+                  <div className="border-t border-gray-200 pt-4">
+                    <Link
+                      href={`/runs?agent=${encodeURIComponent(agent.name)}`}
+                      className="inline-flex items-center rounded-md border border-black/10 px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                    >
+                      View Runs
+                    </Link>
+                  </div>
                 </div>
               </div>
             ))}

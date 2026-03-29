@@ -10,6 +10,19 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 export const fetchCache = "force-no-store";
 
+type RunsPageProps = {
+  searchParams?: Promise<{
+    agent?: string | string[];
+  }>;
+};
+
+function normalizeQueryParam(value: string | string[] | undefined): string | undefined {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  return value;
+}
+
 function getStatusColor(status: string) {
   switch (status) {
     case "completed":
@@ -44,9 +57,14 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export default async function RunsPage() {
+export default async function RunsPage({ searchParams }: RunsPageProps) {
   noStore();
+  const params = searchParams ? await searchParams : undefined;
+  const agentFilter = normalizeQueryParam(params?.agent)?.trim();
   const runs = await getRuns();
+  const filteredRuns = agentFilter
+    ? runs.filter((run) => (run.agent_name ?? "").toLowerCase() === agentFilter.toLowerCase())
+    : runs;
 
   return (
     <AppShell activePath="/runs">
@@ -55,7 +73,11 @@ export default async function RunsPage() {
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>
             <h1 className="mb-2 text-2xl font-semibold text-gray-900">Runs</h1>
-            <p className="text-gray-600">Browse all workflow runs from production data</p>
+            <p className="text-gray-600">
+              {agentFilter
+                ? `Showing runs for agent: ${agentFilter}`
+                : "Browse all workflow runs from production data"}
+            </p>
           </div>
           <Link
             href="/runs/compare"
@@ -70,7 +92,9 @@ export default async function RunsPage() {
 
         <div className="rounded-xl border border-gray-200 bg-white">
           <div className="p-6">
-            <h2 className="text-base font-medium text-gray-900">All Runs ({runs.length})</h2>
+            <h2 className="text-base font-medium text-gray-900">
+              {agentFilter ? `Filtered Runs (${filteredRuns.length})` : `All Runs (${filteredRuns.length})`}
+            </h2>
           </div>
 
           <div className="px-6 pb-6">
@@ -88,14 +112,16 @@ export default async function RunsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {runs.length === 0 ? (
+                  {filteredRuns.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-sm text-gray-500">
-                        No runs yet. Run the demo app to generate your first trace.
+                        {agentFilter
+                          ? "No runs found for this agent."
+                          : "No runs yet. Run the demo app to generate your first trace."}
                       </td>
                     </tr>
                   ) : (
-                    runs.map((run) => {
+                    filteredRuns.map((run) => {
                       const totalTokens = run.total_tokens ?? 0;
                       const totalCostUsd = run.total_cost_usd ?? 0;
 
