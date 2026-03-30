@@ -1,11 +1,13 @@
-<svg width="180" height="180" viewBox="0 0 180 180" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <rect width="180" height="180" rx="40" fill="url(#gradient)"/>
-  <path d="M90 45L90 135M90 45L56.25 78.75M90 45L123.75 78.75M90 135L56.25 101.25M90 135L123.75 101.25" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="90" cy="90" r="12" fill="white"/>
-  <defs>
-    <linearGradient id="gradient" x1="0" y1="0" x2="180" y2="180" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#9333EA"/>
-      <stop offset="1" stop-color="#3B82F6"/>
-    </linearGradient>
-  </defs>
+<svg width="140" height="120" viewBox="0 0 140 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- baseline -->
+  <path d="M10 70 H40" stroke="#9CA3AF" stroke-width="2"/>
+
+  <!-- pulse -->
+  <path d="M40 70 L55 45 L70 90 L85 60 L100 70" stroke="#7C9EFF" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- tail -->
+  <path d="M100 70 H130" stroke="#9CA3AF" stroke-width="2"/>
+
+  <!-- focus point -->
+  <circle cx="70" cy="90" r="4" fill="#7C9EFF"/>
 </svg>

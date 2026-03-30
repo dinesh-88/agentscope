@@ -4,8 +4,8 @@
   "description": "Monitor and debug AI agent workflows with comprehensive tracing and insights",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0B0F14",
-  "theme_color": "#9333EA",
+  "background_color": "#0B0F17",
+  "theme_color": "#7C9EFF",
   "icons": [
     {
       "src": "/favicon.svg",

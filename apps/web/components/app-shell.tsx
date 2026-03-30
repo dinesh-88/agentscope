@@ -50,7 +50,7 @@ export function AppShell({ activePath = "/dashboard", children, mainClassName, t
       <div
         className={cn(
           "min-h-screen",
-          resolvedTheme === "dark" ? "dark bg-[#0B0F14] text-gray-100" : "bg-gray-50 text-gray-900",
+          resolvedTheme === "dark" ? "dark bg-[#0B0F17] text-gray-100" : "bg-gray-50 text-gray-900",
         )}
       >
         <div className="flex min-h-screen w-full">

@@ -48,29 +48,29 @@
 }
 
 :root {
-  --background: #f9fafb;
-  --foreground: #111827;
+  --background: #0b0f17;
+  --foreground: #f3f4f6;
   --card: #ffffff;
   --card-foreground: #111827;
   --popover: #ffffff;
   --popover-foreground: #111827;
-  --primary: #2563eb;
+  --primary: #7c9eff;
   --primary-foreground: #ffffff;
   --secondary: #f3f4f6;
   --secondary-foreground: #111827;
   --muted: #e5e7eb;
   --muted-foreground: #6b7280;
-  --accent: #3b82f6;
+  --accent: #7c9eff;
   --accent-foreground: #ffffff;
-  --destructive: #dc2626;
+  --destructive: #ef6f6c;
   --border: rgba(0, 0, 0, 0.08);
   --input: rgba(0, 0, 0, 0.08);
-  --ring: #93c5fd;
-  --chart-1: #2563eb;
+  --ring: #7c9eff;
+  --chart-1: #7c9eff;
   --chart-2: #16a34a;
   --chart-3: #f59e0b;
-  --chart-4: #dc2626;
-  --chart-5: #7c3aed;
+  --chart-4: #ef6f6c;
+  --chart-5: #7c9eff;
   --radius: 0.5rem;
   --sidebar: #ffffff;
   --sidebar-foreground: #111827;
@@ -83,37 +83,37 @@
 }
 
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.87 0.00 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.371 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.809 0.105 251.813);
-  --chart-2: oklch(0.623 0.214 259.815);
-  --chart-3: oklch(0.546 0.245 262.881);
-  --chart-4: oklch(0.488 0.243 264.376);
-  --chart-5: oklch(0.424 0.199 265.638);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #0b0f17;
+  --foreground: #f3f4f6;
+  --card: #0f1420;
+  --card-foreground: #f3f4f6;
+  --popover: #0f1420;
+  --popover-foreground: #f3f4f6;
+  --primary: #7c9eff;
+  --primary-foreground: #0b0f17;
+  --secondary: #151c2b;
+  --secondary-foreground: #f3f4f6;
+  --muted: #151c2b;
+  --muted-foreground: #9ca3af;
+  --accent: #7c9eff;
+  --accent-foreground: #0b0f17;
+  --destructive: #ef6f6c;
+  --border: rgb(255 255 255 / 0.08);
+  --input: rgb(255 255 255 / 0.1);
+  --ring: #7c9eff;
+  --chart-1: #7c9eff;
+  --chart-2: #7c9eff;
+  --chart-3: #7c9eff;
+  --chart-4: #ef6f6c;
+  --chart-5: #7c9eff;
+  --sidebar: #0f1420;
+  --sidebar-foreground: #f3f4f6;
+  --sidebar-primary: #7c9eff;
+  --sidebar-primary-foreground: #0b0f17;
+  --sidebar-accent: #151c2b;
+  --sidebar-accent-foreground: #f3f4f6;
+  --sidebar-border: rgb(255 255 255 / 0.08);
+  --sidebar-ring: #7c9eff;
 }
 
 @layer base {
@@ -152,42 +152,58 @@
 
   /* Enforce dark surfaces for app pages that still use legacy light utility classes. */
   .dark .bg-white {
-    background-color: #101722 !important;
+    background-color: rgb(255 255 255 / 0.02) !important;
   }
 
   .dark .bg-white\/90 {
-    background-color: rgb(16 23 34 / 0.9) !important;
+    background-color: rgb(255 255 255 / 0.04) !important;
   }
 
   .dark .bg-white\/85 {
-    background-color: rgb(16 23 34 / 0.85) !important;
+    background-color: rgb(255 255 255 / 0.035) !important;
   }
 
   .dark .bg-white\/80 {
-    background-color: rgb(16 23 34 / 0.8) !important;
+    background-color: rgb(255 255 255 / 0.03) !important;
   }
 
   .dark .bg-white\/50 {
-    background-color: rgb(16 23 34 / 0.5) !important;
+    background-color: rgb(255 255 255 / 0.02) !important;
+  }
+
+  .dark .bg-white\/10 {
+    background-color: rgb(255 255 255 / 0.03) !important;
+  }
+
+  .dark .bg-white\/5 {
+    background-color: rgb(255 255 255 / 0.02) !important;
   }
 
   .dark .bg-gray-50 {
-    background-color: #0f141b !important;
+    background-color: #111827 !important;
   }
 
   .dark .bg-gray-100 {
-    background-color: #161f2d !important;
+    background-color: #1f2937 !important;
   }
 
   .dark .border-gray-200,
   .dark .border-gray-300 {
-    border-color: rgb(255 255 255 / 0.1) !important;
+    border-color: rgb(255 255 255 / 0.05) !important;
+  }
+
+  .dark .border-white\/10 {
+    border-color: rgb(255 255 255 / 0.05) !important;
+  }
+
+  .dark .border-white\/20 {
+    border-color: rgb(255 255 255 / 0.08) !important;
   }
 
   .dark .border-black\/5,
   .dark .border-black\/8,
   .dark .border-black\/10 {
-    border-color: rgb(255 255 255 / 0.1) !important;
+    border-color: rgb(255 255 255 / 0.05) !important;
   }
 
   .dark .text-gray-900,
@@ -199,6 +215,56 @@
   .dark .text-gray-600,
   .dark .text-gray-500 {
     color: rgb(156 163 175) !important;
+  }
+
+  .dark .text-purple-400,
+  .dark .text-blue-400,
+  .dark .text-cyan-300,
+  .dark .text-cyan-200,
+  .dark .text-green-400,
+  .dark .text-emerald-400,
+  .dark .text-orange-400 {
+    color: #7c9eff !important;
+  }
+
+  .dark .bg-purple-500\/20,
+  .dark .bg-blue-500\/20,
+  .dark .bg-cyan-500\/20,
+  .dark .bg-green-500\/20,
+  .dark .bg-emerald-500\/20,
+  .dark .bg-orange-500\/20 {
+    background-color: rgb(124 158 255 / 0.16) !important;
+  }
+
+  .dark .from-purple-500 {
+    --tw-gradient-from: rgb(124 158 255 / 1) var(--tw-gradient-from-position) !important;
+    --tw-gradient-to: rgb(124 158 255 / 0) var(--tw-gradient-to-position) !important;
+    --tw-gradient-stops: var(--tw-gradient-from), var(--tw-gradient-to) !important;
+  }
+
+  .dark .to-blue-500 {
+    --tw-gradient-to: rgb(124 158 255 / 1) var(--tw-gradient-to-position) !important;
+  }
+
+  .dark .focus\:ring-purple-500:focus,
+  .dark .text-purple-500 {
+    --tw-ring-color: #7c9eff !important;
+    color: #7c9eff !important;
+  }
+
+  .dark .text-red-400,
+  .dark .text-red-500 {
+    color: #ef6f6c !important;
+  }
+
+  .dark .bg-red-500\/20,
+  .dark .bg-red-950\/30 {
+    background-color: rgb(239 111 108 / 0.16) !important;
+  }
+
+  .dark .border-red-500\/30,
+  .dark .border-red-900\/50 {
+    border-color: rgb(239 111 108 / 0.35) !important;
   }
 
   .dark .hover\:bg-gray-50:hover {

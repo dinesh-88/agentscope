@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Activity, Eye, EyeOff, Github, Lock, Mail, User } from "lucide-react";
@@ -83,9 +84,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
       <main className="flex min-h-screen items-center justify-center bg-[#0B0F14] px-6 py-12 text-white">
         <div className="w-full max-w-md">
           <Link href="/" className="mb-8 flex items-center justify-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
-              <Activity className="h-6 w-6 text-white" />
-            </div>
+            <Image src="/logo.svg" alt="AgentScope logo" width={40} height={40} className="h-10 w-10 rounded-lg" />
             <span className="text-xl font-semibold">AgentScope</span>
           </Link>
 
@@ -153,7 +152,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                     value={email}
                     onChange={(event) => setEmail(event.target.value)}
                     placeholder="you@example.com"
-                    className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-[#7C9EFF] focus:outline-none"
                     required
                   />
                 </div>
@@ -171,7 +170,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                     value={password}
                     onChange={(event) => setPassword(event.target.value)}
                     placeholder="Enter your password"
-                    className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-12 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                    className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-12 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-[#7C9EFF] focus:outline-none"
                     required
                   />
                   <button
@@ -189,11 +188,11 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                 <label className="flex cursor-pointer items-center gap-2">
                   <input
                     type="checkbox"
-                    className="h-4 w-4 rounded border-white/10 bg-white/5 text-purple-500 focus:ring-2 focus:ring-purple-500 focus:ring-offset-0"
+                    className="h-4 w-4 rounded border-white/10 bg-white/5 text-[#7C9EFF] focus:ring-2 focus:ring-[#7C9EFF] focus:ring-offset-0"
                   />
                   <span className="text-gray-400">Remember me</span>
                 </label>
-                <Link href="/settings" className="text-purple-400 transition-colors hover:text-purple-300">
+                <Link href="/settings" className="text-[#A5B4FC] transition-colors hover:text-[#C7CEDB]">
                   Forgot password?
                 </Link>
               </div>
@@ -207,7 +206,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-3 font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full rounded-lg bg-[#7C9EFF] px-4 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC] disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isSubmitting ? "Signing in..." : "Sign In"}
               </button>
@@ -218,7 +217,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
               <Link
                 href="/signup"
                 onClick={() => setMode("register")}
-                className="font-medium text-purple-400 transition-colors hover:text-purple-300"
+                className="font-medium text-[#A5B4FC] transition-colors hover:text-[#C7CEDB]"
               >
                 Sign up
               </Link>
@@ -244,9 +243,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
     <main className="flex min-h-screen items-center justify-center bg-[#0B0F14] px-6 py-12 text-white">
       <div className="w-full max-w-md">
         <Link href="/" className="mb-8 flex items-center justify-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
-            <Activity className="h-6 w-6 text-white" />
-          </div>
+          <Image src="/logo.svg" alt="AgentScope logo" width={40} height={40} className="h-10 w-10 rounded-lg" />
           <span className="text-xl font-semibold">AgentScope</span>
         </Link>
 
@@ -256,14 +253,14 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
             <p className="text-sm text-gray-400">Create account, install SDK, send first trace</p>
           </div>
 
-          <div className="mb-6 rounded-xl border border-blue-500/30 bg-blue-500/10 p-4">
-            <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-blue-300">
+          <div className="mb-6 rounded-xl border border-[#A5B4FC]/30 bg-[#7C9EFF]/10 p-4">
+            <div className="mb-3 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-[#C7CEDB]">
               Step 1 of 3
             </div>
             <div className="mb-3 h-2 w-full overflow-hidden rounded-full bg-white/10">
-              <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-purple-500 to-blue-500" />
+              <div className="h-full w-1/3 rounded-full bg-[#7C9EFF]" />
             </div>
-            <p className="text-xs text-blue-100">Create account and workspace now. API key + first trace setup starts immediately after signup.</p>
+            <p className="text-xs text-[#DEE6FF]">Create account and workspace now. API key + first trace setup starts immediately after signup.</p>
           </div>
 
           <div className="mb-6 space-y-3">
@@ -324,7 +321,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                   value={displayName}
                   onChange={(event) => setDisplayName(event.target.value)}
                   placeholder="John Doe"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-[#7C9EFF] focus:outline-none"
                   required
                 />
               </div>
@@ -342,7 +339,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="you@example.com"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-[#7C9EFF] focus:outline-none"
                   required
                 />
               </div>
@@ -360,7 +357,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="Create a strong password"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-12 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-12 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-[#7C9EFF] focus:outline-none"
                   required
                   minLength={8}
                 />
@@ -388,7 +385,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                   value={organizationName}
                   onChange={(event) => setOrganizationName(event.target.value)}
                   placeholder="Acme Agents"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-[#7C9EFF] focus:outline-none"
                   required
                 />
               </div>
@@ -406,7 +403,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                   value={projectName}
                   onChange={(event) => setProjectName(event.target.value)}
                   placeholder="Primary Project"
-                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-purple-500 focus:outline-none"
+                  className="w-full rounded-lg border border-white/10 bg-white/5 py-3 pr-4 pl-10 transition-all focus:border-transparent focus:ring-2 focus:ring-[#7C9EFF] focus:outline-none"
                   required
                 />
               </div>
@@ -417,16 +414,16 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
                 type="checkbox"
                 checked={agreeToTerms}
                 onChange={(event) => setAgreeToTerms(event.target.checked)}
-                className="mt-1 h-4 w-4 rounded border-white/10 bg-white/5 text-purple-500 focus:ring-2 focus:ring-purple-500 focus:ring-offset-0"
+                className="mt-1 h-4 w-4 rounded border-white/10 bg-white/5 text-[#7C9EFF] focus:ring-2 focus:ring-[#7C9EFF] focus:ring-offset-0"
                 required
               />
               <span className="text-sm text-gray-400 transition-colors group-hover:text-gray-300">
                 I agree to the{" "}
-                <Link href="/legal/terms" className="text-purple-400 hover:text-purple-300">
+                <Link href="/legal/terms" className="text-[#A5B4FC] hover:text-[#C7CEDB]">
                   Terms of Service
                 </Link>{" "}
                 and{" "}
-                <Link href="/legal/privacy" className="text-purple-400 hover:text-purple-300">
+                <Link href="/legal/privacy" className="text-[#A5B4FC] hover:text-[#C7CEDB]">
                   Privacy Policy
                 </Link>
               </span>
@@ -441,7 +438,7 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-3 font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+              className="w-full rounded-lg bg-[#7C9EFF] px-4 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? "Creating account..." : "Create Account and Continue"}
             </button>
@@ -449,14 +446,14 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
 
           <p className="mt-6 text-center text-sm text-gray-400">
             Already have an account?{" "}
-            <Link href="/login" onClick={() => setMode("login")} className="font-medium text-purple-400 transition-colors hover:text-purple-300">
+            <Link href="/login" onClick={() => setMode("login")} className="font-medium text-[#A5B4FC] transition-colors hover:text-[#C7CEDB]">
               Sign in
             </Link>
           </p>
         </div>
 
-        <div className="mt-8 rounded-lg border border-blue-500/20 bg-blue-500/10 p-4">
-          <p className="text-center text-xs text-blue-300">
+        <div className="mt-8 rounded-lg border border-[#A5B4FC]/20 bg-[#7C9EFF]/10 p-4">
+          <p className="text-center text-xs text-[#C7CEDB]">
             Free plan includes 1,000 traces per month. No credit card required.
           </p>
         </div>

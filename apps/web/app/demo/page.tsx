@@ -45,12 +45,12 @@ python main.py`}</code>
             </Link>
             <Link
               href="/signup"
-              className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-6 py-3 font-medium transition-opacity hover:opacity-90"
+              className="inline-flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
             >
               Start Free and Observe Your Agent
               <ArrowRight className="h-4 w-4" />
             </Link>
-            <Link href="/runs" className="text-sm text-blue-400 hover:text-blue-300">
+            <Link href="/runs" className="text-sm text-[#A5B4FC] hover:text-[#C7CEDB]">
               Open runs
             </Link>
           </div>

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { mockTraceSpans } from "@/components/mock-trace-data";
 import { TraceView } from "@/components/trace-view";
 import {
@@ -91,20 +92,18 @@ console.log("trace received: run_01H...");
   }
 
   return (
-    <div className="min-h-screen bg-[#0B0F14] text-white">
-      <nav className="sticky top-0 z-50 border-b border-white/10 bg-[#0B0F14]/80 backdrop-blur-lg">
+    <div className="min-h-screen bg-[#0B0F17] text-white">
+      <nav className="sticky top-0 z-50 border-b border-white/5 bg-[#0B0F17]/80 backdrop-blur-lg">
         <div className="mx-auto flex w-full max-w-[1368px] items-center justify-between px-6 py-4">
           <div className="flex items-center gap-2">
             <Link href="/" className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
-                <Activity className="h-5 w-5 text-white" />
-              </div>
+              <Image src="/logo.svg" alt="AgentScope logo" width={32} height={32} className="h-8 w-8 rounded-lg" />
               <span className="text-lg font-semibold">AgentScope</span>
             </Link>
           </div>
 
           <div className="ml-auto flex items-center gap-4">
-            <div className="hidden items-center gap-1 rounded-full border border-white/10 bg-white/5 p-1 text-sm md:flex">
+            <div className="hidden items-center gap-1 rounded-full border border-white/5 bg-white/5 p-1 text-sm md:flex">
               <Link href="/features" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Features
               </Link>
@@ -123,7 +122,7 @@ console.log("trace received: run_01H...");
               <div className="flex items-center gap-3">
                 <Link
                   href="/dashboard"
-                  className="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+                  className="rounded-lg bg-[#7C9EFF] px-4 py-2 text-sm font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
                 >
                   Go to Dashboard
                 </Link>
@@ -135,7 +134,7 @@ console.log("trace received: run_01H...");
                 </Link>
                 <Link
                   href="/signup"
-                  className="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
+                  className="rounded-lg bg-[#7C9EFF] px-4 py-2 text-sm font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
                 >
                   Get Started Free
                 </Link>
@@ -158,7 +157,7 @@ console.log("trace received: run_01H...");
               <Link
                 href={isAuthenticated ? "/runs" : "/demo"}
                 data-testid="run-demo-button"
-                className="flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-6 py-3 font-medium text-emerald-100 transition-colors hover:bg-emerald-500/30"
+                className="flex items-center gap-2 rounded-lg border border-[#7C9EFF]/35 bg-[#7C9EFF]/14 px-6 py-3 font-medium text-[#DEE6FF] transition-colors hover:bg-[#7C9EFF]/24"
               >
                 <Play className="h-4 w-4" />
                 Run Demo
@@ -166,7 +165,7 @@ console.log("trace received: run_01H...");
               {isAuthenticated ? (
                 <Link
                   href="/dashboard"
-                  className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-6 py-3 font-medium transition-opacity hover:opacity-90"
+                  className="flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
                 >
                   Go to Dashboard
                   <ArrowRight className="h-4 w-4" />
@@ -174,7 +173,7 @@ console.log("trace received: run_01H...");
               ) : (
                 <Link
                   href="/signup"
-                  className="flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-6 py-3 font-medium transition-opacity hover:opacity-90"
+                  className="flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
                 >
                   Start Free and Send First Trace
                   <ArrowRight className="h-4 w-4" />
@@ -194,7 +193,7 @@ console.log("trace received: run_01H...");
         </div>
       </section>
 
-      <section className="bg-gradient-to-b from-transparent to-purple-500/5 px-6 pt-10 pb-20">
+      <section className="bg-transparent px-6 pt-10 pb-20">
         <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-16 text-center text-3xl font-bold md:text-4xl">
             AI agents are powerful — but hard to debug
@@ -202,11 +201,11 @@ console.log("trace received: run_01H...");
 
           <div className="grid gap-12 md:grid-cols-2">
             <div className="space-y-6">
-              <h3 className="mb-6 text-xl font-semibold text-red-400">Common challenges</h3>
+              <h3 className="mb-6 text-xl font-semibold text-[#EF6F6C]">Common challenges</h3>
               {["Why did my agent fail?", "Which prompt caused this issue?", "Why is cost increasing?", "Which tool broke?"].map((problem) => (
                 <div key={problem} className="flex items-start gap-3">
-                  <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-red-500/30 bg-red-500/20">
-                    <span className="text-sm text-red-400">✕</span>
+                  <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-[#EF6F6C]/35 bg-[#EF6F6C]/16">
+                    <span className="text-sm text-[#EF6F6C]">✕</span>
                   </div>
                   <p className="text-lg text-gray-300">{problem}</p>
                 </div>
@@ -214,7 +213,7 @@ console.log("trace received: run_01H...");
             </div>
 
             <div className="space-y-6">
-              <h3 className="mb-6 text-xl font-semibold text-green-400">How AgentScope helps</h3>
+              <h3 className="mb-6 text-xl font-semibold text-[#7C9EFF]">How AgentScope helps</h3>
               {[
                 "Full run tracing across your agent",
                 "Root cause analysis for failures",
@@ -222,8 +221,8 @@ console.log("trace received: run_01H...");
                 "Cost and latency tracking",
               ].map((solution) => (
                 <div key={solution} className="flex items-start gap-3">
-                  <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-green-500/30 bg-green-500/20">
-                    <Check className="h-4 w-4 text-green-400" />
+                  <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-[#7C9EFF]/30 bg-[#7C9EFF]/14">
+                    <Check className="h-4 w-4 text-[#7C9EFF]" />
                   </div>
                   <p className="text-lg text-gray-300">{solution}</p>
                 </div>
@@ -240,9 +239,9 @@ console.log("trace received: run_01H...");
           </h2>
 
           <div className="grid gap-8 md:grid-cols-2">
-            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-purple-500/20">
-                <Activity className="h-6 w-6 text-purple-400" />
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
+                <Activity className="h-6 w-6 text-[#7C9EFF]" />
               </div>
               <h3 className="mb-3 text-xl font-semibold">Run Tracing</h3>
               <p className="text-gray-400">
@@ -250,9 +249,9 @@ console.log("trace received: run_01H...");
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-blue-500/20">
-                <Brain className="h-6 w-6 text-blue-400" />
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
+                <Brain className="h-6 w-6 text-[#7C9EFF]" />
               </div>
               <h3 className="mb-3 text-xl font-semibold">Root Cause Analysis</h3>
               <p className="text-gray-400">
@@ -260,9 +259,9 @@ console.log("trace received: run_01H...");
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-green-500/20">
-                <Zap className="h-6 w-6 text-green-400" />
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/14">
+                <Zap className="h-6 w-6 text-[#7C9EFF]" />
               </div>
               <h3 className="mb-3 text-xl font-semibold">Optimization Insights</h3>
               <p className="text-gray-400">
@@ -270,9 +269,9 @@ console.log("trace received: run_01H...");
               </p>
             </div>
 
-            <div className="rounded-2xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-orange-500/20">
-                <TestTube className="h-6 w-6 text-orange-400" />
+            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/14">
+                <TestTube className="h-6 w-6 text-[#7C9EFF]" />
               </div>
               <h3 className="mb-3 text-xl font-semibold">Demo Quickstart</h3>
               <p className="text-gray-400">
@@ -280,71 +279,71 @@ console.log("trace received: run_01H...");
               </p>
             </div>
 
-            <div className="relative overflow-hidden rounded-2xl border border-cyan-400/30 bg-gradient-to-br from-cyan-500/10 via-slate-900/70 to-blue-500/10 p-8 md:col-span-2">
-              <div className="pointer-events-none absolute -top-28 -right-28 h-56 w-56 rounded-full bg-cyan-400/20 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-blue-500/20 blur-3xl" />
+            <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-8 md:col-span-2">
+              <div className="pointer-events-none absolute -top-28 -right-28 h-56 w-56 rounded-full bg-[#7C9EFF]/14 blur-3xl" />
+              <div className="pointer-events-none absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-[#7C9EFF]/20 blur-3xl" />
 
               <div className="relative grid gap-6 lg:grid-cols-[1fr_1.2fr]">
                 <div>
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-cyan-500/20">
-                    <Activity className="h-6 w-6 text-cyan-300" />
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
+                    <Activity className="h-6 w-6 text-[#7C9EFF]" />
                   </div>
                   <h3 className="mb-3 text-xl font-semibold">Real-Time Status View</h3>
                   <p className="mb-4 text-gray-300">
                     Watch your run live with workflow graph updates, active spans, streaming logs, and
                     artifacts as they happen.
                   </p>
-                  <div className="inline-flex items-center gap-2 rounded-full border border-cyan-300/30 bg-cyan-400/10 px-3 py-1 text-xs text-cyan-200">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-[#7C9EFF]/25 bg-[#7C9EFF]/10 px-3 py-1 text-xs text-[#AFC0FF]">
                     <span className="relative inline-flex h-2 w-2">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-cyan-300 opacity-75" />
-                      <span className="relative inline-flex h-2 w-2 rounded-full bg-cyan-300" />
+                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#7C9EFF] opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-[#7C9EFF]" />
                     </span>
                     Sub-200ms live updates
                   </div>
                 </div>
 
                 <div className="grid gap-3">
-                  <div className="rounded-xl border border-white/10 bg-slate-950/80 p-3">
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
                     <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
                       <span>Workflow Graph</span>
-                      <span className="text-cyan-300">running</span>
+                      <span className="text-[#7C9EFF]">running</span>
                     </div>
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2 rounded bg-slate-900 px-2 py-1.5">
+                      <div className="flex items-center gap-2 rounded bg-white/[0.03] px-2 py-1.5">
                         <span className="h-2 w-2 rounded-full bg-slate-500" />
                         <span className="text-xs text-slate-300">input.parse</span>
                       </div>
-                      <div className="flex items-center gap-2 rounded bg-slate-900 px-2 py-1.5">
-                        <span className="h-2 w-2 animate-pulse rounded-full bg-amber-400" />
-                        <span className="text-xs text-amber-200">planner.llm_call</span>
+                      <div className="flex items-center gap-2 rounded bg-white/[0.03] px-2 py-1.5">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-[#7C9EFF]" />
+                        <span className="text-xs text-[#C9D6FF]">planner.llm_call</span>
                       </div>
-                      <div className="flex items-center gap-2 rounded bg-slate-900 px-2 py-1.5">
-                        <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                        <span className="text-xs text-emerald-200">tool.search</span>
+                      <div className="flex items-center gap-2 rounded bg-white/[0.03] px-2 py-1.5">
+                        <span className="h-2 w-2 rounded-full bg-[#7C9EFF]" />
+                        <span className="text-xs text-[#C9D6FF]">tool.search</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-slate-950/80 p-3">
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
                     <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
                       <span>Active Span Timeline</span>
                       <span className="font-mono text-slate-300">00:01.27</span>
                     </div>
                     <div className="space-y-2">
                       <div className="h-2 overflow-hidden rounded bg-slate-800">
-                        <div className="h-full w-2/3 animate-pulse rounded bg-cyan-400/80" />
+                        <div className="h-full w-2/3 animate-pulse rounded bg-[#7C9EFF]/80" />
                       </div>
                       <div className="h-2 overflow-hidden rounded bg-slate-800">
-                        <div className="h-full w-1/2 rounded bg-emerald-400/70" />
+                        <div className="h-full w-1/2 rounded bg-[#7C9EFF]/70" />
                       </div>
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-white/10 bg-slate-950/80 p-3">
+                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
                     <div className="mb-2 text-xs text-slate-400">Live Logs</div>
                     <div className="space-y-1.5 font-mono text-[11px]">
                       <p className="text-slate-400">[10:24:41] span_started planner.llm_call</p>
-                      <p className="text-cyan-200 motion-safe:animate-pulse">[10:24:41] token_stream +42</p>
+                      <p className="text-[#AFC0FF] motion-safe:animate-pulse">[10:24:41] token_stream +42</p>
                       <p className="text-slate-400">[10:24:42] artifact_created prompt.rendered</p>
                     </div>
                   </div>
@@ -355,7 +354,7 @@ console.log("trace received: run_01H...");
         </div>
       </section>
 
-      <section id="demo" className="bg-gradient-to-b from-blue-500/5 to-transparent px-6 py-20">
+      <section id="demo" className="bg-transparent px-6 py-20">
         <div className="mx-auto w-full max-w-[1368px]">
           <div className="mb-12 text-center">
             <h2 className="mb-4 text-3xl font-bold md:text-4xl">From failure to insight in seconds</h2>
@@ -365,13 +364,13 @@ console.log("trace received: run_01H...");
           </div>
 
           <div className="grid gap-6 md:grid-cols-2">
-            <div className="overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-3">
+            <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] p-3">
               <TraceView spans={mockTraceSpans} title="Failed Run #1247" className="dark" />
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50">
-              <div className="border-b border-blue-500/30 bg-blue-500/10 px-4 py-3">
-                <span className="text-sm font-medium text-blue-400">Root Cause Analysis</span>
+            <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
+              <div className="border-b border-[#7C9EFF]/30 bg-[#7C9EFF]/10 px-4 py-3">
+                <span className="text-sm font-medium text-[#7C9EFF]">Root Cause Analysis</span>
               </div>
               <div className="p-4">
                 <h4 className="mb-2 font-semibold">Likely cause:</h4>
@@ -379,13 +378,13 @@ console.log("trace received: run_01H...");
                   External API endpoint timeout. This endpoint has a 94% failure rate in the last hour.
                 </p>
                 <h4 className="mb-2 font-semibold">Suggested fix:</h4>
-                <div className="rounded border border-green-500/30 bg-green-500/10 p-3">
-                  <p className="font-mono text-xs text-green-400">
+                <div className="rounded border border-[#7C9EFF]/30 bg-[#7C9EFF]/10 p-3">
+                  <p className="font-mono text-xs text-[#7C9EFF]">
                     Increase timeout to 10s or add retry logic with exponential backoff
                   </p>
                 </div>
-                <div className="mt-4 border-t border-white/10 pt-4">
-                  <Link href="/demo" className="text-sm text-blue-400 hover:text-blue-300">
+                <div className="mt-4 border-t border-white/5 pt-4">
+                  <Link href="/demo" className="text-sm text-[#7C9EFF] hover:text-[#AFC0FF]">
                     View similar failures -&gt;
                   </Link>
                 </div>
@@ -419,8 +418,8 @@ console.log("trace received: run_01H...");
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-white/10 bg-gray-900">
-            <div className="flex items-center justify-between border-b border-white/10 bg-gray-800/50 px-4 py-2">
+          <div className="overflow-hidden rounded-xl border border-white/5 bg-gray-900">
+            <div className="flex items-center justify-between border-b border-white/5 bg-gray-800/50 px-4 py-2">
               <span className="text-xs text-gray-500">quickstart.sh</span>
               <button className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-white" onClick={copyQuickstart} type="button">
                 <Copy className="h-3 w-3" />
@@ -438,14 +437,14 @@ console.log("trace received: run_01H...");
                   {"\n\n"}
                   <span className="text-gray-500"># 3) Send a minimal trace</span>
                   {"\n"}
-                  <span className="text-purple-400">import</span> os
+                  <span className="text-[#7C9EFF]">import</span> os
                   {"\n"}
-                  <span className="text-purple-400">import</span> agentscope
-                  {"\n\n"}os.environ[<span className="text-green-400">{`"AGENTSCOPE_API_KEY"`}</span>] = os.getenv(
-                  <span className="text-green-400">{`"AGENTSCOPE_API_KEY"`}</span>, <span className="text-green-400">{`""`}</span>)
+                  <span className="text-[#7C9EFF]">import</span> agentscope
+                  {"\n\n"}os.environ[<span className="text-[#7C9EFF]">{`"AGENTSCOPE_API_KEY"`}</span>] = os.getenv(
+                  <span className="text-[#7C9EFF]">{`"AGENTSCOPE_API_KEY"`}</span>, <span className="text-[#7C9EFF]">{`""`}</span>)
                   {"\n"}agentscope.auto_instrument()
-                  {"\n"}<span className="text-blue-400">print</span>(
-                  <span className="text-green-400">{`"trace received: run_01H..."`}</span>)
+                  {"\n"}<span className="text-[#7C9EFF]">print</span>(
+                  <span className="text-[#7C9EFF]">{`"trace received: run_01H..."`}</span>)
                 </pre>
               ) : (
                 <pre className="text-gray-300">
@@ -457,14 +456,14 @@ console.log("trace received: run_01H...");
                   {"\n\n"}
                   <span className="text-gray-500">{"// 3) Send a minimal trace"}</span>
                   {"\n"}
-                  <span className="text-purple-400">import</span> {"{ AgentScope }"} <span className="text-purple-400">from</span> <span className="text-green-400">{"'@agentscope/sdk'"}</span>;
-                  {"\n"}<span className="text-purple-400">new</span> AgentScope({"{"} apiKey: process.env.AGENTSCOPE_API_KEY {"}"});
-                  {"\n"}console.log(<span className="text-green-400">{`"trace received: run_01H..."`}</span>);
+                  <span className="text-[#7C9EFF]">import</span> {"{ AgentScope }"} <span className="text-[#7C9EFF]">from</span> <span className="text-[#7C9EFF]">{"'@agentscope/sdk'"}</span>;
+                  {"\n"}<span className="text-[#7C9EFF]">new</span> AgentScope({"{"} apiKey: process.env.AGENTSCOPE_API_KEY {"}"});
+                  {"\n"}console.log(<span className="text-[#7C9EFF]">{`"trace received: run_01H..."`}</span>);
                 </pre>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-4 border-t border-white/10 bg-gray-800/30 px-4 py-3 text-sm">
-              <Link href="/signup" className="text-blue-400 transition-colors hover:text-blue-300">
+            <div className="flex flex-wrap items-center gap-4 border-t border-white/5 bg-gray-800/30 px-4 py-3 text-sm">
+              <Link href="/signup" className="text-[#7C9EFF] transition-colors hover:text-[#AFC0FF]">
                 Start Free and Send First Trace
               </Link>
               <Link href="/demo" className="text-gray-300 transition-colors hover:text-white">
@@ -475,7 +474,7 @@ console.log("trace received: run_01H...");
         </div>
       </section>
 
-      <section id="pricing" className="bg-gradient-to-b from-purple-500/5 to-transparent px-6 py-20">
+      <section id="pricing" className="bg-transparent px-6 py-20">
         <div className="mx-auto w-full max-w-[1368px]">
           <div className="mb-12 text-center">
             <h2 className="mb-4 text-3xl font-bold md:text-4xl">Control your cost. Improve performance.</h2>
@@ -485,17 +484,11 @@ console.log("trace received: run_01H...");
           </div>
 
           <div className="grid gap-6 md:grid-cols-3">
-            <div className="rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-6">
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
               <h3 className="mb-4 text-sm font-semibold text-gray-400">Token Usage</h3>
               <ResponsiveContainer width="100%" height={150}>
                 <AreaChart data={tokenUsageData}>
-                  <defs>
-                    <linearGradient id="tokenGradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#a855f7" stopOpacity={0.3} />
-                      <stop offset="100%" stopColor="#a855f7" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <Area type="monotone" dataKey="tokens" stroke="#a855f7" fill="url(#tokenGradient)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="tokens" stroke="#7C9EFF" fill="#7C9EFF" fillOpacity={0.18} strokeWidth={2} />
                 </AreaChart>
               </ResponsiveContainer>
               <div className="mt-4">
@@ -504,11 +497,11 @@ console.log("trace received: run_01H...");
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-6">
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
               <h3 className="mb-4 text-sm font-semibold text-gray-400">Cost per Run</h3>
               <ResponsiveContainer width="100%" height={150}>
                 <BarChart data={costData}>
-                  <Bar dataKey="cost" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="cost" fill="#7C9EFF" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
               <div className="mt-4">
@@ -517,11 +510,11 @@ console.log("trace received: run_01H...");
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-6">
+            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
               <h3 className="mb-4 text-sm font-semibold text-gray-400">Latency Trends</h3>
               <ResponsiveContainer width="100%" height={150}>
                 <LineChart data={latencyData}>
-                  <Line type="monotone" dataKey="latency" stroke="#10b981" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="latency" stroke="#7C9EFF" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
               <div className="mt-4">
@@ -562,10 +555,10 @@ console.log("trace received: run_01H...");
             ].map((item) => (
               <div
                 key={item.title}
-                className="flex items-start gap-4 rounded-xl border border-white/10 bg-gradient-to-br from-gray-900/50 to-gray-800/50 p-6"
+                className="flex items-start gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-6"
               >
-                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-purple-500/20">
-                  <item.icon className="h-5 w-5 text-purple-400" />
+                <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
+                  <item.icon className="h-5 w-5 text-[#7C9EFF]" />
                 </div>
                 <div className="flex-1">
                   <div className="mb-1 flex items-center gap-2">
@@ -582,7 +575,7 @@ console.log("trace received: run_01H...");
       <section className="px-6 py-32">
         <div className="mx-auto w-full max-w-[1368px] text-center">
           <div className="relative">
-            <div className="absolute inset-0 -z-10 bg-gradient-to-br from-purple-500/20 to-blue-500/20 blur-3xl" />
+            <div className="absolute inset-0 -z-10 bg-gradient-to-br from-[#7C9EFF]/18 to-[#7C9EFF]/6 blur-3xl" />
             <h2 className="mb-6 text-4xl font-bold md:text-6xl">Start debugging your AI agents today</h2>
             <p className="mb-8 text-xl text-gray-400">
               Understand failures, improve performance, and ship better AI faster.
@@ -590,7 +583,7 @@ console.log("trace received: run_01H...");
             <div className="flex items-center justify-center gap-4">
               <Link
                 href={isAuthenticated ? "/dashboard" : "/signup"}
-                className="rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-8 py-4 text-lg font-medium transition-opacity hover:opacity-90"
+                className="rounded-lg bg-[#7C9EFF] px-8 py-4 text-lg font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
               >
                 {isAuthenticated ? "Go to Dashboard" : "Start Free and Send First Trace"}
               </Link>
@@ -605,14 +598,12 @@ console.log("trace received: run_01H...");
         </div>
       </section>
 
-      <footer className="border-t border-white/10 px-6 py-12">
+      <footer className="border-t border-white/5 px-6 py-12">
         <div className="mx-auto w-full max-w-[1368px]">
           <div className="mb-8 grid gap-8 md:grid-cols-4">
             <div>
               <div className="mb-4 flex items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500 to-blue-500">
-                  <Activity className="h-5 w-5 text-white" />
-                </div>
+                <Image src="/logo.svg" alt="AgentScope logo" width={32} height={32} className="h-8 w-8 rounded-lg" />
                 <span className="font-semibold">AgentScope</span>
               </div>
               <p className="text-sm text-gray-400">Debug and optimize your AI agents with confidence.</p>
@@ -682,7 +673,7 @@ console.log("trace received: run_01H...");
             </div>
           </div>
 
-          <div className="flex items-center justify-between border-t border-white/10 pt-8 text-sm text-gray-400">
+          <div className="flex items-center justify-between border-t border-white/5 pt-8 text-sm text-gray-400">
             <p>© 2026 AgentScope. All rights reserved.</p>
             <div className="flex items-center gap-4">
               <a

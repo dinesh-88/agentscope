@@ -17,7 +17,7 @@ export default async function PricingPage() {
               <p className="mt-4 text-3xl font-bold">$0</p>
               <p className="mt-1 text-sm text-gray-500">Up to 1,000 traces/month</p>
             </section>
-            <section className="rounded-2xl border border-blue-400/30 bg-blue-500/10 p-6">
+            <section className="rounded-2xl border border-[#A5B4FC]/35 bg-[#7C9EFF]/12 p-6">
               <h2 className="text-xl font-semibold">Pro</h2>
               <p className="mt-2 text-sm text-gray-300">For active production teams.</p>
               <p className="mt-4 text-3xl font-bold">Contact sales</p>
@@ -26,7 +26,10 @@ export default async function PricingPage() {
           </div>
 
           <div className="mt-8">
-            <Link href="/signup" className="inline-flex rounded-lg bg-gradient-to-r from-purple-500 to-blue-500 px-6 py-3 font-medium">
+            <Link
+              href="/signup"
+              className="inline-flex rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
+            >
               Start Free and Send First Trace
             </Link>
           </div>
