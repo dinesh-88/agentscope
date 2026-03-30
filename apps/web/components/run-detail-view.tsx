@@ -119,8 +119,10 @@ export function RunDetailView({
   const runStatusIsFailure = isFailureStatus(currentRun.status) || currentRun.success === false;
   const runStatusIsRunning = isRunningStatus(currentRun.status);
   const [activeTab, setActiveTab] = useState<"timeline" | "logs" | "traces" | "performance">("timeline");
-  const totalTokens = currentRun.total_tokens ?? orderedSpans.reduce((acc, span) => acc + (span.total_tokens ?? 0), 0);
-  const totalCost = currentRun.total_cost_usd ?? orderedSpans.reduce((acc, span) => acc + (span.estimated_cost ?? 0), 0);
+  const spanTokenTotal = orderedSpans.reduce((acc, span) => acc + (span.total_tokens ?? 0), 0);
+  const spanCostTotal = orderedSpans.reduce((acc, span) => acc + (span.estimated_cost ?? 0), 0);
+  const totalTokens = Math.max(currentRun.total_tokens ?? 0, spanTokenTotal);
+  const totalCost = Math.max(currentRun.total_cost_usd ?? 0, spanCostTotal);
   const runMs = runDurationMs(currentRun);
   const primaryInsight = useMemo(
     () => insights.find((item) => insightType(item) === "RUN_FAILURE") || insights[0] || null,

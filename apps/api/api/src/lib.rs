@@ -196,6 +196,7 @@ async fn ingest(
     attach_project_context(&mut payload, &api_key);
     normalize_run(&mut payload.run);
     normalize_spans(&mut payload.spans);
+    sync_run_metrics_from_spans(&mut payload.run, &payload.spans);
     normalize_span_context(&mut payload.spans, &payload.artifacts);
     limits::check_rate_limit(&state, &payload.run.project_id).await?;
     limits::check_token_quota(&state, &payload.run.project_id, payload.run.total_tokens).await?;
@@ -990,6 +991,25 @@ fn normalize_run(run: &mut Run) {
             .take(20)
             .collect::<Vec<_>>()
     });
+}
+
+fn sync_run_metrics_from_spans(run: &mut Run, spans: &[Span]) {
+    let mut sum_input = 0_i64;
+    let mut sum_output = 0_i64;
+    let mut sum_total = 0_i64;
+    let mut sum_cost = 0.0_f64;
+
+    for span in spans {
+        sum_input += span.input_tokens.unwrap_or(0).max(0);
+        sum_output += span.output_tokens.unwrap_or(0).max(0);
+        sum_total += span.total_tokens.unwrap_or(0).max(0);
+        sum_cost += span.estimated_cost.unwrap_or(0.0).max(0.0);
+    }
+
+    run.total_input_tokens = run.total_input_tokens.max(sum_input);
+    run.total_output_tokens = run.total_output_tokens.max(sum_output);
+    run.total_tokens = run.total_tokens.max(sum_total);
+    run.total_cost_usd = run.total_cost_usd.max(sum_cost);
 }
 
 fn normalize_error_type(value: String) -> String {
