@@ -8,14 +8,11 @@ import { TraceView } from "@/components/trace-view";
 import {
   Activity,
   ArrowRight,
-  Brain,
-  Check,
   Copy,
   Github,
   Play,
   Shield,
   Sparkles,
-  TestTube,
   TrendingDown,
   Zap,
 } from "lucide-react";
@@ -136,7 +133,7 @@ console.log("trace received: run_01H...");
                   href="/signup"
                   className="rounded-lg bg-[#7C9EFF] px-4 py-2 text-sm font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
                 >
-                  Get Started Free
+                  Start Free
                 </Link>
               </div>
             )}
@@ -144,16 +141,16 @@ console.log("trace received: run_01H...");
         </div>
       </nav>
 
-      <section className="px-6 pt-20 pb-16">
+      <section className="px-6 pt-20 pb-12">
         <div className="mx-auto w-full max-w-[1368px]">
-          <div className="mx-auto mb-16 max-w-4xl text-center">
+          <div className="mx-auto max-w-4xl text-center">
             <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
-              Find why your AI agent failed in under 5 minutes.
+              Your AI agent failed. AgentScope shows you why.
             </h1>
-            <p className="mx-auto mb-8 max-w-2xl text-xl text-gray-400">
-              Trace every step, get root-cause explanations, and cut token cost with actionable fixes.
+            <p className="mx-auto mb-8 max-w-3xl text-xl text-gray-400">
+              Trace every step, pinpoint the root cause, see the fix, and understand token cost — without digging through logs.
             </p>
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex flex-wrap items-center justify-center gap-4">
               <Link
                 href={isAuthenticated ? "/runs" : "/demo"}
                 data-testid="run-demo-button"
@@ -162,148 +159,129 @@ console.log("trace received: run_01H...");
                 <Play className="h-4 w-4" />
                 Run Demo
               </Link>
-              {isAuthenticated ? (
-                <Link
-                  href="/dashboard"
-                  className="flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
-                >
-                  Go to Dashboard
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              ) : (
-                <Link
-                  href="/signup"
-                  className="flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
-                >
-                  Start Free and Send First Trace
-                  <ArrowRight className="h-4 w-4" />
-                </Link>
-              )}
               <Link
-                href="/demo"
-                className="flex items-center gap-2 rounded-lg border border-white/20 px-6 py-3 font-medium transition-colors hover:bg-white/5"
+                href={isAuthenticated ? "/dashboard" : "/signup"}
+                className="flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
               >
-                <Play className="h-4 w-4" />
-                Watch 90-Second Product Tour
+                Start Free
+                <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
             {!isAuthenticated ? <p className="mt-3 text-sm text-gray-500">No credit card. First trace in about 3 minutes.</p> : null}
           </div>
-
         </div>
       </section>
 
-      <section className="bg-transparent px-6 pt-10 pb-20">
+      <section className="px-6 pb-18 pt-6">
         <div className="mx-auto w-full max-w-[1368px]">
-          <h2 className="mb-16 text-center text-3xl font-bold md:text-4xl">
-            AI agents are powerful — but hard to debug
-          </h2>
-
-          <div className="grid gap-12 md:grid-cols-2">
-            <div className="space-y-6">
-              <h3 className="mb-6 text-xl font-semibold text-[#EF6F6C]">Common challenges</h3>
-              {["Why did my agent fail?", "Which prompt caused this issue?", "Why is cost increasing?", "Which tool broke?"].map((problem) => (
-                <div key={problem} className="flex items-start gap-3">
-                  <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-[#EF6F6C]/35 bg-[#EF6F6C]/16">
-                    <span className="text-sm text-[#EF6F6C]">✕</span>
-                  </div>
-                  <p className="text-lg text-gray-300">{problem}</p>
-                </div>
-              ))}
+          <p className="mb-6 text-center text-sm font-medium tracking-wide text-[#AFC0FF]">
+            Logs tell you what happened. AgentScope tells you why.
+          </p>
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="rounded-2xl border border-red-400/20 bg-red-500/[0.04] p-6">
+              <h3 className="mb-4 text-xl font-semibold text-red-200">Without AgentScope</h3>
+              <ul className="space-y-3 text-sm text-gray-300">
+                <li>Scroll logs and traces</li>
+                <li>Inspect prompts and tool calls manually</li>
+                <li>Guess which step broke</li>
+                <li>Waste time rerunning flows</li>
+              </ul>
             </div>
-
-            <div className="space-y-6">
-              <h3 className="mb-6 text-xl font-semibold text-[#7C9EFF]">How AgentScope helps</h3>
-              {[
-                "Full run tracing across your agent",
-                "Root cause analysis for failures",
-                "Prompt, response, and tool visibility",
-                "Cost and latency tracking",
-              ].map((solution) => (
-                <div key={solution} className="flex items-start gap-3">
-                  <div className="mt-1 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full border border-[#7C9EFF]/30 bg-[#7C9EFF]/14">
-                    <Check className="h-4 w-4 text-[#7C9EFF]" />
-                  </div>
-                  <p className="text-lg text-gray-300">{solution}</p>
-                </div>
-              ))}
+            <div className="rounded-2xl border border-[#7C9EFF]/30 bg-[#7C9EFF]/[0.06] p-6">
+              <h3 className="mb-4 text-xl font-semibold text-[#DDE5FF]">With AgentScope</h3>
+              <ul className="space-y-3 text-sm text-gray-200">
+                <li>See the exact failure point</li>
+                <li>Get reason, cause, and fix</li>
+                <li>Understand token and cost impact</li>
+                <li>Debug in minutes instead of hours</li>
+              </ul>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="bg-transparent px-6 py-20">
+        <div className="mx-auto w-full max-w-[1368px]">
+          <div className="mx-auto mb-12 max-w-4xl text-center">
+            <h2 className="mb-4 text-3xl font-bold md:text-4xl">AI agents fail in ways logs don’t explain</h2>
+            <p className="text-lg text-gray-400">
+              When an agent breaks, developers jump between traces, prompts, tool outputs, and model responses trying to reconstruct what happened. The problem isn’t visibility alone — it’s explanation.
+            </p>
+          </div>
+
+          <div className="mx-auto grid max-w-3xl gap-4 sm:grid-cols-2">
+            {[
+              "Why did the agent fail?",
+              "Which prompt or tool caused it?",
+              "Why did cost spike?",
+              "What should I change?",
+            ].map((problem) => (
+              <div key={problem} className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                <div className="flex h-5 w-5 items-center justify-center rounded-full border border-[#7C9EFF]/40 bg-[#7C9EFF]/20">
+                  <span className="text-[10px] text-[#C8D5FF]">?</span>
+                </div>
+                <p className="text-sm text-gray-200">{problem}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
       <section id="features" className="px-6 py-20">
         <div className="mx-auto w-full max-w-[1368px]">
-          <h2 className="mb-16 text-center text-3xl font-bold md:text-4xl">
-            Everything you need to understand your agents
-          </h2>
+          <h2 className="mb-14 text-center text-3xl font-bold md:text-4xl">Built for AI debugging outcomes, not just telemetry</h2>
 
-          <div className="grid gap-8 md:grid-cols-2">
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
-                <Activity className="h-6 w-6 text-[#7C9EFF]" />
+          <div className="grid gap-6 md:grid-cols-2">
+            {[
+              {
+                icon: Activity,
+                title: "Run tracing",
+                copy: "See every LLM call, tool call, and span in one timeline.",
+              },
+              {
+                icon: Sparkles,
+                title: "Root cause analysis",
+                copy: "Go from failure to explanation, not just raw telemetry.",
+              },
+              {
+                icon: Zap,
+                title: "Optimization insights",
+                copy: "Get actionable suggestions to reduce cost and improve reliability.",
+              },
+              {
+                icon: TrendingDown,
+                title: "Cost visibility",
+                copy: "Track token usage and cost at the run level.",
+              },
+            ].map((item) => (
+              <div key={item.title} className="rounded-2xl border border-white/10 bg-white/[0.02] p-7">
+                <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
+                  <item.icon className="h-5 w-5 text-[#AFC0FF]" />
+                </div>
+                <h3 className="mb-2 text-xl font-semibold">{item.title}</h3>
+                <p className="text-sm text-gray-400">{item.copy}</p>
               </div>
-              <h3 className="mb-3 text-xl font-semibold">Run Tracing</h3>
-              <p className="text-gray-400">
-                Visualize every step of your agent with spans, tools, and LLM calls in a clear timeline.
-              </p>
-            </div>
+            ))}
 
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
-                <Brain className="h-6 w-6 text-[#7C9EFF]" />
-              </div>
-              <h3 className="mb-3 text-xl font-semibold">Root Cause Analysis</h3>
-              <p className="text-gray-400">
-                Automatically detect why runs fail and pinpoint the exact step that broke.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/14">
-                <Zap className="h-6 w-6 text-[#7C9EFF]" />
-              </div>
-              <h3 className="mb-3 text-xl font-semibold">Optimization Insights</h3>
-              <p className="text-gray-400">
-                Get suggestions to improve prompts, reduce latency, and lower cost.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-8">
-              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/14">
-                <TestTube className="h-6 w-6 text-[#7C9EFF]" />
-              </div>
-              <h3 className="mb-3 text-xl font-semibold">Demo Quickstart</h3>
-              <p className="text-gray-400">
-                Copy your API key, run a local demo app, and inspect traces in under a minute.
-              </p>
-            </div>
-
-            <div className="relative overflow-hidden rounded-2xl border border-white/5 bg-white/[0.02] p-8 md:col-span-2">
-              <div className="pointer-events-none absolute -top-28 -right-28 h-56 w-56 rounded-full bg-[#7C9EFF]/14 blur-3xl" />
-              <div className="pointer-events-none absolute -bottom-24 -left-16 h-48 w-48 rounded-full bg-[#7C9EFF]/20 blur-3xl" />
-
+            <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.02] p-7 md:col-span-2">
+              <div className="pointer-events-none absolute -top-20 -right-16 h-44 w-44 rounded-full bg-[#7C9EFF]/16 blur-3xl" />
               <div className="relative grid gap-6 lg:grid-cols-[1fr_1.2fr]">
                 <div>
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
-                    <Activity className="h-6 w-6 text-[#7C9EFF]" />
-                  </div>
-                  <h3 className="mb-3 text-xl font-semibold">Real-Time Status View</h3>
-                  <p className="mb-4 text-gray-300">
-                    Watch your run live with workflow graph updates, active spans, streaming logs, and
-                    artifacts as they happen.
+                  <h3 className="mb-3 text-xl font-semibold">Live debugging signal</h3>
+                  <p className="mb-4 text-sm text-gray-300">
+                    Keep your debugging loop tight with fast live updates while runs are still in progress.
                   </p>
                   <div className="inline-flex items-center gap-2 rounded-full border border-[#7C9EFF]/25 bg-[#7C9EFF]/10 px-3 py-1 text-xs text-[#AFC0FF]">
                     <span className="relative inline-flex h-2 w-2">
                       <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#7C9EFF] opacity-75" />
                       <span className="relative inline-flex h-2 w-2 rounded-full bg-[#7C9EFF]" />
                     </span>
-                    Sub-200ms live updates
+                    Real-time run updates
                   </div>
                 </div>
 
                 <div className="grid gap-3">
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                  <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
                     <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
                       <span>Workflow Graph</span>
                       <span className="text-[#7C9EFF]">running</span>
@@ -324,22 +302,7 @@ console.log("trace received: run_01H...");
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
-                    <div className="mb-2 flex items-center justify-between text-xs text-slate-400">
-                      <span>Active Span Timeline</span>
-                      <span className="font-mono text-slate-300">00:01.27</span>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="h-2 overflow-hidden rounded bg-slate-800">
-                        <div className="h-full w-2/3 animate-pulse rounded bg-[#7C9EFF]/80" />
-                      </div>
-                      <div className="h-2 overflow-hidden rounded bg-slate-800">
-                        <div className="h-full w-1/2 rounded bg-[#7C9EFF]/70" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3">
+                  <div className="rounded-xl border border-white/8 bg-white/[0.02] p-3">
                     <div className="mb-2 text-xs text-slate-400">Live Logs</div>
                     <div className="space-y-1.5 font-mono text-[11px]">
                       <p className="text-slate-400">[10:24:41] span_started planner.llm_call</p>
@@ -356,48 +319,53 @@ console.log("trace received: run_01H...");
 
       <section id="demo" className="bg-transparent px-6 py-20">
         <div className="mx-auto w-full max-w-[1368px]">
-          <div className="mb-12 text-center">
-            <h2 className="mb-4 text-3xl font-bold md:text-4xl">From failure to insight in seconds</h2>
-            <p className="text-lg text-gray-400">
-              Quickly move from a broken run to a clear explanation and actionable fix.
-            </p>
+          <div className="mb-10 text-center">
+            <h2 className="mb-3 text-3xl font-bold md:text-4xl">See a broken run explained</h2>
+            <p className="text-gray-400">Example: a chatbot fails after a tool returns invalid output.</p>
           </div>
 
-          <div className="grid gap-6 md:grid-cols-2">
-            <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02] p-3">
+          <div className="grid gap-6 lg:grid-cols-[1.2fr_1fr]">
+            <div className="overflow-hidden rounded-xl border border-white/10 bg-white/[0.02] p-3">
               <TraceView spans={mockTraceSpans} title="Failed Run #1247" className="dark" />
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
-              <div className="border-b border-[#7C9EFF]/30 bg-[#7C9EFF]/10 px-4 py-3">
-                <span className="text-sm font-medium text-[#7C9EFF]">Root Cause Analysis</span>
-              </div>
-              <div className="p-4">
-                <h4 className="mb-2 font-semibold">Likely cause:</h4>
-                <p className="mb-4 text-sm text-gray-400">
-                  External API endpoint timeout. This endpoint has a 94% failure rate in the last hour.
-                </p>
-                <h4 className="mb-2 font-semibold">Suggested fix:</h4>
-                <div className="rounded border border-[#7C9EFF]/30 bg-[#7C9EFF]/10 p-3">
-                  <p className="font-mono text-xs text-[#7C9EFF]">
-                    Increase timeout to 10s or add retry logic with exponential backoff
-                  </p>
+            <div className="grid gap-4">
+              {[
+                {
+                  title: "Reason",
+                  body: "The run failed because the downstream tool response could not be parsed.",
+                },
+                {
+                  title: "Cause",
+                  body: "The tool returned an invalid schema with a missing required field.",
+                },
+                {
+                  title: "Fix",
+                  body: "Add response validation and retry or fallback logic before passing tool output back into the agent.",
+                },
+                {
+                  title: "Cost",
+                  body: "4,230 tokens spent before failure.",
+                },
+              ].map((card) => (
+                <div key={card.title} className="rounded-xl border border-white/10 bg-white/[0.02] p-4">
+                  <h4 className="mb-2 text-sm font-semibold uppercase tracking-wide text-[#AFC0FF]">{card.title}</h4>
+                  <p className="text-sm text-gray-300">{card.body}</p>
                 </div>
-                <div className="mt-4 border-t border-white/5 pt-4">
-                  <Link href="/demo" className="text-sm text-[#7C9EFF] hover:text-[#AFC0FF]">
-                    View similar failures -&gt;
-                  </Link>
-                </div>
-              </div>
+              ))}
             </div>
           </div>
+
+          <p className="mt-6 text-center text-sm text-gray-400">This is the difference between telemetry and understanding.</p>
         </div>
       </section>
 
       <section id="docs" className="px-6 py-20">
         <div className="mx-auto w-full max-w-[1368px]">
-          <h2 className="mb-4 text-center text-3xl font-bold md:text-4xl">Send your first trace in 3 steps</h2>
-          <p className="mb-12 text-center text-gray-400">Install SDK, add API key, and verify trace delivery.</p>
+          <h2 className="mb-4 text-center text-3xl font-bold md:text-4xl">Send your first trace in minutes</h2>
+          <p className="mb-12 text-center text-gray-400">
+            Install the SDK, add your API key, and start seeing runs with root-cause insights right away.
+          </p>
 
           <div className="mb-4 flex items-center gap-2">
             <button
@@ -418,8 +386,8 @@ console.log("trace received: run_01H...");
             </button>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-white/5 bg-gray-900">
-            <div className="flex items-center justify-between border-b border-white/5 bg-gray-800/50 px-4 py-2">
+          <div className="overflow-hidden rounded-xl border border-white/10 bg-gray-900">
+            <div className="flex items-center justify-between border-b border-white/10 bg-gray-800/50 px-4 py-2">
               <span className="text-xs text-gray-500">quickstart.sh</span>
               <button className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-white" onClick={copyQuickstart} type="button">
                 <Copy className="h-3 w-3" />
@@ -462,12 +430,12 @@ console.log("trace received: run_01H...");
                 </pre>
               )}
             </div>
-            <div className="flex flex-wrap items-center gap-4 border-t border-white/5 bg-gray-800/30 px-4 py-3 text-sm">
+            <div className="flex flex-wrap items-center gap-4 border-t border-white/10 bg-gray-800/30 px-4 py-3 text-sm">
               <Link href="/signup" className="text-[#7C9EFF] transition-colors hover:text-[#AFC0FF]">
                 Start Free and Send First Trace
               </Link>
               <Link href="/demo" className="text-gray-300 transition-colors hover:text-white">
-                Run sample repo in 2 minutes
+                Run Demo
               </Link>
             </div>
           </div>
@@ -477,15 +445,15 @@ console.log("trace received: run_01H...");
       <section id="pricing" className="bg-transparent px-6 py-20">
         <div className="mx-auto w-full max-w-[1368px]">
           <div className="mb-12 text-center">
-            <h2 className="mb-4 text-3xl font-bold md:text-4xl">Control your cost. Improve performance.</h2>
+            <h2 className="mb-4 text-3xl font-bold md:text-4xl">Every failed run is also wasted cost</h2>
             <p className="text-lg text-gray-400">
-              Track token usage, latency, and cost across every run and model.
+              Track token usage, latency, and run-level cost so you can spot expensive failures and reduce waste.
             </p>
           </div>
 
           <div className="grid gap-6 md:grid-cols-3">
-            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-              <h3 className="mb-4 text-sm font-semibold text-gray-400">Token Usage</h3>
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+              <h3 className="mb-4 text-sm font-semibold text-gray-400">Token usage</h3>
               <ResponsiveContainer width="100%" height={150}>
                 <AreaChart data={tokenUsageData}>
                   <Area type="monotone" dataKey="tokens" stroke="#7C9EFF" fill="#7C9EFF" fillOpacity={0.18} strokeWidth={2} />
@@ -497,8 +465,8 @@ console.log("trace received: run_01H...");
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-              <h3 className="mb-4 text-sm font-semibold text-gray-400">Cost per Run</h3>
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+              <h3 className="mb-4 text-sm font-semibold text-gray-400">Avg cost per run</h3>
               <ResponsiveContainer width="100%" height={150}>
                 <BarChart data={costData}>
                   <Bar dataKey="cost" fill="#7C9EFF" radius={[4, 4, 0, 0]} />
@@ -510,8 +478,8 @@ console.log("trace received: run_01H...");
               </div>
             </div>
 
-            <div className="rounded-xl border border-white/5 bg-white/[0.02] p-6">
-              <h3 className="mb-4 text-sm font-semibold text-gray-400">Latency Trends</h3>
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
+              <h3 className="mb-4 text-sm font-semibold text-gray-400">Latency</h3>
               <ResponsiveContainer width="100%" height={150}>
                 <LineChart data={latencyData}>
                   <Line type="monotone" dataKey="latency" stroke="#7C9EFF" strokeWidth={2} dot={false} />
@@ -522,6 +490,26 @@ console.log("trace received: run_01H...");
                 <div className="text-xs text-gray-500">avg latency</div>
               </div>
             </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="px-6 py-20">
+        <div className="mx-auto w-full max-w-[1368px]">
+          <div className="mx-auto mb-10 max-w-4xl text-center">
+            <h2 className="mb-4 text-3xl font-bold md:text-4xl">Why AgentScope is different</h2>
+          </div>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            {[
+              "Tracing alone shows what happened. AgentScope explains why.",
+              "Built for AI debugging, not generic application monitoring.",
+              "Combines run visibility, root-cause analysis, and cost insight in one workflow.",
+            ].map((point) => (
+              <div key={point} className="rounded-xl border border-white/10 bg-white/[0.02] p-5 text-sm text-gray-300">
+                {point}
+              </div>
+            ))}
           </div>
         </div>
       </section>
@@ -555,15 +543,13 @@ console.log("trace received: run_01H...");
             ].map((item) => (
               <div
                 key={item.title}
-                className="flex items-start gap-4 rounded-xl border border-white/5 bg-white/[0.02] p-6"
+                className="flex items-start gap-4 rounded-xl border border-white/10 bg-white/[0.02] p-6"
               >
                 <div className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-[#7C9EFF]/20">
                   <item.icon className="h-5 w-5 text-[#7C9EFF]" />
                 </div>
                 <div className="flex-1">
-                  <div className="mb-1 flex items-center gap-2">
-                    <h3 className="font-semibold">{item.title}</h3>
-                  </div>
+                  <h3 className="mb-1 font-semibold">{item.title}</h3>
                   <p className="text-sm text-gray-400">{item.desc}</p>
                 </div>
               </div>
@@ -572,26 +558,26 @@ console.log("trace received: run_01H...");
         </div>
       </section>
 
-      <section className="px-6 py-32">
+      <section className="px-6 py-28">
         <div className="mx-auto w-full max-w-[1368px] text-center">
-          <div className="relative">
-            <div className="absolute inset-0 -z-10 bg-gradient-to-br from-[#7C9EFF]/18 to-[#7C9EFF]/6 blur-3xl" />
-            <h2 className="mb-6 text-4xl font-bold md:text-6xl">Start debugging your AI agents today</h2>
-            <p className="mb-8 text-xl text-gray-400">
-              Understand failures, improve performance, and ship better AI faster.
+          <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-white/[0.02] px-8 py-16">
+            <div className="absolute inset-0 -z-10 bg-gradient-to-br from-[#7C9EFF]/14 to-[#7C9EFF]/6 blur-3xl" />
+            <h2 className="mb-6 text-4xl font-bold md:text-6xl">Debug faster. Reduce cost. Ship more reliable AI.</h2>
+            <p className="mx-auto mb-8 max-w-3xl text-xl text-gray-400">
+              Understand failures, find root causes, and improve agent performance without slowing your team down.
             </p>
-            <div className="flex items-center justify-center gap-4">
+            <div className="flex flex-wrap items-center justify-center gap-4">
               <Link
                 href={isAuthenticated ? "/dashboard" : "/signup"}
                 className="rounded-lg bg-[#7C9EFF] px-8 py-4 text-lg font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
               >
-                {isAuthenticated ? "Go to Dashboard" : "Start Free and Send First Trace"}
+                Start Free
               </Link>
               <Link
-                href="/demo"
+                href={isAuthenticated ? "/runs" : "/demo"}
                 className="rounded-lg border border-white/20 px-8 py-4 text-lg font-medium transition-colors hover:bg-white/5"
               >
-                Watch 90-Second Product Tour
+                Run Demo
               </Link>
             </div>
           </div>
