@@ -24,12 +24,14 @@ type UseRunStreamParams = {
   initialLogs?: RunLog[];
 };
 
+const EMPTY_LOGS: RunLog[] = [];
+
 export function useRunStream({
   runId,
   initialRun,
   initialSpans,
   initialArtifacts,
-  initialLogs = [],
+  initialLogs,
 }: UseRunStreamParams) {
   const setInitialState = useRunDetailStore((state) => state.setInitialState);
   const applyEvents = useRunDetailStore((state) => state.applyEvents);
@@ -41,6 +43,7 @@ export function useRunStream({
   const reconnectAttemptRef = useRef(0);
   const rafRef = useRef<number | null>(null);
   const streamUrl = useMemo(() => toWsUrl(API_BASE_URL, `/v1/runs/${runId}/stream`), [runId]);
+  const stableInitialLogs = useMemo(() => initialLogs ?? EMPTY_LOGS, [initialLogs]);
 
   useEffect(() => {
     setInitialState({
@@ -48,9 +51,9 @@ export function useRunStream({
       run: initialRun,
       spans: initialSpans,
       artifacts: initialArtifacts,
-      logs: initialLogs,
+      logs: stableInitialLogs,
     });
-  }, [initialRun, initialSpans, initialArtifacts, initialLogs, runId, setInitialState]);
+  }, [initialRun, initialSpans, initialArtifacts, stableInitialLogs, runId, setInitialState]);
 
   useEffect(() => {
     closedRef.current = false;
@@ -126,4 +129,3 @@ export function useRunStream({
     };
   }, [applyEvents, streamUrl]);
 }
-
