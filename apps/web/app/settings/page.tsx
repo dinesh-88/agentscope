@@ -39,6 +39,15 @@ function getApiErrorMessage(error: unknown, fallback: string) {
   return fallback;
 }
 
+const REQUIRE_AUTH_COOKIE_NAME = process.env.NEXT_PUBLIC_REQUIRE_AUTH_COOKIE_NAME ?? "agentscope_require_auth";
+
+function syncRequireAuthenticationCookie(enabled: boolean) {
+  if (typeof document === "undefined") return;
+  const secure = window.location.protocol === "https:" ? "; Secure" : "";
+  const maxAge = 60 * 60 * 24 * 365;
+  document.cookie = `${REQUIRE_AUTH_COOKIE_NAME}=${enabled ? "true" : "false"}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
+}
+
 export default function SettingsPage() {
   const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null);
   const [canGenerateApiKey, setCanGenerateApiKey] = useState(false);
@@ -53,6 +62,8 @@ export default function SettingsPage() {
   const [storePromptsResponses, setStorePromptsResponses] = useState(true);
   const [compressOldRuns, setCompressOldRuns] = useState(false);
   const [cleanupMode, setCleanupMode] = useState<"soft_delete" | "hard_delete">("soft_delete");
+  const [redactSensitiveData, setRedactSensitiveData] = useState(false);
+  const [requireAuthentication, setRequireAuthentication] = useState(true);
   const [storageLoading, setStorageLoading] = useState(true);
   const [storageSaving, setStorageSaving] = useState(false);
   const [storageApplying, setStorageApplying] = useState(false);
@@ -88,6 +99,9 @@ export default function SettingsPage() {
         setStorePromptsResponses(settings.store_prompts_responses);
         setCompressOldRuns(settings.compress_old_runs);
         setCleanupMode(settings.cleanup_mode);
+        setRedactSensitiveData(settings.redact_sensitive_data);
+        setRequireAuthentication(settings.require_authentication);
+        syncRequireAuthenticationCookie(settings.require_authentication);
       } catch {
         if (cancelled) return;
         setApiKeyError("Failed to load API key permissions.");
@@ -142,6 +156,8 @@ export default function SettingsPage() {
       retention_days: retentionValueToDays(retention),
       store_prompts_responses: storePromptsResponses,
       compress_old_runs: compressOldRuns,
+      redact_sensitive_data: redactSensitiveData,
+      require_authentication: requireAuthentication,
       cleanup_mode: cleanupMode,
     };
 
@@ -151,6 +167,9 @@ export default function SettingsPage() {
       setStorePromptsResponses(updated.store_prompts_responses);
       setCompressOldRuns(updated.compress_old_runs);
       setCleanupMode(updated.cleanup_mode);
+      setRedactSensitiveData(updated.redact_sensitive_data);
+      setRequireAuthentication(updated.require_authentication);
+      syncRequireAuthenticationCookie(updated.require_authentication);
       setStorageMessage("Storage settings saved.");
     } catch (error) {
       setStorageError(getApiErrorMessage(error, "Failed to save storage settings."));
@@ -170,6 +189,8 @@ export default function SettingsPage() {
       retention_days: retentionValueToDays(retention),
       store_prompts_responses: storePromptsResponses,
       compress_old_runs: compressOldRuns,
+      redact_sensitive_data: redactSensitiveData,
+      require_authentication: requireAuthentication,
       cleanup_mode: cleanupMode,
     };
 
@@ -179,6 +200,9 @@ export default function SettingsPage() {
       setStorePromptsResponses(updated.store_prompts_responses);
       setCompressOldRuns(updated.compress_old_runs);
       setCleanupMode(updated.cleanup_mode);
+      setRedactSensitiveData(updated.redact_sensitive_data);
+      setRequireAuthentication(updated.require_authentication);
+      syncRequireAuthenticationCookie(updated.require_authentication);
 
       const result = await applyProjectRetention(defaultProjectId);
       setLastApplyResult(result);
@@ -398,14 +422,26 @@ export default function SettingsPage() {
                   <p className="font-medium text-gray-900">Redact Sensitive Data</p>
                   <p className="text-sm text-gray-600">Automatically redact PII in logs</p>
                 </div>
-                <input defaultChecked type="checkbox" className="h-4 w-4" />
+                <input
+                  checked={redactSensitiveData}
+                  onChange={(event) => setRedactSensitiveData(event.target.checked)}
+                  type="checkbox"
+                  className="h-4 w-4"
+                  disabled={storageLoading || !canManageProject}
+                />
               </div>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-gray-900">Require Authentication</p>
                   <p className="text-sm text-gray-600">Enforce login for all users</p>
                 </div>
-                <input defaultChecked type="checkbox" className="h-4 w-4" />
+                <input
+                  checked={requireAuthentication}
+                  onChange={(event) => setRequireAuthentication(event.target.checked)}
+                  type="checkbox"
+                  className="h-4 w-4"
+                  disabled={storageLoading || !canManageProject}
+                />
               </div>
               <div>
                 <label htmlFor="session-timeout" className="text-sm font-medium text-gray-900">

@@ -1,11 +1,13 @@
 "use client";
 
-import { Activity, ArrowLeft, FileText, GitBranch, TrendingUp } from "lucide-react";
+import { Activity, ArrowLeft, FileText, GitBranch, Loader2, TrendingUp } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import { RunTimelineView } from "@/components/run-timeline-view";
 import { type Artifact, type Run, type RunInsight, type RunRootCause, type Span } from "@/lib/api";
+import { useRunDetailStore } from "@/lib/run-detail-store";
+import { useRunStream } from "@/lib/use-run-stream";
 
 function formatDurationMs(ms: number) {
   if (ms <= 0 || !Number.isFinite(ms)) return "0.0s";
@@ -22,6 +24,11 @@ function runDurationMs(run: Run) {
 function isFailureStatus(status: string) {
   const value = status.toLowerCase();
   return value === "failed" || value === "error";
+}
+
+function isRunningStatus(status: string) {
+  const value = status.toLowerCase();
+  return value === "running" || value === "pending";
 }
 
 function spanDurationMs(span: Span) {
@@ -92,15 +99,29 @@ export function RunDetailView({
   insights: RunInsight[];
   rootCause: RunRootCause | null;
 }) {
+  useRunStream({
+    runId: run.id,
+    initialRun: run,
+    initialSpans: spans,
+    initialArtifacts: artifacts,
+  });
+  const liveRun = useRunDetailStore((state) => state.run);
+  const liveSpans = useRunDetailStore((state) => state.spans);
+  const liveArtifacts = useRunDetailStore((state) => state.artifacts);
+
+  const currentRun = liveRun ?? run;
+  const currentSpans = liveSpans.length > 0 ? liveSpans : spans;
+  const currentArtifacts = liveArtifacts.length > 0 ? liveArtifacts : artifacts;
   const orderedSpans = useMemo(
-    () => [...spans].sort((a, b) => +new Date(a.started_at) - +new Date(b.started_at)),
-    [spans],
+    () => [...currentSpans].sort((a, b) => +new Date(a.started_at) - +new Date(b.started_at)),
+    [currentSpans],
   );
-  const runStatusIsFailure = isFailureStatus(run.status) || run.success === false;
+  const runStatusIsFailure = isFailureStatus(currentRun.status) || currentRun.success === false;
+  const runStatusIsRunning = isRunningStatus(currentRun.status);
   const [activeTab, setActiveTab] = useState<"timeline" | "logs" | "traces" | "performance">("timeline");
-  const totalTokens = run.total_tokens ?? orderedSpans.reduce((acc, span) => acc + (span.total_tokens ?? 0), 0);
-  const totalCost = run.total_cost_usd ?? orderedSpans.reduce((acc, span) => acc + (span.estimated_cost ?? 0), 0);
-  const runMs = runDurationMs(run);
+  const totalTokens = currentRun.total_tokens ?? orderedSpans.reduce((acc, span) => acc + (span.total_tokens ?? 0), 0);
+  const totalCost = currentRun.total_cost_usd ?? orderedSpans.reduce((acc, span) => acc + (span.estimated_cost ?? 0), 0);
+  const runMs = runDurationMs(currentRun);
   const primaryInsight = useMemo(
     () => insights.find((item) => insightType(item) === "RUN_FAILURE") || insights[0] || null,
     [insights],
@@ -143,18 +164,18 @@ export function RunDetailView({
         span.error_source ??
         `${span.span_type} ${span.status.toLowerCase()} (${formatDurationMs(spanDurationMs(span))})`,
     }));
-    const artifactLogs = artifacts.map((artifact) => {
+    const artifactLogs = currentArtifacts.map((artifact) => {
       const span = artifact.span_id ? spansById.get(artifact.span_id) : undefined;
       return {
         id: `artifact-${artifact.id}`,
-        at: span?.started_at ?? run.started_at,
+        at: span?.started_at ?? currentRun.started_at,
         level: "info" as const,
         source: artifact.kind,
         message: readPayloadText(artifact.payload ?? {}),
       };
     });
     return [...spanLogs, ...artifactLogs].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
-  }, [orderedSpans, artifacts, spansById, run.started_at]);
+  }, [orderedSpans, currentArtifacts, spansById, currentRun.started_at]);
   const tabs = [
     { id: "timeline" as const, label: "Timeline", icon: Activity, count: null },
     { id: "logs" as const, label: "Logs", icon: FileText, count: logEntries.length },
@@ -173,15 +194,20 @@ export function RunDetailView({
         </div>
 
         <div className="mb-2 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">{run.workflow_name || run.agent_name || run.id}</h1>
+          <h1 className="text-2xl font-semibold">{currentRun.workflow_name || currentRun.agent_name || currentRun.id}</h1>
           <span
             className={`rounded border px-2.5 py-1 text-xs font-medium ${
               runStatusIsFailure
                 ? "border-red-500/50 bg-red-500/10 text-red-300"
+                : runStatusIsRunning
+                  ? "border-amber-500/50 bg-amber-500/10 text-amber-300"
                 : "border-emerald-500/50 bg-emerald-500/10 text-emerald-300"
             }`}
           >
-            {run.status.toUpperCase()}
+            <span className="inline-flex items-center gap-1.5">
+              {runStatusIsRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+              <span>{currentRun.status.toUpperCase()}</span>
+            </span>
           </span>
         </div>
 

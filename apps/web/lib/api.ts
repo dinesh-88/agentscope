@@ -357,6 +357,8 @@ export type ProjectStorageSettings = {
   retention_days: number | null;
   store_prompts_responses: boolean;
   compress_old_runs: boolean;
+  redact_sensitive_data: boolean;
+  require_authentication: boolean;
   cleanup_mode: "soft_delete" | "hard_delete";
   updated_at: string;
 };
@@ -365,6 +367,8 @@ export type UpdateProjectStorageSettingsRequest = {
   retention_days: number | null;
   store_prompts_responses: boolean;
   compress_old_runs: boolean;
+  redact_sensitive_data: boolean;
+  require_authentication: boolean;
   cleanup_mode: "soft_delete" | "hard_delete";
 };
 

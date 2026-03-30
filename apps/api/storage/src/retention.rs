@@ -11,6 +11,8 @@ pub struct ProjectStorageSettings {
     pub retention_days: Option<i32>,
     pub store_prompts_responses: bool,
     pub compress_old_runs: bool,
+    pub redact_sensitive_data: bool,
+    pub require_authentication: bool,
     pub cleanup_mode: String,
     pub updated_at: DateTime<Utc>,
 }
@@ -33,6 +35,8 @@ impl Storage {
                    retention_days,
                    store_prompts_responses,
                    compress_old_runs,
+                   redact_sensitive_data,
+                   require_authentication,
                    cleanup_mode,
                    updated_at
             FROM project_storage_settings
@@ -57,6 +61,8 @@ impl Storage {
             retention_days: Some(30),
             store_prompts_responses: true,
             compress_old_runs: false,
+            redact_sensitive_data: false,
+            require_authentication: true,
             cleanup_mode: "soft_delete".to_string(),
             updated_at: Utc::now(),
         })
@@ -68,6 +74,8 @@ impl Storage {
         retention_days: Option<i32>,
         store_prompts_responses: bool,
         compress_old_runs: bool,
+        redact_sensitive_data: bool,
+        require_authentication: bool,
         cleanup_mode: &str,
     ) -> Result<ProjectStorageSettings, AgentScopeError> {
         let settings = sqlx::query_as::<_, ProjectStorageSettings>(
@@ -77,20 +85,26 @@ impl Storage {
                 retention_days,
                 store_prompts_responses,
                 compress_old_runs,
+                redact_sensitive_data,
+                require_authentication,
                 cleanup_mode,
                 updated_at
             )
-            VALUES ($1::uuid, $2, $3, $4, $5, now())
+            VALUES ($1::uuid, $2, $3, $4, $5, $6, $7, now())
             ON CONFLICT (project_id) DO UPDATE
             SET retention_days = EXCLUDED.retention_days,
                 store_prompts_responses = EXCLUDED.store_prompts_responses,
                 compress_old_runs = EXCLUDED.compress_old_runs,
+                redact_sensitive_data = EXCLUDED.redact_sensitive_data,
+                require_authentication = EXCLUDED.require_authentication,
                 cleanup_mode = EXCLUDED.cleanup_mode,
                 updated_at = now()
             RETURNING project_id::text AS project_id,
                       retention_days,
                       store_prompts_responses,
                       compress_old_runs,
+                      redact_sensitive_data,
+                      require_authentication,
                       cleanup_mode,
                       updated_at
             "#,
@@ -99,6 +113,8 @@ impl Storage {
         .bind(retention_days)
         .bind(store_prompts_responses)
         .bind(compress_old_runs)
+        .bind(redact_sensitive_data)
+        .bind(require_authentication)
         .bind(cleanup_mode)
         .fetch_one(&self.pool)
         .await

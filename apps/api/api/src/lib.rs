@@ -267,6 +267,10 @@ struct UpdateStorageSettingsRequest {
     retention_days: Option<i32>,
     store_prompts_responses: bool,
     compress_old_runs: bool,
+    #[serde(default)]
+    redact_sensitive_data: Option<bool>,
+    #[serde(default)]
+    require_authentication: Option<bool>,
     cleanup_mode: String,
 }
 
@@ -1484,6 +1488,7 @@ async fn update_project_storage_settings(
 ) -> Result<Json<ProjectStorageSettings>, ApiError> {
     ensure_project_access(&state, &id, &user.id).await?;
     ensure_project_manage_permission(&user)?;
+    let current_settings = state.storage.get_project_storage_settings(&id).await?;
 
     if payload.cleanup_mode != "soft_delete" && payload.cleanup_mode != "hard_delete" {
         return Err(ApiError::Validation(
@@ -1506,6 +1511,12 @@ async fn update_project_storage_settings(
             payload.retention_days,
             payload.store_prompts_responses,
             payload.compress_old_runs,
+            payload
+                .redact_sensitive_data
+                .unwrap_or(current_settings.redact_sensitive_data),
+            payload
+                .require_authentication
+                .unwrap_or(current_settings.require_authentication),
             &payload.cleanup_mode,
         )
         .await?;
@@ -1805,7 +1816,7 @@ async fn apply_project_storage_policies(
         .storage
         .get_project_storage_settings(&payload.run.project_id)
         .await?;
-    if settings.store_prompts_responses {
+    if settings.store_prompts_responses && !settings.redact_sensitive_data {
         return Ok(());
     }
 
@@ -1813,7 +1824,11 @@ async fn apply_project_storage_policies(
         if should_redact_artifact_payload(&artifact.kind) {
             artifact.payload = serde_json::json!({
                 "redacted": true,
-                "reason": "store_prompts_responses_disabled",
+                "reason": if settings.store_prompts_responses {
+                    "redact_sensitive_data_enabled"
+                } else {
+                    "store_prompts_responses_disabled"
+                },
             });
         }
     }
