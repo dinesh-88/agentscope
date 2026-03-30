@@ -22,6 +22,19 @@ fn canonicalize_model(model: &str) -> String {
 pub fn get_model_pricing(model: &str) -> Option<ModelPricing> {
     let model = canonicalize_model(model);
     match model.as_str() {
+        // GPT-5 family (kept broad so versioned names still match).
+        value if value.starts_with("gpt-5-nano") => Some(ModelPricing {
+            input_per_1k_tokens: 0.00005,
+            output_per_1k_tokens: 0.00020,
+        }),
+        value if value.starts_with("gpt-5-mini") => Some(ModelPricing {
+            input_per_1k_tokens: 0.00015,
+            output_per_1k_tokens: 0.00060,
+        }),
+        value if value.starts_with("gpt-5") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0025,
+            output_per_1k_tokens: 0.0100,
+        }),
         value if value.starts_with("gpt-4o-mini") => Some(ModelPricing {
             input_per_1k_tokens: 0.00015,
             output_per_1k_tokens: 0.00060,
@@ -68,6 +81,7 @@ mod tests {
     #[test]
     fn pricing_handles_versioned_model_names() {
         assert!(get_model_pricing("gpt-4o-mini-2024-07-18").is_some());
+        assert!(get_model_pricing("gpt-5-mini-2026-01-01").is_some());
         assert!(get_model_pricing("claude-3-5-haiku-20241022").is_some());
     }
 
