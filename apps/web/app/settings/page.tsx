@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bell, Copy, Database, Key, Loader2, RefreshCcw, Shield } from "lucide-react";
+import axios from "axios";
 
 import { AppShell } from "@/components/app-shell";
 import {
@@ -24,6 +25,18 @@ function retentionDaysToValue(days: number | null): string {
   if (days === null) return "forever";
   if ([7, 30, 90, 365].includes(days)) return String(days);
   return "30";
+}
+
+function getApiErrorMessage(error: unknown, fallback: string) {
+  if (!axios.isAxiosError(error)) return fallback;
+  const data = error.response?.data;
+  if (data && typeof data === "object" && "error" in data && typeof data.error === "string") {
+    return data.error;
+  }
+  if (typeof error.message === "string" && error.message.length > 0) {
+    return error.message;
+  }
+  return fallback;
 }
 
 export default function SettingsPage() {
@@ -139,8 +152,8 @@ export default function SettingsPage() {
       setCompressOldRuns(updated.compress_old_runs);
       setCleanupMode(updated.cleanup_mode);
       setStorageMessage("Storage settings saved.");
-    } catch {
-      setStorageError("Failed to save storage settings.");
+    } catch (error) {
+      setStorageError(getApiErrorMessage(error, "Failed to save storage settings."));
     } finally {
       setStorageSaving(false);
     }
@@ -153,12 +166,29 @@ export default function SettingsPage() {
     setStorageError(null);
     setStorageMessage(null);
 
+    const payload: UpdateProjectStorageSettingsRequest = {
+      retention_days: retentionValueToDays(retention),
+      store_prompts_responses: storePromptsResponses,
+      compress_old_runs: compressOldRuns,
+      cleanup_mode: cleanupMode,
+    };
+
     try {
+      const updated = await updateProjectStorageSettings(defaultProjectId, payload);
+      setRetention(retentionDaysToValue(updated.retention_days));
+      setStorePromptsResponses(updated.store_prompts_responses);
+      setCompressOldRuns(updated.compress_old_runs);
+      setCleanupMode(updated.cleanup_mode);
+
       const result = await applyProjectRetention(defaultProjectId);
       setLastApplyResult(result);
-      setStorageMessage(`Retention applied. ${result.affected_runs} run(s) processed via ${result.mode}.`);
-    } catch {
-      setStorageError("Failed to apply retention policy.");
+      setStorageMessage(
+        result.affected_runs > 0
+          ? `Retention applied. ${result.affected_runs} run(s) processed via ${result.mode}.`
+          : `Retention applied. No runs matched the cutoff (${result.cutoff_at ?? "none"}).`,
+      );
+    } catch (error) {
+      setStorageError(getApiErrorMessage(error, "Failed to apply retention policy."));
     } finally {
       setStorageApplying(false);
     }
