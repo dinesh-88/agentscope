@@ -48,6 +48,15 @@ function syncRequireAuthenticationCookie(enabled: boolean) {
   document.cookie = `${REQUIRE_AUTH_COOKIE_NAME}=${enabled ? "true" : "false"}; Path=/; Max-Age=${maxAge}; SameSite=Lax${secure}`;
 }
 
+function asBoolean(value: unknown, fallback: boolean): boolean {
+  if (typeof value === "boolean") return value;
+  return fallback;
+}
+
+function asCleanupMode(value: unknown, fallback: "soft_delete" | "hard_delete"): "soft_delete" | "hard_delete" {
+  return value === "hard_delete" || value === "soft_delete" ? value : fallback;
+}
+
 export default function SettingsPage() {
   const [defaultProjectId, setDefaultProjectId] = useState<string | null>(null);
   const [canGenerateApiKey, setCanGenerateApiKey] = useState(false);
@@ -96,12 +105,12 @@ export default function SettingsPage() {
         if (cancelled) return;
 
         setRetention(retentionDaysToValue(settings.retention_days));
-        setStorePromptsResponses(settings.store_prompts_responses);
-        setCompressOldRuns(settings.compress_old_runs);
-        setCleanupMode(settings.cleanup_mode);
-        setRedactSensitiveData(settings.redact_sensitive_data);
-        setRequireAuthentication(settings.require_authentication);
-        syncRequireAuthenticationCookie(settings.require_authentication);
+        setStorePromptsResponses(asBoolean(settings.store_prompts_responses, true));
+        setCompressOldRuns(asBoolean(settings.compress_old_runs, false));
+        setCleanupMode(asCleanupMode(settings.cleanup_mode, "soft_delete"));
+        setRedactSensitiveData(asBoolean(settings.redact_sensitive_data, false));
+        setRequireAuthentication(asBoolean(settings.require_authentication, true));
+        syncRequireAuthenticationCookie(asBoolean(settings.require_authentication, true));
       } catch {
         if (cancelled) return;
         setApiKeyError("Failed to load API key permissions.");
@@ -164,12 +173,12 @@ export default function SettingsPage() {
     try {
       const updated = await updateProjectStorageSettings(defaultProjectId, payload);
       setRetention(retentionDaysToValue(updated.retention_days));
-      setStorePromptsResponses(updated.store_prompts_responses);
-      setCompressOldRuns(updated.compress_old_runs);
-      setCleanupMode(updated.cleanup_mode);
-      setRedactSensitiveData(updated.redact_sensitive_data);
-      setRequireAuthentication(updated.require_authentication);
-      syncRequireAuthenticationCookie(updated.require_authentication);
+      setStorePromptsResponses(asBoolean(updated.store_prompts_responses, true));
+      setCompressOldRuns(asBoolean(updated.compress_old_runs, false));
+      setCleanupMode(asCleanupMode(updated.cleanup_mode, "soft_delete"));
+      setRedactSensitiveData(asBoolean(updated.redact_sensitive_data, false));
+      setRequireAuthentication(asBoolean(updated.require_authentication, true));
+      syncRequireAuthenticationCookie(asBoolean(updated.require_authentication, true));
       setStorageMessage("Storage settings saved.");
     } catch (error) {
       setStorageError(getApiErrorMessage(error, "Failed to save storage settings."));
@@ -197,12 +206,12 @@ export default function SettingsPage() {
     try {
       const updated = await updateProjectStorageSettings(defaultProjectId, payload);
       setRetention(retentionDaysToValue(updated.retention_days));
-      setStorePromptsResponses(updated.store_prompts_responses);
-      setCompressOldRuns(updated.compress_old_runs);
-      setCleanupMode(updated.cleanup_mode);
-      setRedactSensitiveData(updated.redact_sensitive_data);
-      setRequireAuthentication(updated.require_authentication);
-      syncRequireAuthenticationCookie(updated.require_authentication);
+      setStorePromptsResponses(asBoolean(updated.store_prompts_responses, true));
+      setCompressOldRuns(asBoolean(updated.compress_old_runs, false));
+      setCleanupMode(asCleanupMode(updated.cleanup_mode, "soft_delete"));
+      setRedactSensitiveData(asBoolean(updated.redact_sensitive_data, false));
+      setRequireAuthentication(asBoolean(updated.require_authentication, true));
+      syncRequireAuthenticationCookie(asBoolean(updated.require_authentication, true));
 
       const result = await applyProjectRetention(defaultProjectId);
       setLastApplyResult(result);
@@ -351,7 +360,7 @@ export default function SettingsPage() {
                   <p className="text-sm text-gray-600">When disabled, prompt/response payloads are redacted on ingest.</p>
                 </div>
                 <input
-                  checked={storePromptsResponses}
+                  checked={Boolean(storePromptsResponses)}
                   onChange={(event) => setStorePromptsResponses(event.target.checked)}
                   type="checkbox"
                   className="h-4 w-4"
@@ -365,7 +374,7 @@ export default function SettingsPage() {
                   <p className="text-sm text-gray-600">Reserved for future optimization workflows.</p>
                 </div>
                 <input
-                  checked={compressOldRuns}
+                  checked={Boolean(compressOldRuns)}
                   onChange={(event) => setCompressOldRuns(event.target.checked)}
                   type="checkbox"
                   className="h-4 w-4"
@@ -423,7 +432,7 @@ export default function SettingsPage() {
                   <p className="text-sm text-gray-600">Automatically redact PII in logs</p>
                 </div>
                 <input
-                  checked={redactSensitiveData}
+                  checked={Boolean(redactSensitiveData)}
                   onChange={(event) => setRedactSensitiveData(event.target.checked)}
                   type="checkbox"
                   className="h-4 w-4"
@@ -436,7 +445,7 @@ export default function SettingsPage() {
                   <p className="text-sm text-gray-600">Enforce login for all users</p>
                 </div>
                 <input
-                  checked={requireAuthentication}
+                  checked={Boolean(requireAuthentication)}
                   onChange={(event) => setRequireAuthentication(event.target.checked)}
                   type="checkbox"
                   className="h-4 w-4"
