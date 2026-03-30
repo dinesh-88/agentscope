@@ -31,6 +31,13 @@ type TimelineStep = {
   stackTrace?: string;
 };
 
+type TimelineLogEntry = {
+  id: string;
+  level: "error" | "warning" | "info";
+  source: string;
+  message: string;
+};
+
 type RunTimelineViewProps = {
   spans: Span[];
 };
@@ -99,6 +106,91 @@ function pickObjectFromObjects(objects: Array<Record<string, unknown> | undefine
     }
   }
   return undefined;
+}
+
+function truncateText(value: string, max = 320) {
+  if (value.length <= max) return value;
+  return `${value.slice(0, max - 3)}...`;
+}
+
+function toLogText(value: unknown): string | null {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    const object = value as Record<string, unknown>;
+    const fromMessage = toStringValue(object.message) ?? toStringValue(object.error) ?? toStringValue(object.detail);
+    if (fromMessage) return fromMessage;
+    try {
+      return JSON.stringify(object);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function extractLogsFromMetadata(metadata?: Record<string, unknown>): string[] {
+  if (!metadata) return [];
+  const keys = ["log", "logs", "message", "messages", "event", "events", "stderr", "stdout"];
+  const entries: string[] = [];
+
+  for (const key of keys) {
+    const raw = metadata[key];
+    if (raw === undefined || raw === null) continue;
+
+    if (Array.isArray(raw)) {
+      for (const item of raw) {
+        const text = toLogText(item);
+        if (text) entries.push(text);
+      }
+      continue;
+    }
+
+    const text = toLogText(raw);
+    if (text) entries.push(text);
+  }
+
+  const deduped = Array.from(new Set(entries.map((entry) => entry.trim()).filter(Boolean)));
+  return deduped.slice(0, 8);
+}
+
+function buildStepLogs(step: TimelineStep): TimelineLogEntry[] {
+  const items: TimelineLogEntry[] = [];
+  const seen = new Set<string>();
+
+  const push = (level: TimelineLogEntry["level"], source: string, message?: string) => {
+    if (!message) return;
+    const trimmed = message.trim();
+    if (!trimmed) return;
+    const key = `${level}|${source}|${trimmed}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    items.push({
+      id: `${step.stepKey}-${items.length + 1}`,
+      level,
+      source,
+      message: truncateText(trimmed),
+    });
+  };
+
+  push("info", "status", `${step.status.toUpperCase()} (${Math.round(step.end - step.start)}ms)`);
+  push("error", "error", step.error);
+  push("error", "details", step.errorDetails);
+  push("error", "stack", step.stackTrace);
+  push("warning", "warning", step.warning);
+  push("info", "response", step.response);
+
+  for (const metadataLog of extractLogsFromMetadata(step.metadata)) {
+    const level = /error|fail|exception/i.test(metadataLog) ? "error" : /warn/i.test(metadataLog) ? "warning" : "info";
+    push(level, "metadata", metadataLog);
+  }
+
+  return items;
 }
 
 function buildDepthResolver(spans: Span[]) {
@@ -192,11 +284,13 @@ export function RunTimelineView({ spans }: RunTimelineViewProps) {
   const tickStep = chooseTickStep(timeScale);
   const timeTicks = Array.from({ length: Math.ceil(timeScale / tickStep) + 1 }, (_, i) => i * tickStep);
   const selectedStepData = selectedStep ? steps.find((s) => s.id === selectedStep) ?? null : null;
+  const selectedStepLogs = useMemo(() => (selectedStepData ? buildStepLogs(selectedStepData) : []), [selectedStepData]);
 
   return (
-    <div className="flex min-h-[640px] overflow-x-hidden rounded-lg border border-white/5 bg-gray-950">
-      <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-white/5 bg-gray-900/40 px-4 py-2.5">
+    <div className="space-y-3">
+      <div className="flex min-h-[640px] overflow-x-hidden rounded-lg border border-white/5 bg-gray-950">
+        <div className="flex min-w-0 flex-1 flex-col">
+          <div className="flex items-center justify-between border-b border-white/5 bg-gray-900/40 px-4 py-2.5">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-medium text-gray-300">Timeline</h2>
             <div className="text-xs text-gray-500">{maxTime.toFixed(1)}ms total</div>
@@ -219,8 +313,8 @@ export function RunTimelineView({ spans }: RunTimelineViewProps) {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col bg-gray-950">
-          <div className="flex-shrink-0 border-b border-white/5 bg-gray-950">
+          <div className="flex flex-1 flex-col bg-gray-950">
+            <div className="flex-shrink-0 border-b border-white/5 bg-gray-950">
             <div className="relative flex h-9">
               <div className="w-[220px] flex-shrink-0 border-r border-white/5" />
               <div className="relative min-w-0 flex-1 overflow-hidden">
@@ -238,57 +332,88 @@ export function RunTimelineView({ spans }: RunTimelineViewProps) {
             </div>
           </div>
 
-          <div className="flex-1">
-            <div className="relative">
-              {steps.map((step) => (
-                <WaterfallBar
-                  key={step.stepKey}
-                  step={step}
-                  maxTime={timeScale}
-                  tickStep={tickStep}
-                  zoom={zoom}
-                  isSelected={selectedStep === step.id}
-                  onClick={() => setSelectedStep(step.id)}
-                />
-              ))}
+            <div className="flex-1">
+              <div className="relative">
+                {steps.map((step) => (
+                  <WaterfallBar
+                    key={step.stepKey}
+                    step={step}
+                    maxTime={timeScale}
+                    tickStep={tickStep}
+                    zoom={zoom}
+                    isSelected={selectedStep === step.id}
+                    onClick={() => setSelectedStep(step.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 border-t border-white/5 bg-gray-900/40 px-4 py-2.5 text-xs">
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-sm bg-blue-500" />
+              <span className="text-gray-400">LLM Call</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-sm bg-amber-500" />
+              <span className="text-gray-400">Tool Call</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-sm bg-red-500" />
+              <span className="text-gray-400">Error</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="h-3 w-3 rounded-sm bg-purple-500" />
+              <span className="text-gray-400">Nested</span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 border-t border-white/5 bg-gray-900/40 px-4 py-2.5 text-xs">
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-blue-500" />
-            <span className="text-gray-400">LLM Call</span>
+        {selectedStepData ? (
+          <div className="flex w-[360px] flex-col border-l border-white/5 bg-gray-950">
+            <div className="flex items-center justify-between border-b border-white/5 bg-gray-900/40 px-4 py-3">
+              <h3 className="text-sm font-medium text-gray-300">Step Details</h3>
+              <button onClick={() => setSelectedStep(null)} className="rounded p-1 transition-colors hover:bg-gray-800">
+                <X className="h-4 w-4 text-gray-400" />
+              </button>
+            </div>
+            <div className="flex-1">
+              <DetailsPanel step={selectedStepData} />
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-amber-500" />
-            <span className="text-gray-400">Tool Call</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-red-500" />
-            <span className="text-gray-400">Error</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="h-3 w-3 rounded-sm bg-purple-500" />
-            <span className="text-gray-400">Nested</span>
-          </div>
-        </div>
+        ) : null}
       </div>
 
       {selectedStepData ? (
-        <div className="flex w-[360px] flex-col border-l border-white/5 bg-gray-950">
-          <div className="flex items-center justify-between border-b border-white/5 bg-gray-900/40 px-4 py-3">
-            <h3 className="text-sm font-medium text-gray-300">Step Details</h3>
-            <button onClick={() => setSelectedStep(null)} className="rounded p-1 transition-colors hover:bg-gray-800">
-              <X className="h-4 w-4 text-gray-400" />
-            </button>
-          </div>
-          <div className="flex-1">
-            <DetailsPanel step={selectedStepData} />
-          </div>
+        <div className="rounded-lg border border-white/5 bg-gray-950/70 px-4 py-3">
+          <div className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Related Logs</div>
+          {selectedStepLogs.length > 0 ? (
+            <div className="max-h-44 space-y-2 overflow-y-auto pr-1">
+              {selectedStepLogs.map((entry) => (
+                <div key={entry.id} className="rounded border border-white/5 bg-black/20 px-2.5 py-2">
+                  <div className="mb-1 flex items-center gap-2">
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-[10px] uppercase ${
+                        entry.level === "error"
+                          ? "bg-red-500/20 text-red-300"
+                          : entry.level === "warning"
+                            ? "bg-amber-500/20 text-amber-300"
+                            : "bg-blue-500/20 text-blue-300"
+                      }`}
+                    >
+                      {entry.level}
+                    </span>
+                    <span className="text-[10px] uppercase tracking-wide text-gray-500">{entry.source}</span>
+                  </div>
+                  <p className="text-xs text-gray-300">{entry.message}</p>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-gray-500">No related logs for this step.</p>
+          )}
         </div>
-      ) : null}
-    </div>
+        ) : null}
+      </div>
   );
 }
 

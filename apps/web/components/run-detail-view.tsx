@@ -92,7 +92,6 @@ export function RunDetailView({
   insights: RunInsight[];
   rootCause: RunRootCause | null;
 }) {
-  void rootCause;
   const orderedSpans = useMemo(
     () => [...spans].sort((a, b) => +new Date(a.started_at) - +new Date(b.started_at)),
     [spans],
@@ -116,6 +115,11 @@ export function RunDetailView({
         .slice(0, 2),
     [insights],
   );
+  const hasRca = Boolean(rootCause);
+  const rootCauseLabel = rootCause?.root_cause_type || "Unavailable";
+  const rootCauseConfidence = typeof rootCause?.confidence === "number" ? `${Math.round(rootCause.confidence * 100)}% confidence` : null;
+  const rootCauseMessage = rootCause?.message || "Run failed. Root cause not yet analyzed.";
+  const rootCauseFix = rootCause?.suggested_fix || null;
   const slowSpanCount = orderedSpans.filter((span) => spanDurationMs(span) >= 3_000).length;
   const avgSpanLatencyMs =
     orderedSpans.length > 0
@@ -191,40 +195,72 @@ export function RunDetailView({
       </div>
 
       <div className="space-y-6 px-6 py-6">
-        {insightCards.length > 0 ? (
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-            {insightCards.map((insight) => (
-              <div key={insight.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <div className="text-sm font-semibold text-gray-100">{insight.title || insight.insight_type || insight.type || "Insight"}</div>
-                  <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase text-gray-200">
-                    {insight.severity || "high"}
-                  </span>
-                </div>
-                <p className="mb-3 text-sm text-gray-300">{insight.reason || insight.message || "Run failed. Root cause not yet analyzed."}</p>
-                {insight.cause ? (
-                  <div className="mb-3">
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Cause</div>
-                    <p className="text-xs text-gray-300">{insight.cause}</p>
-                  </div>
-                ) : null}
-                {Array.isArray(insight.fix) && insight.fix.length > 0 ? (
-                  <div>
-                    <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Fix</div>
-                    <ul className="space-y-1">
-                      {insight.fix.map((item, index) => (
-                        <li key={`${insight.id}-fix-${index}`} className="flex items-start gap-2 text-xs text-gray-300">
-                          <span className="text-gray-500">•</span>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
+        <div className={`grid grid-cols-1 gap-3 ${hasRca ? "lg:grid-cols-2" : ""}`}>
+          {hasRca ? (
+            <div className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <div className="text-sm font-semibold text-gray-100">Root Cause Analysis</div>
+                {rootCauseConfidence ? (
+                  <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase text-gray-200">{rootCauseConfidence}</span>
                 ) : null}
               </div>
-            ))}
+              <p className="mb-2 text-sm font-medium text-gray-200">{rootCauseLabel}</p>
+              <p className="mb-3 text-sm text-gray-300">{rootCauseMessage}</p>
+              {rootCauseFix ? (
+                <div>
+                  <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Fix</div>
+                  <p className="text-xs text-gray-300">{rootCauseFix}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+
+          <div className="space-y-3">
+            {insightCards.length > 0 ? (
+              insightCards.map((insight) => (
+                <div key={insight.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-gray-100">{insight.title || insight.insight_type || insight.type || "Insight"}</div>
+                    <span className="rounded bg-white/10 px-2 py-0.5 text-[10px] font-medium uppercase text-gray-200">
+                      {insight.severity || "high"}
+                    </span>
+                  </div>
+                  <p className="mb-3 text-sm text-gray-300">{insight.reason || insight.message || "Run failed. Root cause not yet analyzed."}</p>
+                  {insight.cause ? (
+                    <div className="mb-3">
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Cause</div>
+                      <p className="text-xs text-gray-300">{insight.cause}</p>
+                    </div>
+                  ) : null}
+                  {Array.isArray(insight.fix) && insight.fix.length > 0 ? (
+                    <div>
+                      <div className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Fix</div>
+                      <ul className="space-y-1">
+                        {insight.fix.map((item, index) => (
+                          <li key={`${insight.id}-fix-${index}`} className="flex items-start gap-2 text-xs text-gray-300">
+                            <span className="text-gray-500">•</span>
+                            <span>{item}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                </div>
+              ))
+            ) : (
+              <div className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
+                <div className="mb-2 text-sm font-semibold text-gray-100">Insights</div>
+                <p className="mb-3 text-sm text-gray-300">Run failed. Root cause not yet analyzed.</p>
+                <button
+                  type="button"
+                  className="rounded border border-white/20 px-3 py-1.5 text-xs text-gray-300 transition-colors hover:bg-white/10"
+                >
+                  Generate insights
+                </button>
+              </div>
+            )}
           </div>
-        ) : null}
+        </div>
 
         <div className="border-b border-white/5">
           <div className="flex items-center gap-1">
