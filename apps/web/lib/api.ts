@@ -132,10 +132,13 @@ export type ArtifactSearchFilters = {
 export type RunInsight = {
   id: string;
   run_id: string;
+  type?: string;
   insight_type: string;
   severity: string;
+  confidence?: number;
   is_primary: boolean;
   title: string;
+  reason?: string;
   cause: string;
   impact: string;
   fix: string[];

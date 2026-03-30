@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CheckCircle2, Maximize2, Search, X, XCircle, ZoomIn, ZoomOut } from "lucide-react";
+import { Maximize2, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import { type Span } from "@/lib/api";
@@ -194,9 +194,9 @@ export function RunTimelineView({ spans }: RunTimelineViewProps) {
   const selectedStepData = selectedStep ? steps.find((s) => s.id === selectedStep) ?? null : null;
 
   return (
-    <div className="flex overflow-x-hidden rounded-lg border border-gray-800 bg-gray-950">
+    <div className="flex min-h-[640px] overflow-x-hidden rounded-lg border border-white/5 bg-gray-950">
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900/50 px-4 py-2.5">
+        <div className="flex items-center justify-between border-b border-white/5 bg-gray-900/40 px-4 py-2.5">
           <div className="flex items-center gap-3">
             <h2 className="text-sm font-medium text-gray-300">Timeline</h2>
             <div className="text-xs text-gray-500">{maxTime.toFixed(1)}ms total</div>
@@ -220,16 +220,16 @@ export function RunTimelineView({ spans }: RunTimelineViewProps) {
         </div>
 
         <div className="flex flex-1 flex-col bg-gray-950">
-          <div className="flex-shrink-0 border-b border-gray-800 bg-gray-950">
-            <div className="relative flex h-8">
-              <div className="w-[200px] flex-shrink-0 border-r border-gray-800" />
+          <div className="flex-shrink-0 border-b border-white/5 bg-gray-950">
+            <div className="relative flex h-9">
+              <div className="w-[220px] flex-shrink-0 border-r border-white/5" />
               <div className="relative min-w-0 flex-1 overflow-hidden">
                 <div className="flex h-full">
                   {timeTicks.map((time) => (
                     <div key={time} className="relative flex-1" style={{ minWidth: `${((tickStep / timeScale) * 100) * zoom}%` }}>
                       <div className="absolute left-0 top-0 flex h-full flex-col">
-                        <span className="text-[10px] font-medium text-gray-500">{time}ms</span>
-                        <div className="mt-1 w-px flex-1 bg-gray-800" />
+                        <span className="text-[10px] font-medium text-gray-500/80">{time}ms</span>
+                        <div className="mt-1 w-px flex-1 bg-white/10" />
                       </div>
                     </div>
                   ))}
@@ -255,7 +255,7 @@ export function RunTimelineView({ spans }: RunTimelineViewProps) {
           </div>
         </div>
 
-        <div className="flex items-center gap-4 border-t border-gray-800 bg-gray-900/50 px-4 py-2.5 text-xs">
+        <div className="flex items-center gap-4 border-t border-white/5 bg-gray-900/40 px-4 py-2.5 text-xs">
           <div className="flex items-center gap-1.5">
             <div className="h-3 w-3 rounded-sm bg-blue-500" />
             <span className="text-gray-400">LLM Call</span>
@@ -276,8 +276,8 @@ export function RunTimelineView({ spans }: RunTimelineViewProps) {
       </div>
 
       {selectedStepData ? (
-        <div className="flex w-96 flex-col border-l border-gray-800 bg-gray-950">
-          <div className="flex items-center justify-between border-b border-gray-800 bg-gray-900/50 px-4 py-2.5">
+        <div className="flex w-[360px] flex-col border-l border-white/5 bg-gray-950">
+          <div className="flex items-center justify-between border-b border-white/5 bg-gray-900/40 px-4 py-3">
             <h3 className="text-sm font-medium text-gray-300">Step Details</h3>
             <button onClick={() => setSelectedStep(null)} className="rounded p-1 transition-colors hover:bg-gray-800">
               <X className="h-4 w-4 text-gray-400" />
@@ -319,24 +319,24 @@ function WaterfallBar({
   const config = typeColors[step.type];
   const barColor =
     step.status === "error"
-      ? "bg-red-500 border-red-400"
+      ? "bg-red-400 border-red-300 shadow-[0_0_0_1px_rgba(248,113,113,0.4)]"
       : step.depth > 0
         ? "bg-purple-500 border-purple-400"
         : `${config.bg} ${config.border}`;
 
   return (
     <div
-      className={`relative flex h-7 cursor-pointer border-b border-gray-900 transition-all ${isSelected ? "bg-blue-500/10" : "hover:bg-gray-900/50"}`}
+      className={`relative flex h-8 cursor-pointer border-b border-white/5 transition-all ${isSelected ? "bg-blue-500/10" : "hover:bg-white/[0.03]"}`}
       onClick={onClick}
     >
-      <div className="flex w-[200px] flex-shrink-0 items-center border-r border-gray-800 px-3" style={{ paddingLeft: `${12 + indentPx}px` }}>
+      <div className="flex w-[220px] flex-shrink-0 items-center border-r border-white/5 px-3" style={{ paddingLeft: `${12 + indentPx}px` }}>
         <span className="truncate text-[11px] text-gray-300">{step.name}</span>
       </div>
 
       <div className="relative min-w-0 flex-1 overflow-hidden">
         <div className="absolute inset-0 flex">
           {Array.from({ length: Math.ceil(maxTime / tickStep) + 1 }, (_, i) => (
-            <div key={i} className="border-r border-gray-900/50" style={{ width: `${((tickStep / maxTime) * 100) * zoom}%` }} />
+            <div key={i} className="border-r border-white/10" style={{ width: `${((tickStep / maxTime) * 100) * zoom}%` }} />
           ))}
         </div>
         <div
@@ -358,143 +358,49 @@ function WaterfallBar({
 
 function DetailsPanel({ step }: { step: TimelineStep }) {
   const duration = step.end - step.start;
+  const statusLabel =
+    step.status === "error"
+      ? `❌ ${step.error ?? step.status}`
+      : step.status === "warning"
+        ? `⚠ ${step.warning ?? step.status}`
+        : `✓ ${step.status}`;
+  const sourceLabel = step.type === "tool" ? "tool" : "system";
 
   return (
     <div className="space-y-4 p-4">
       <div>
-        <div className="mb-2 flex items-center gap-2">
-          <div className={`h-3 w-3 rounded-full ${step.type === "llm" ? "bg-blue-500" : "bg-amber-500"}`} />
-          <h4 className="text-base font-semibold text-white">{step.name}</h4>
-        </div>
-        <div className="text-xs uppercase tracking-wide text-gray-400">
-          {step.type} {step.depth > 0 ? "• Nested Call" : ""}
-        </div>
+        <h4 className="text-base font-semibold text-white">{step.name}</h4>
       </div>
 
-      {step.status === "error" ? (
-        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3">
-          <div className="flex items-start gap-2 text-red-400">
-            <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-              <div className="flex-1">
-              <div className="mb-1 font-medium">{step.error ?? step.status.toUpperCase()}</div>
-              {step.errorDetails ? <div className="text-xs text-red-400/80">{step.errorDetails}</div> : null}
-              {step.stackTrace ? (
-                <div className="mt-2 rounded bg-black/20 p-2 font-mono text-xs text-red-400/60">{step.stackTrace}</div>
-              ) : null}
-            </div>
-          </div>
+      <div className="space-y-2 border-t border-white/5 pt-3 text-sm">
+        <div className="flex justify-between">
+          <span className="text-gray-400">Status</span>
+          <span className="text-gray-200">
+            {statusLabel} <span className="text-gray-500">({sourceLabel})</span>
+          </span>
         </div>
-      ) : null}
-
-      {step.status === "warning" ? (
-        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-          <div className="flex items-start gap-2 text-amber-400">
-            <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-            <div className="text-sm">{step.warning ?? step.status.toUpperCase()}</div>
-          </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Duration</span>
+          <span className="font-mono text-gray-200">{Math.round(duration)} ms</span>
         </div>
-      ) : null}
-
-      {step.status === "success" ? (
-        <div className="flex items-center gap-2 text-sm text-green-400">
-          <CheckCircle2 className="h-4 w-4" />
-          <span>Completed Successfully</span>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Tokens</span>
+          <span className="font-mono text-gray-200">{step.tokens.total.toLocaleString()}</span>
         </div>
-      ) : null}
-
-      <div className="space-y-2">
-        <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Timing</div>
-        <div className="space-y-1.5 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Duration:</span>
-            <span className="font-mono text-white">{duration.toFixed(2)}ms</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">Start:</span>
-            <span className="font-mono text-white">{step.start.toFixed(2)}ms</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-gray-400">End:</span>
-            <span className="font-mono text-white">{step.end.toFixed(2)}ms</span>
-          </div>
+        <div className="flex justify-between">
+          <span className="text-gray-400">Cost</span>
+          <span className="font-mono text-gray-200">${step.cost.toFixed(4)}</span>
         </div>
       </div>
-
-      {step.type === "llm" ? (
-        <>
-          <div className="space-y-2">
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Tokens</div>
-            <div className="space-y-1.5 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Input:</span>
-                <span className="font-mono text-white">{step.tokens.input}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Output:</span>
-                <span className="font-mono text-white">{step.tokens.output}</span>
-              </div>
-              <div className="flex justify-between font-medium">
-                <span className="text-gray-400">Total:</span>
-                <span className="font-mono text-white">{step.tokens.total}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Cost</div>
-            <div className="font-mono text-lg font-semibold text-white">${step.cost.toFixed(4)}</div>
-          </div>
-
-          {step.model ? (
-            <div className="space-y-2">
-              <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Model</div>
-              <div className="text-sm text-white">{step.model}</div>
-            </div>
-          ) : null}
-        </>
-      ) : null}
-
-      {step.params ? (
-        <div className="space-y-2">
-          <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Parameters</div>
-          <pre className="overflow-x-auto rounded bg-black/30 p-3 font-mono text-xs text-gray-300">{JSON.stringify(step.params, null, 2)}</pre>
-        </div>
-      ) : null}
-
-      {step.result ? (
-        <div className="space-y-2">
-          <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Result</div>
-          <pre className="overflow-x-auto rounded bg-black/30 p-3 font-mono text-xs text-gray-300">{JSON.stringify(step.result, null, 2)}</pre>
-        </div>
-      ) : null}
 
       {step.prompt ? (
-        <div className="space-y-2">
-          <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Prompt</div>
-          <div className="rounded bg-black/30 p-3 text-sm text-gray-300">{step.prompt}</div>
-        </div>
+        <details className="border-t border-white/5 pt-3">
+          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-400">Prompt</summary>
+          <div className="mt-2 rounded bg-black/30 p-3 text-sm text-gray-300">{step.prompt}</div>
+        </details>
       ) : null}
 
-      {step.response ? (
-        <div className="space-y-2">
-          <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Response</div>
-          <div className="rounded bg-black/30 p-3 text-sm text-gray-300">{step.response}</div>
-        </div>
-      ) : null}
-
-      {step.metadata ? (
-        <div className="space-y-2">
-          <div className="text-xs font-medium uppercase tracking-wide text-gray-400">Metadata</div>
-          <div className="space-y-1.5 text-sm">
-            {Object.entries(step.metadata).map(([key, value]) => (
-              <div key={key} className="flex justify-between">
-                <span className="text-gray-400">{key}:</span>
-                <span className="font-mono text-white">{String(value)}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {step.errorDetails ? <p className="border-t border-white/5 pt-3 text-xs text-gray-400">{step.errorDetails}</p> : null}
     </div>
   );
 }
