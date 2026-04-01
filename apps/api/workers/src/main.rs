@@ -1,11 +1,15 @@
 mod alert_monitor;
 mod finalize_run;
+mod llm_client;
+mod pipeline;
 mod prompt_analyzer;
 mod rca_analyzer;
+mod scoring;
 mod usage_aggregator;
 
 use agentscope_common::config::{init_tracing, Config};
 use agentscope_storage::Storage;
+use chrono::Utc;
 use tokio::time::{self, Duration};
 use tracing::info;
 
@@ -34,6 +38,19 @@ async fn main() {
     let analyze_root_causes = std::env::var("ANALYZE_ROOT_CAUSES").ok().as_deref() == Some("true");
     let aggregate_usage = std::env::var("AGGREGATE_USAGE").ok().as_deref() == Some("true");
     let evaluate_alerts = std::env::var("EVALUATE_ALERTS").ok().as_deref() == Some("true");
+    let run_issue_pipeline_once =
+        std::env::var("RUN_ISSUE_PIPELINE").ok().as_deref() == Some("true");
+    let issue_pipeline_top_n = std::env::var("ISSUE_PIPELINE_TOP_N")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(15);
+    let issue_pipeline_date = std::env::var("ISSUE_PIPELINE_DATE")
+        .ok()
+        .and_then(|value| chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d").ok());
+    let issue_pipeline_interval_seconds = std::env::var("ISSUE_PIPELINE_INTERVAL_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0);
     let analysis_interval_seconds = std::env::var("ANALYSIS_POLL_INTERVAL_SECONDS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -61,6 +78,12 @@ async fn main() {
         alert_monitor::evaluate(&storage)
             .await
             .expect("failed to evaluate alerts");
+    }
+    if run_issue_pipeline_once {
+        let target_date = issue_pipeline_date.unwrap_or_else(|| Utc::now().date_naive());
+        pipeline::run_issue_pipeline(&storage, target_date, issue_pipeline_top_n)
+            .await
+            .expect("failed to run issue intelligence pipeline");
     }
 
     if let Some(interval_seconds) = analysis_interval_seconds {
@@ -112,8 +135,26 @@ async fn main() {
             }
         });
     }
+    if let Some(interval_seconds) = issue_pipeline_interval_seconds {
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            let mut ticker = time::interval(Duration::from_secs(interval_seconds));
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                let target_date = issue_pipeline_date.unwrap_or_else(|| Utc::now().date_naive());
+                pipeline::run_issue_pipeline(&storage_clone, target_date, issue_pipeline_top_n)
+                    .await
+                    .expect("failed to run recurring issue pipeline");
+            }
+        });
+    }
 
-    if analysis_interval_seconds.is_some() || aggregate_usage || evaluate_alerts {
+    if analysis_interval_seconds.is_some()
+        || aggregate_usage
+        || evaluate_alerts
+        || issue_pipeline_interval_seconds.is_some()
+    {
         loop {
             time::sleep(Duration::from_secs(3600)).await;
         }

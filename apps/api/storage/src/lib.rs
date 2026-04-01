@@ -3,6 +3,7 @@ pub mod analysis;
 pub mod artifacts;
 pub mod auth;
 pub mod insights;
+pub mod issue_rankings;
 pub mod limits;
 pub mod postgres;
 pub mod replays;

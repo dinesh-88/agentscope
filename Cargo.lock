@@ -87,6 +87,8 @@ dependencies = [
  "agentscope-storage",
  "agentscope-trace",
  "chrono",
+ "reqwest",
+ "serde",
  "serde_json",
  "sqlx",
  "tokio",

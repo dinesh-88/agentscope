@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Activity, AlertTriangle, DollarSign, Gauge, Timer, Wrench } from "lucide-react";
 
@@ -41,9 +42,91 @@ function normalizeStatus(status: string) {
   return status;
 }
 
+type IssueItem = {
+  issue_key: string;
+  category: string;
+  subcategory: string;
+  count: number;
+};
+
+function TopIssuesPanel({
+  issues,
+  onSelectIssue,
+}: {
+  issues: IssueItem[];
+  onSelectIssue: (issue: IssueItem) => void;
+}) {
+  return (
+    <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <AlertTriangle className="size-4 text-orange-300" />
+        <h2 className="text-base font-medium text-gray-100">Top Issues</h2>
+      </div>
+      {issues.length === 0 ? (
+        <p className="text-sm text-gray-400">No issue signals available.</p>
+      ) : (
+        <div className="space-y-2">
+          {issues.map((issue) => (
+            <button
+              key={issue.issue_key}
+              type="button"
+              onClick={() => onSelectIssue(issue)}
+              className="flex w-full items-center justify-between rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-left text-sm text-gray-200 hover:bg-white/[0.05]"
+            >
+              <span className="truncate">{issue.issue_key}</span>
+              <span className="ml-3 text-gray-300">{issue.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function IssueDetailPanel({
+  issue,
+  onClose,
+}: {
+  issue: IssueItem | null;
+  onClose: () => void;
+}) {
+  if (!issue) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-2xl rounded-xl border border-white/10 bg-[#101722] p-6 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Issue Detail</p>
+            <h3 className="mt-1 text-lg font-semibold text-gray-100">{issue.issue_key}</h3>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg border border-white/15 px-3 py-1.5 text-sm text-gray-200 hover:bg-white/[0.05]"
+          >
+            Close
+          </button>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+            <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Category</p>
+            <p className="mt-1 text-sm text-gray-100">{issue.category}</p>
+          </div>
+          <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+            <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Subcategory</p>
+            <p className="mt-1 text-sm text-gray-100">{issue.subcategory}</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: Record<string, Span[]> }) {
   const { theme } = useAppTheme();
   const dark = theme === "dark";
+  const [selectedIssue, setSelectedIssue] = useState<IssueItem | null>(null);
 
   const totalRuns = runs.length;
   const successfulRuns = runs.filter((run) => normalizeStatus(run.status) === "completed").length;
@@ -82,6 +165,20 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
   const slowestSpans = [...allSpans].sort((a, b) => spanDurationMs(b) - spanDurationMs(a)).slice(0, 6);
 
   const recentRuns = [...runs].sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at)).slice(0, 5);
+  const topIssues = useMemo<IssueItem[]>(
+    () =>
+      topFailureTypes.map(([failureType, count]) => {
+        const [category, ...rest] = failureType.split(":");
+        const subcategory = rest.join(":") || "unknown";
+        return {
+          issue_key: `${category}:${subcategory}`,
+          category: category || "unknown",
+          subcategory,
+          count,
+        };
+      }),
+    [topFailureTypes],
+  );
 
   const runHealthCards = [
     { title: "Total Runs", value: totalRuns.toLocaleString(), icon: Activity },
@@ -136,6 +233,8 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
           })}
         </div>
       </div>
+
+      <TopIssuesPanel issues={topIssues} onSelectIssue={(issue) => setSelectedIssue(issue)} />
 
       <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
         <div className="mb-4 flex items-center gap-2">
@@ -275,6 +374,8 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
           </div>
         </div>
       </div>
+
+      <IssueDetailPanel issue={selectedIssue} onClose={() => setSelectedIssue(null)} />
     </div>
   );
 }
