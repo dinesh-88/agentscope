@@ -4,7 +4,7 @@ import type { NextRequest } from "next/server";
 const UI_SESSION_COOKIE_NAME = process.env.NEXT_PUBLIC_UI_SESSION_COOKIE_NAME ?? "agentscope_session";
 const REQUIRE_AUTH_COOKIE_NAME = process.env.NEXT_PUBLIC_REQUIRE_AUTH_COOKIE_NAME ?? "agentscope_require_auth";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const token = request.cookies.get(UI_SESSION_COOKIE_NAME)?.value;
   const requireAuthentication = request.cookies.get(REQUIRE_AUTH_COOKIE_NAME)?.value === "true";
