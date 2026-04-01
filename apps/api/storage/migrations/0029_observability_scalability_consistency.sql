@@ -330,13 +330,13 @@ ALTER TABLE failure_events
 ADD COLUMN IF NOT EXISTS failure_hash UUID;
 
 UPDATE failure_events
-SET failure_hash = uuid_in(
+SET failure_hash = (
     substr(md5(failure_category_id::text), 1, 8) || '-' ||
     substr(md5(failure_category_id::text), 9, 4) || '-' ||
     substr(md5(failure_category_id::text), 13, 4) || '-' ||
     substr(md5(failure_category_id::text), 17, 4) || '-' ||
     substr(md5(failure_category_id::text), 21, 12)
-)
+)::uuid
 WHERE failure_hash IS NULL;
 
 ALTER TABLE failure_events
@@ -354,13 +354,15 @@ END $$;
 
 -- Map legacy/free-form statuses into canonical enum values.
 UPDATE runs
-SET status = CASE
-    WHEN lower(trim(status::text)) IN ('success', 'succeeded', 'ok', 'completed', 'complete') THEN 'success'
-    WHEN lower(trim(status::text)) IN ('failed', 'failure') THEN 'failed'
-    WHEN lower(trim(status::text)) IN ('error', 'errored') THEN 'error'
-    WHEN lower(trim(status::text)) IN ('partial', 'partially_successful', 'partial_success') THEN 'partial'
-    ELSE 'partial'
-END
+SET status = (
+    CASE
+        WHEN lower(trim(status::text)) IN ('success', 'succeeded', 'ok', 'completed', 'complete') THEN 'success'
+        WHEN lower(trim(status::text)) IN ('failed', 'failure') THEN 'failed'
+        WHEN lower(trim(status::text)) IN ('error', 'errored') THEN 'error'
+        WHEN lower(trim(status::text)) IN ('partial', 'partially_successful', 'partial_success') THEN 'partial'
+        ELSE 'partial'
+    END
+)::run_status_enum
 WHERE status::text NOT IN ('success', 'failed', 'error', 'partial');
 
 DO $$
@@ -661,16 +663,26 @@ ALTER COLUMN version_id SET NOT NULL,
 ALTER COLUMN failure_category_id SET NOT NULL;
 
 -- Consolidate potential duplicate rows before adding the new composite PK.
-CREATE TEMP TABLE _failure_metrics_daily_dedup AS
-SELECT
-    min(id) AS id,
-    min(project_id) AS project_id,
+CREATE TEMP TABLE _failure_metrics_daily_repr AS
+SELECT DISTINCT ON (date, version_id, failure_category_id)
+    id,
+    project_id,
     version_id,
     date,
     failure_category_id,
-    min(category) AS category,
-    min(subcategory) AS subcategory,
-    min(failure_key) AS failure_key,
+    category,
+    subcategory,
+    failure_key,
+    created_at,
+    updated_at
+FROM failure_metrics_daily
+ORDER BY date, version_id, failure_category_id, created_at ASC, id ASC;
+
+CREATE TEMP TABLE _failure_metrics_daily_metrics AS
+SELECT
+    version_id,
+    date,
+    failure_category_id,
     sum(event_count) AS event_count,
     sum(affected_run_count) AS affected_run_count,
     sum(failed_run_cost_usd) AS failed_run_cost_usd,
@@ -705,22 +717,26 @@ INSERT INTO failure_metrics_daily (
     updated_at
 )
 SELECT
-    id,
-    project_id,
-    version_id,
-    date,
-    failure_category_id,
-    category,
-    subcategory,
-    failure_key,
-    event_count,
-    affected_run_count,
-    failed_run_cost_usd,
-    total_tokens,
-    avg_failed_run_cost_usd,
-    created_at,
-    updated_at
-FROM _failure_metrics_daily_dedup;
+    r.id,
+    r.project_id,
+    m.version_id,
+    m.date,
+    m.failure_category_id,
+    r.category,
+    r.subcategory,
+    r.failure_key,
+    m.event_count,
+    m.affected_run_count,
+    m.failed_run_cost_usd,
+    m.total_tokens,
+    m.avg_failed_run_cost_usd,
+    m.created_at,
+    m.updated_at
+FROM _failure_metrics_daily_repr r
+JOIN _failure_metrics_daily_metrics m
+  ON r.date = m.date
+ AND r.version_id = m.version_id
+ AND r.failure_category_id = m.failure_category_id;
 
 DO $$
 BEGIN
@@ -778,7 +794,16 @@ END $$;
 -- 11.2 Foreign key indexes (performance for common joins).
 CREATE INDEX IF NOT EXISTS idx_spans_run_id ON spans(run_id);
 CREATE INDEX IF NOT EXISTS idx_failure_events_run_id ON failure_events(run_id);
-CREATE INDEX IF NOT EXISTS idx_insights_run_id ON insights(run_id);
+DO $$
+BEGIN
+    -- Backward compatibility:
+    -- use run_insights when legacy "insights" table does not exist.
+    IF to_regclass('public.insights') IS NOT NULL THEN
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_insights_run_id ON insights(run_id)';
+    ELSIF to_regclass('public.run_insights') IS NOT NULL THEN
+        EXECUTE 'CREATE INDEX IF NOT EXISTS idx_run_insights_run_id_obs ON run_insights(run_id)';
+    END IF;
+END $$;
 
 -- 11.3 failure_events run-time composite index.
 CREATE INDEX IF NOT EXISTS idx_failure_events_run_time
