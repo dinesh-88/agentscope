@@ -13,6 +13,59 @@ CREATE TABLE IF NOT EXISTS versions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Bootstrap required columns on runs early so downstream partition prep can reference them.
+ALTER TABLE runs
+ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ,
+ADD COLUMN IF NOT EXISTS version_id UUID NULL REFERENCES versions(id) ON DELETE SET NULL;
+
+UPDATE runs
+SET created_at = COALESCE(created_at, started_at, now())
+WHERE created_at IS NULL;
+
+ALTER TABLE runs
+ALTER COLUMN created_at SET NOT NULL,
+ALTER COLUMN created_at SET DEFAULT now();
+
+-- Bootstrap failure_events for clean installations where it does not yet exist.
+CREATE TABLE IF NOT EXISTS failure_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    run_id UUID NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+    span_id UUID NULL REFERENCES spans(id) ON DELETE SET NULL,
+    version_id UUID NULL REFERENCES versions(id) ON DELETE SET NULL,
+    category TEXT NOT NULL DEFAULT 'unknown',
+    subcategory TEXT NOT NULL DEFAULT 'unknown',
+    severity TEXT NULL,
+    message TEXT NULL,
+    metadata JSONB NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Bootstrap issue_rankings for clean installations before ALTER/INDEX statements below.
+CREATE TABLE IF NOT EXISTS issue_rankings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    version_id UUID NULL REFERENCES versions(id) ON DELETE SET NULL,
+    issue_key TEXT NOT NULL,
+    category TEXT NOT NULL,
+    subcategory TEXT NOT NULL,
+    severity TEXT NOT NULL,
+    frequency_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    cost_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    severity_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    priority_score DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    event_count_30d BIGINT NOT NULL DEFAULT 0,
+    affected_run_count_30d BIGINT NOT NULL DEFAULT 0,
+    failed_cost_usd_30d DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    rank_position INTEGER NOT NULL DEFAULT 1,
+    first_seen_at TIMESTAMPTZ NULL,
+    last_seen_at TIMESTAMPTZ NULL,
+    date DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (length(trim(issue_key)) > 0),
+    CHECK (priority_score >= 0.0)
+);
+
 -- -----------------------------------------------------------------------------
 -- 1) Merge duplicate aggregation tables into one canonical table:
 --    failure_metrics_daily
