@@ -9,6 +9,7 @@ RUN apt-get update \
 
 COPY Cargo.toml Cargo.lock ./
 COPY apps/api ./apps/api
+COPY apps/backend ./apps/backend
 COPY apps/llm-proxy ./apps/llm-proxy
 COPY examples ./examples
 

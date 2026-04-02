@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "apps/llm-proxy",
-    "apps/api/api",
+    "apps/backend/api",
     "apps/api/trace",
     "apps/api/storage",
     "apps/api/workers",
