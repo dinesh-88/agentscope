@@ -69,7 +69,7 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
 
   return (
     <AppShell activePath="/runs">
-      <RunsAutoRefresh intervalMs={5000} />
+      <RunsAutoRefresh />
       <div className="p-8">
         <div className="mb-8 flex items-start justify-between gap-4">
           <div>

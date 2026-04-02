@@ -58,6 +58,7 @@ pub struct AppState {
     pub storage: Storage,
     pub span_events: broadcast::Sender<events::SpanEvent>,
     pub run_events: events::RunEventHub,
+    pub run_list_events: broadcast::Sender<events::RunListEvent>,
     pub jwt: JwtSettings,
     pub billing_provider: billing::DynBillingProvider,
 }
@@ -154,6 +155,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         storage,
         span_events: events::span_event_channel(),
         run_events: events::RunEventHub::default(),
+        run_list_events: events::run_list_event_channel(),
         jwt,
         billing_provider,
     });
@@ -164,6 +166,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
 
     let ui_routes = Router::new()
         .route("/events/stream", get(events::stream))
+        .route("/runs/stream", get(events::runs_stream))
         .route("/runs/:id/stream", get(events::run_stream))
         .route("/runs", get(list_runs))
         .route("/runs/search", get(search_runs))
@@ -353,6 +356,10 @@ async fn ingest(
     }
 
     state.storage.update_run_metrics(&payload.run.id).await?;
+    events::publish_run_list_event(
+        &state.run_list_events,
+        events::RunListEvent::run_upsert(&payload.run),
+    );
     limits::increment_usage(&state, &payload.run.project_id, payload.run.total_tokens).await?;
 
     Ok(StatusCode::OK)

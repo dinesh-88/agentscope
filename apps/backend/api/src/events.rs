@@ -20,6 +20,7 @@ use crate::{auth::AuthenticatedUser, ApiError, AppState};
 
 const SPAN_EVENT_BUFFER_SIZE: usize = 1024;
 const RUN_EVENT_BUFFER_SIZE: usize = 4096;
+const RUN_LIST_EVENT_BUFFER_SIZE: usize = 2048;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct SpanEvent {
@@ -43,6 +44,34 @@ pub fn span_event_channel() -> broadcast::Sender<SpanEvent> {
 
 pub fn publish_span_created(sender: &broadcast::Sender<SpanEvent>, span: &Span) {
     let _ = sender.send(SpanEvent::span_created(span.clone()));
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunListEvent {
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub run_id: String,
+    pub project_id: String,
+    pub organization_id: Option<String>,
+}
+
+impl RunListEvent {
+    pub fn run_upsert(run: &Run) -> Self {
+        Self {
+            event_type: "run_upsert".to_string(),
+            run_id: run.id.clone(),
+            project_id: run.project_id.clone(),
+            organization_id: run.organization_id.clone(),
+        }
+    }
+}
+
+pub fn run_list_event_channel() -> broadcast::Sender<RunListEvent> {
+    broadcast::channel(RUN_LIST_EVENT_BUFFER_SIZE).0
+}
+
+pub fn publish_run_list_event(sender: &broadcast::Sender<RunListEvent>, event: RunListEvent) {
+    let _ = sender.send(event);
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,6 +171,14 @@ pub async fn run_stream(
     Ok(ws.on_upgrade(move |socket| stream_run_socket(socket, state, run_id)))
 }
 
+pub async fn runs_stream(
+    ws: WebSocketUpgrade,
+    State(state): State<Arc<AppState>>,
+    axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
+) -> Result<impl IntoResponse, ApiError> {
+    Ok(ws.on_upgrade(move |socket| stream_runs_socket(socket, state, user)))
+}
+
 async fn stream_run_socket(socket: WebSocket, state: Arc<AppState>, run_id: String) {
     let mut receiver = state.run_events.subscribe(&run_id).await;
     let initial_run = state.storage.get_run(&run_id).await.ok().flatten();
@@ -208,9 +245,70 @@ async fn stream_run_socket(socket: WebSocket, state: Arc<AppState>, run_id: Stri
     }
 }
 
+async fn stream_runs_socket(socket: WebSocket, state: Arc<AppState>, user: AuthenticatedUser) {
+    let mut receiver = state.run_list_events.subscribe();
+    let mut socket = socket;
+
+    let ready = RunListEvent {
+        event_type: "ready".to_string(),
+        run_id: String::new(),
+        project_id: String::new(),
+        organization_id: None,
+    };
+    if send_run_list_ws_event(&mut socket, &ready).await.is_err() {
+        return;
+    }
+
+    loop {
+        tokio::select! {
+            incoming = socket.recv() => {
+                match incoming {
+                    Some(Ok(Message::Close(_))) | None => break,
+                    Some(Ok(_)) => {}
+                    Some(Err(error)) => {
+                        debug!(error = %error, user_id = %user.id, "runs stream socket receive error");
+                        break;
+                    }
+                }
+            }
+            event = receiver.recv() => {
+                match event {
+                    Ok(message) => {
+                        if !user_can_receive_run_event(&user, &message) {
+                            continue;
+                        }
+                        if send_run_list_ws_event(&mut socket, &message).await.is_err() {
+                            break;
+                        }
+                    }
+                    Err(broadcast::error::RecvError::Lagged(skipped)) => {
+                        warn!(user_id = %user.id, skipped, "runs stream subscriber lagged behind");
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        }
+    }
+}
+
 async fn send_ws_event(socket: &mut WebSocket, event: &RunStreamEvent) -> Result<(), ()> {
     let payload = serde_json::to_string(event).map_err(|_| ())?;
     socket.send(Message::Text(payload)).await.map_err(|_| ())
+}
+
+async fn send_run_list_ws_event(socket: &mut WebSocket, event: &RunListEvent) -> Result<(), ()> {
+    let payload = serde_json::to_string(event).map_err(|_| ())?;
+    socket.send(Message::Text(payload)).await.map_err(|_| ())
+}
+
+fn user_can_receive_run_event(user: &AuthenticatedUser, event: &RunListEvent) -> bool {
+    let Some(organization_id) = event.organization_id.as_ref() else {
+        return true;
+    };
+
+    user.memberships
+        .iter()
+        .any(|membership| membership.organization_id == *organization_id)
 }
 
 pub fn log_from_artifact(artifact: &Artifact) -> Value {
