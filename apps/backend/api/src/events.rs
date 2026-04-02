@@ -13,7 +13,7 @@ use futures_util::stream;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::{broadcast, RwLock};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 use uuid::Uuid;
 
 use crate::{auth::AuthenticatedUser, ApiError, AppState};
@@ -176,6 +176,7 @@ pub async fn runs_stream(
     State(state): State<Arc<AppState>>,
     axum::extract::Extension(user): axum::extract::Extension<AuthenticatedUser>,
 ) -> Result<impl IntoResponse, ApiError> {
+    info!(user_id = %user.id, "runs stream websocket upgrade requested");
     Ok(ws.on_upgrade(move |socket| stream_runs_socket(socket, state, user)))
 }
 
@@ -246,6 +247,7 @@ async fn stream_run_socket(socket: WebSocket, state: Arc<AppState>, run_id: Stri
 }
 
 async fn stream_runs_socket(socket: WebSocket, state: Arc<AppState>, user: AuthenticatedUser) {
+    info!(user_id = %user.id, "runs stream websocket connected");
     let mut receiver = state.run_list_events.subscribe();
     let mut socket = socket;
 
@@ -256,6 +258,7 @@ async fn stream_runs_socket(socket: WebSocket, state: Arc<AppState>, user: Authe
         organization_id: None,
     };
     if send_run_list_ws_event(&mut socket, &ready).await.is_err() {
+        warn!(user_id = %user.id, "runs stream initial ready event send failed");
         return;
     }
 
@@ -275,9 +278,16 @@ async fn stream_runs_socket(socket: WebSocket, state: Arc<AppState>, user: Authe
                 match event {
                     Ok(message) => {
                         if !user_can_receive_run_event(&user, &message) {
+                            debug!(
+                                user_id = %user.id,
+                                organization_id = ?message.organization_id,
+                                run_id = %message.run_id,
+                                "runs stream event skipped for user"
+                            );
                             continue;
                         }
                         if send_run_list_ws_event(&mut socket, &message).await.is_err() {
+                            warn!(user_id = %user.id, run_id = %message.run_id, "runs stream event send failed");
                             break;
                         }
                     }
@@ -289,6 +299,8 @@ async fn stream_runs_socket(socket: WebSocket, state: Arc<AppState>, user: Authe
             }
         }
     }
+
+    info!(user_id = %user.id, "runs stream websocket disconnected");
 }
 
 async fn send_ws_event(socket: &mut WebSocket, event: &RunStreamEvent) -> Result<(), ()> {

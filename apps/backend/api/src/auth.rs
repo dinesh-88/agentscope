@@ -13,6 +13,7 @@ use axum::{
 use chrono::{Duration, Utc};
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::{ApiError, AppState};
@@ -474,28 +475,65 @@ pub async fn require_jwt(
     mut request: Request,
     next: Next,
 ) -> Result<Response, ApiError> {
-    let token = request
+    let path = request.uri().path().to_string();
+    let is_stream_request = path == "/v1/runs/stream"
+        || path.starts_with("/v1/runs/") && path.ends_with("/stream");
+
+    let auth_header_token = request
         .headers()
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
-        .map(|value| value.trim().to_string())
-        .or_else(|| {
-            query
-                .access_token
-                .as_deref()
-                .filter(|value| !value.is_empty())
-                .map(ToString::to_string)
-        })
-        .or_else(|| cookie_value(&request, &state.jwt.cookie_name))
-        .ok_or_else(|| ApiError::Unauthorized("missing session".to_string()))?;
+        .map(|value| value.trim().to_string());
+    let query_token = query
+        .access_token
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let cookie_token = cookie_value(&request, &state.jwt.cookie_name);
+
+    let token_source = if auth_header_token.is_some() {
+        Some("authorization")
+    } else if query_token.is_some() {
+        Some("query")
+    } else if cookie_token.is_some() {
+        Some("cookie")
+    } else {
+        None
+    };
+
+    let token = auth_header_token
+        .or(query_token)
+        .or(cookie_token)
+        .ok_or_else(|| {
+            if is_stream_request {
+                warn!(path = %path, "stream auth rejected: missing session token");
+            }
+            ApiError::Unauthorized("missing session".to_string())
+        })?;
+
+    if is_stream_request {
+        info!(
+            path = %path,
+            token_source = %token_source.unwrap_or("unknown"),
+            "stream auth token received"
+        );
+    }
 
     let session = state
         .storage
         .get_session(&token)
         .await?
-        .ok_or_else(|| ApiError::Unauthorized("invalid session".to_string()))?;
+        .ok_or_else(|| {
+            if is_stream_request {
+                warn!(path = %path, "stream auth rejected: invalid session token");
+            }
+            ApiError::Unauthorized("invalid session".to_string())
+        })?;
     let user = build_authenticated_user(&state, &session.user_id).await?;
+    if is_stream_request {
+        info!(path = %path, user_id = %user.id, "stream auth succeeded");
+    }
     request.extensions_mut().insert(user);
 
     Ok(next.run(request).await)
