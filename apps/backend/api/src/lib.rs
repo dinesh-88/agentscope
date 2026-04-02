@@ -313,7 +313,7 @@ async fn ingest(
     validate_payload(&payload)?;
     attach_project_context(&mut payload, &api_key);
     normalize_run(&mut payload.run);
-    normalize_spans(&mut payload.spans);
+    normalize_spans(&mut payload.spans, &payload.artifacts);
     sync_run_metrics_from_spans(&mut payload.run, &payload.spans);
     normalize_span_context(&mut payload.spans, &payload.artifacts);
     limits::check_rate_limit(&state, &payload.run.project_id).await?;
@@ -472,8 +472,35 @@ fn attach_project_context(payload: &mut IngestPayload, api_key: &ProjectApiKeyAu
     payload.run.organization_id = Some(api_key.organization_id.clone());
 }
 
-fn normalize_spans(spans: &mut [Span]) {
+fn normalize_spans(spans: &mut [Span], artifacts: &[Artifact]) {
+    let llm_usage_by_span = build_llm_usage_index(artifacts);
+
     for span in spans {
+        if let Some(usage) = llm_usage_by_span.get(&span.id) {
+            if span.model.is_none() {
+                span.model = usage.model.clone();
+            }
+            if span.provider.is_none() {
+                span.provider = usage.provider.clone();
+            }
+            if span.input_tokens.is_none() {
+                span.input_tokens = usage.input_tokens;
+            }
+            if span.output_tokens.is_none() {
+                span.output_tokens = usage.output_tokens;
+            }
+            if span.total_tokens.is_none() {
+                span.total_tokens = usage.total_tokens.or_else(|| {
+                    Some(usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0))
+                });
+            }
+            if span.estimated_cost.is_none() {
+                if let Some(explicit_cost) = usage.explicit_cost.filter(|value| *value > 0.0) {
+                    span.estimated_cost = Some(explicit_cost);
+                }
+            }
+        }
+
         if let Some(error) = span.error.take() {
             if span.error_type.is_none() {
                 span.error_type = error.error_type;
@@ -577,6 +604,142 @@ fn normalize_spans(spans: &mut [Span]) {
 
         span.evaluation = normalize_evaluation(span.evaluation.take());
     }
+}
+
+#[derive(Debug, Default, Clone)]
+struct LlmUsageSnapshot {
+    provider: Option<String>,
+    model: Option<String>,
+    input_tokens: Option<i64>,
+    output_tokens: Option<i64>,
+    total_tokens: Option<i64>,
+    explicit_cost: Option<f64>,
+}
+
+fn build_llm_usage_index(artifacts: &[Artifact]) -> HashMap<String, LlmUsageSnapshot> {
+    let mut by_span = HashMap::<String, LlmUsageSnapshot>::new();
+    for artifact in artifacts {
+        let Some(span_id) = artifact.span_id.as_ref() else {
+            continue;
+        };
+        if artifact.kind != "llm.response" && artifact.kind != "llm_payload" {
+            continue;
+        }
+
+        let entry = by_span.entry(span_id.clone()).or_default();
+        let payload = &artifact.payload;
+
+        if entry.provider.is_none() {
+            entry.provider = payload
+                .get("provider")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned);
+        }
+        if entry.model.is_none() {
+            entry.model = payload
+                .get("model")
+                .and_then(Value::as_str)
+                .map(ToOwned::to_owned);
+        }
+
+        if entry.input_tokens.is_none() {
+            entry.input_tokens = extract_i64(payload, &["input_tokens", "prompt_tokens"]).or_else(|| {
+                payload
+                    .get("usage")
+                    .and_then(|usage| extract_i64(usage, &["input_tokens", "prompt_tokens"]))
+            });
+        }
+
+        if entry.output_tokens.is_none() {
+            entry.output_tokens =
+                extract_i64(payload, &["output_tokens", "completion_tokens"]).or_else(|| {
+                    payload
+                        .get("usage")
+                        .and_then(|usage| extract_i64(usage, &["output_tokens", "completion_tokens"]))
+                });
+        }
+
+        if entry.total_tokens.is_none() {
+            entry.total_tokens = extract_i64(payload, &["total_tokens"]).or_else(|| {
+                payload
+                    .get("usage")
+                    .and_then(|usage| extract_i64(usage, &["total_tokens"]))
+            });
+        }
+
+        if entry.explicit_cost.is_none() {
+            entry.explicit_cost = extract_f64(
+                payload,
+                &["cost", "estimated_cost", "total_cost", "cost_usd", "total_cost_usd"],
+            )
+            .or_else(|| {
+                payload.get("usage").and_then(|usage| {
+                    extract_f64(
+                        usage,
+                        &["cost", "estimated_cost", "total_cost", "cost_usd", "total_cost_usd"],
+                    )
+                })
+            })
+            .or_else(|| {
+                payload.get("response").and_then(|response| {
+                    extract_f64(
+                        response,
+                        &["cost", "estimated_cost", "total_cost", "cost_usd", "total_cost_usd"],
+                    )
+                    .or_else(|| {
+                        response.get("usage").and_then(|usage| {
+                            extract_f64(
+                                usage,
+                                &[
+                                    "cost",
+                                    "estimated_cost",
+                                    "total_cost",
+                                    "cost_usd",
+                                    "total_cost_usd",
+                                ],
+                            )
+                        })
+                    })
+                })
+            });
+        }
+    }
+    by_span
+}
+
+fn extract_i64(value: &Value, keys: &[&str]) -> Option<i64> {
+    for key in keys {
+        if let Some(found) = value.get(*key) {
+            if let Some(number) = found.as_i64() {
+                return Some(number.max(0));
+            }
+            if let Some(number) = found.as_u64() {
+                return Some((number.min(i64::MAX as u64)) as i64);
+            }
+            if let Some(text) = found.as_str() {
+                if let Ok(parsed) = text.parse::<i64>() {
+                    return Some(parsed.max(0));
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_f64(value: &Value, keys: &[&str]) -> Option<f64> {
+    for key in keys {
+        if let Some(found) = value.get(*key) {
+            if let Some(number) = found.as_f64() {
+                return Some(number.max(0.0));
+            }
+            if let Some(text) = found.as_str() {
+                if let Ok(parsed) = text.parse::<f64>() {
+                    return Some(parsed.max(0.0));
+                }
+            }
+        }
+    }
+    None
 }
 
 #[derive(Clone)]

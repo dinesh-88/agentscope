@@ -83,6 +83,11 @@ fn build_ingest_payload(record: TelemetryRecord) -> IngestPayload {
         "model": record.request.model,
         "messages": record.request.messages,
         "response": record.response_text,
+        "usage": {
+            "input_tokens": record.usage.input_tokens,
+            "output_tokens": record.usage.output_tokens,
+            "total_tokens": record.usage.total_tokens,
+        },
         "latency_ms": record.latency_ms,
         "temperature": record.request.temperature,
         "tools": record.request.tools,

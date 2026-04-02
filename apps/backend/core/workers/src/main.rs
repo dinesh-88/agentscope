@@ -1,4 +1,5 @@
 mod alert_monitor;
+mod cost_backfill;
 mod finalize_run;
 mod issue_fix_detector;
 mod issue_regression_detector;
@@ -43,6 +44,10 @@ async fn main() {
     let evaluate_alerts = std::env::var("EVALUATE_ALERTS").ok().as_deref() == Some("true");
     let run_issue_pipeline_once =
         std::env::var("RUN_ISSUE_PIPELINE").ok().as_deref() == Some("true");
+    let run_cost_backfill_once = std::env::var("BACKFILL_LLM_COSTS")
+        .ok()
+        .as_deref()
+        == Some("true");
     let run_weekly_reports_once = std::env::var("RUN_WEEKLY_REPORTS")
         .ok()
         .as_deref()
@@ -61,6 +66,10 @@ async fn main() {
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
         .unwrap_or(15);
+    let cost_backfill_limit = std::env::var("BACKFILL_LLM_COSTS_LIMIT")
+        .ok()
+        .and_then(|value| value.parse::<i64>().ok())
+        .unwrap_or(5000);
     let issue_pipeline_date = std::env::var("ISSUE_PIPELINE_DATE")
         .ok()
         .and_then(|value| chrono::NaiveDate::parse_from_str(&value, "%Y-%m-%d").ok());
@@ -126,6 +135,15 @@ async fn main() {
                 .await
                 .expect("failed to run issue regression detector");
         }
+    }
+    if run_cost_backfill_once {
+        cost_backfill::backfill(&storage, cost_backfill_limit)
+            .await
+            .expect("failed to backfill llm costs");
+        storage
+            .aggregate_project_usage_daily()
+            .await
+            .expect("failed to aggregate usage after llm cost backfill");
     }
     if run_weekly_reports_once {
         weekly_report_generator::run_for_completed_week(&storage)
