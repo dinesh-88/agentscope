@@ -138,6 +138,7 @@ export type RunInsight = {
   confidence?: number;
   is_primary: boolean;
   title: string;
+  summary?: string;
   reason?: string;
   cause: string;
   impact: string;

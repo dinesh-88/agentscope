@@ -440,7 +440,7 @@ impl Storage {
                 organization_id::text AS organization_id,
                 workflow_name,
                 agent_name,
-                status,
+                status::text AS status,
                 started_at,
                 ended_at,
                 total_input_tokens,
@@ -472,7 +472,7 @@ impl Storage {
                 organization_id::text AS organization_id,
                 workflow_name,
                 agent_name,
-                status,
+                status::text AS status,
                 started_at,
                 ended_at,
                 total_input_tokens,
@@ -587,7 +587,7 @@ impl Storage {
                 runs.environment,
                 runs.workflow_name,
                 runs.agent_name,
-                runs.status,
+                runs.status::text AS status,
                 runs.started_at,
                 runs.ended_at,
                 runs.total_input_tokens,
@@ -614,7 +614,7 @@ impl Storage {
         query.push_bind(end);
 
         if let Some(status) = filters.status.as_deref().filter(|value| !value.is_empty()) {
-            query.push(" AND runs.status = ");
+            query.push(" AND runs.status::text = ");
             query.push_bind(status);
         }
         if let Some(agent_name) = filters

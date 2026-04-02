@@ -163,7 +163,7 @@ impl Storage {
                    environment,
                    workflow_name,
                    agent_name,
-                   status,
+                   status::text AS status,
                    started_at,
                    ended_at,
                    total_input_tokens,
@@ -207,7 +207,7 @@ impl Storage {
                    runs.environment,
                    runs.workflow_name,
                    runs.agent_name,
-                   runs.status,
+                   runs.status::text AS status,
                    runs.started_at,
                    runs.ended_at,
                    runs.total_input_tokens,
@@ -255,7 +255,7 @@ impl Storage {
                    environment,
                    workflow_name,
                    agent_name,
-                   status,
+                   status::text AS status,
                    started_at,
                    ended_at,
                    total_input_tokens,
@@ -303,7 +303,7 @@ impl Storage {
                    runs.environment,
                    runs.workflow_name,
                    runs.agent_name,
-                   runs.status,
+                   runs.status::text AS status,
                    runs.started_at,
                    runs.ended_at,
                    runs.total_input_tokens,
@@ -340,7 +340,7 @@ impl Storage {
         }
 
         if let Some(status) = filters.status.as_deref().filter(|value| !value.is_empty()) {
-            builder.push(" AND runs.status = ");
+            builder.push(" AND runs.status::text = ");
             builder.push_bind(status);
         }
 
@@ -443,7 +443,7 @@ impl Storage {
                    environment,
                    workflow_name,
                    agent_name,
-                   status,
+                   status::text AS status,
                    started_at,
                    ended_at,
                    total_input_tokens,
@@ -460,7 +460,7 @@ impl Storage {
                    variant,
                    metadata
             FROM runs
-            WHERE status = $1
+            WHERE status::text = $1
               AND deleted_at IS NULL
             ORDER BY started_at DESC
             "#,
