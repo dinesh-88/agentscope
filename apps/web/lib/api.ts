@@ -458,6 +458,42 @@ export type IssueImpact = {
 
 export type IssueImpactResponse = IssueImpact | "processing" | null;
 
+export type WeeklyReport = {
+  id: string;
+  project_id: string;
+  week_start: string;
+  week_end: string;
+  total_runs: number;
+  failure_rate_before: number;
+  failure_rate_after: number;
+  cost_before: number;
+  cost_after: number;
+  improvement_summary: string;
+  report_json: {
+    summary?: {
+      failure_change?: number;
+      cost_change?: number;
+      total_runs?: number;
+    };
+    top_fixed_issues?: Array<{
+      issue_key: string;
+      fixed_at: string;
+      auto_detected?: boolean;
+      detection_confidence?: number | null;
+    }>;
+    regressions?: Array<{
+      issue_key: string;
+      detected_at: string;
+      regression_severity?: number;
+    }>;
+    top_issues?: Array<{
+      issue_key: string;
+      priority_score?: number;
+    }>;
+  };
+  created_at: string;
+};
+
 export type RunReplay = {
   id: string;
   original_run_id: string;
@@ -667,6 +703,17 @@ export async function markIssueFixed(projectId: string, issueKey: string): Promi
 export async function getIssueImpact(projectId: string, issueKey: string): Promise<IssueImpactResponse> {
   try {
     return await request<IssueImpactResponse>(`/api/projects/${projectId}/issues/${encodeURIComponent(issueKey)}/impact`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+export async function getProjectWeeklyReport(projectId: string): Promise<WeeklyReport | null> {
+  try {
+    return await request<WeeklyReport>(`/api/projects/${projectId}/reports/weekly`);
   } catch (error) {
     if (isNotFound(error)) {
       return null;

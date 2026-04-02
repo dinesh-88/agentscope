@@ -1,18 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Activity, AlertTriangle, DollarSign, Gauge, Timer, Wrench } from "lucide-react";
+import { Activity, AlertTriangle, DollarSign, FileText, Gauge, Timer, TrendingDown, TrendingUp, Wrench } from "lucide-react";
 
 import { useAppTheme } from "@/components/app-shell";
 import {
   getIssueImpact,
   getProjectIssues,
+  getProjectWeeklyReport,
   markIssueFixed,
   type IssueImpact,
   type IssueIntelligence,
   type Run,
   type Span,
+  type WeeklyReport,
 } from "@/lib/api";
 
 function durationMs(run: Run) {
@@ -92,36 +94,6 @@ function classifyFailureType(span: Span): string {
   return "unknown_failure";
 }
 
-function issueFromFailureType(failureType: string, count: number): IssueItem {
-  const normalized = failureType.trim().toLowerCase();
-  if (normalized === "unknown" || normalized === "unknown_failure" || normalized === "") {
-    return {
-      issue_key: "uncategorized:runtime_failure",
-      category: "uncategorized",
-      subcategory: "runtime_failure",
-      count,
-    };
-  }
-
-  if (normalized.includes(":")) {
-    const [category, ...rest] = normalized.split(":");
-    const subcategory = rest.join(":") || "general";
-    return {
-      issue_key: `${category}:${subcategory}`,
-      category: category || "uncategorized",
-      subcategory,
-      count,
-    };
-  }
-
-  return {
-    issue_key: `${normalized}:general`,
-    category: normalized,
-    subcategory: "general",
-    count,
-  };
-}
-
 function TopIssuesPanel({
   issues,
   loading,
@@ -164,6 +136,171 @@ function TopIssuesPanel({
   );
 }
 
+function WeeklyReportPanel({
+  report,
+  loading,
+}: {
+  report: WeeklyReport | null;
+  loading: boolean;
+}) {
+  function formatPercent(value: number) {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+
+  function formatMoney(value: number) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+
+  if (loading) {
+    return (
+      <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <FileText className="size-4 text-indigo-300" />
+          <h2 className="text-base font-medium text-gray-100">Weekly Report</h2>
+        </div>
+        <div className="space-y-3">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={`weekly-report-loading-${idx}`} className="h-10 animate-pulse rounded-lg border border-white/10 bg-white/[0.04]" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!report) {
+    return (
+      <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
+        <div className="mb-4 flex items-center gap-2">
+          <FileText className="size-4 text-indigo-300" />
+          <h2 className="text-base font-medium text-gray-100">Weekly Report</h2>
+        </div>
+        <p className="text-sm text-gray-400">No weekly report available yet.</p>
+      </div>
+    );
+  }
+
+  const failureDelta = report.failure_rate_after - report.failure_rate_before;
+  const costDelta = report.cost_after - report.cost_before;
+  const failureImproved = failureDelta <= 0;
+  const costImproved = costDelta <= 0;
+  const topFixedIssues = report.report_json?.top_fixed_issues ?? [];
+  const regressions = report.report_json?.regressions ?? [];
+  const topIssues = report.report_json?.top_issues ?? [];
+
+  return (
+    <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
+      <div className="mb-4 flex items-center gap-2">
+        <FileText className="size-4 text-indigo-300" />
+        <h2 className="text-base font-medium text-gray-100">Weekly Report</h2>
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-gray-400">
+        <span>{report.week_start}</span>
+        <span>to</span>
+        <span>{report.week_end}</span>
+      </div>
+      <p className="mb-4 rounded-lg border border-white/10 bg-white/[0.02] p-3 text-sm text-gray-200">{report.improvement_summary}</p>
+
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Total Runs</p>
+          <p className="mt-1 text-lg font-semibold text-gray-100">{report.total_runs.toLocaleString()}</p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Failure Change</p>
+          <div className="mt-1 flex items-center gap-1">
+            {failureImproved ? (
+              <TrendingDown className="size-4 text-emerald-300" />
+            ) : (
+              <TrendingUp className="size-4 text-red-300" />
+            )}
+            <p className={`text-lg font-semibold ${failureImproved ? "text-emerald-300" : "text-red-300"}`}>
+              {formatPercent(failureDelta)}
+            </p>
+          </div>
+          <p className="mt-1 text-xs text-gray-400">
+            {formatPercent(report.failure_rate_before)} to {formatPercent(report.failure_rate_after)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Cost Change</p>
+          <div className="mt-1 flex items-center gap-1">
+            {costImproved ? (
+              <TrendingDown className="size-4 text-emerald-300" />
+            ) : (
+              <TrendingUp className="size-4 text-red-300" />
+            )}
+            <p className={`text-lg font-semibold ${costImproved ? "text-emerald-300" : "text-red-300"}`}>
+              {formatMoney(costDelta)}
+            </p>
+          </div>
+          <p className="mt-1 text-xs text-gray-400">
+            {formatMoney(report.cost_before)} to {formatMoney(report.cost_after)}
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div>
+          <p className="mb-2 text-xs uppercase tracking-[0.2em] text-gray-400">Top Fixed Issues</p>
+          <div className="space-y-2">
+            {topFixedIssues.length === 0 ? (
+              <p className="text-sm text-gray-400">No fixes recorded this week.</p>
+            ) : (
+              topFixedIssues.slice(0, 5).map((item) => (
+                <div key={`fixed-${item.issue_key}-${item.fixed_at}`} className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-gray-200">
+                  <div className="truncate">{item.issue_key}</div>
+                  <div className="mt-1 text-xs text-gray-400">
+                    {item.auto_detected ? "Auto-fixed" : "Manual fix"}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-xs uppercase tracking-[0.2em] text-gray-400">Regressions</p>
+          <div className="space-y-2">
+            {regressions.length === 0 ? (
+              <p className="text-sm text-gray-400">No regressions detected this week.</p>
+            ) : (
+              regressions.slice(0, 5).map((item) => (
+                <div key={`regression-${item.issue_key}-${item.detected_at}`} className="rounded-lg border border-red-400/20 bg-red-400/5 px-3 py-2 text-sm text-red-200">
+                  <div className="truncate">{item.issue_key}</div>
+                  <div className="mt-1 text-xs text-red-300">
+                    Severity {(item.regression_severity ?? 0).toFixed(2)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+        <div>
+          <p className="mb-2 text-xs uppercase tracking-[0.2em] text-gray-400">Top Issues</p>
+          <div className="space-y-2">
+            {topIssues.length === 0 ? (
+              <p className="text-sm text-gray-400">No issue ranking data this week.</p>
+            ) : (
+              topIssues.slice(0, 5).map((item) => (
+                <div key={`top-issue-${item.issue_key}`} className="rounded-lg border border-white/10 bg-white/[0.02] px-3 py-2 text-sm text-gray-200">
+                  <div className="truncate">{item.issue_key}</div>
+                  <div className="mt-1 text-xs text-gray-400">
+                    Priority {(item.priority_score ?? 0).toFixed(2)}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function IssueDetailPanel({
   issue,
   projectId,
@@ -192,34 +329,37 @@ function IssueDetailPanel({
     }).format(value);
   }
 
-  async function fetchIssueImpact(activeIssue: IssueItem) {
-    if (!projectId) return;
-    setImpactError(null);
-    setLoadingImpact(true);
-    try {
-      const response = await getIssueImpact(projectId, activeIssue.issue_key);
-      if (response === null) {
-        setImpactData(null);
-        setIsFixed(false);
-        setLoadingImpact(false);
-        return;
-      }
-      if (response === "processing") {
-        setImpactData(null);
+  const fetchIssueImpact = useCallback(
+    async (activeIssue: IssueItem) => {
+      if (!projectId) return;
+      setImpactError(null);
+      setLoadingImpact(true);
+      try {
+        const response = await getIssueImpact(projectId, activeIssue.issue_key);
+        if (response === null) {
+          setImpactData(null);
+          setIsFixed(false);
+          setLoadingImpact(false);
+          return;
+        }
+        if (response === "processing") {
+          setImpactData(null);
+          setIsFixed(true);
+          setLoadingImpact(true);
+          return;
+        }
+        setImpactData(response);
         setIsFixed(true);
-        setLoadingImpact(true);
-        return;
+        setLoadingImpact(false);
+      } catch (error) {
+        console.error("Failed to fetch issue impact", error);
+        setImpactData(null);
+        setLoadingImpact(false);
+        setImpactError("Could not load impact data right now.");
       }
-      setImpactData(response);
-      setIsFixed(true);
-      setLoadingImpact(false);
-    } catch (error) {
-      console.error("Failed to fetch issue impact", error);
-      setImpactData(null);
-      setLoadingImpact(false);
-      setImpactError("Could not load impact data right now.");
-    }
-  }
+    },
+    [projectId],
+  );
 
   useEffect(() => {
     if (!issue || !projectId) {
@@ -231,7 +371,7 @@ function IssueDetailPanel({
       return;
     }
     void fetchIssueImpact(issue);
-  }, [issue, projectId]);
+  }, [issue, projectId, fetchIssueImpact]);
 
   async function handleMarkFixed() {
     if (!issue || !projectId) return;
@@ -307,7 +447,7 @@ function IssueDetailPanel({
           ) : !impactData || loadingImpact ? (
             <>
               <p className="text-sm text-gray-100">Tracking impact...</p>
-              <p className="mt-1 text-xs text-gray-400">We're measuring results after your fix</p>
+              <p className="mt-1 text-xs text-gray-400">We are measuring results after your fix</p>
             </>
           ) : (
             <>
@@ -347,6 +487,8 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
   const [selectedIssue, setSelectedIssue] = useState<IssueItem | null>(null);
   const [issues, setIssues] = useState<IssueItem[]>([]);
   const [issuesLoading, setIssuesLoading] = useState<boolean>(true);
+  const [weeklyReport, setWeeklyReport] = useState<WeeklyReport | null>(null);
+  const [weeklyReportLoading, setWeeklyReportLoading] = useState<boolean>(true);
 
   const totalRuns = runs.length;
   const successfulRuns = runs.filter((run) => normalizeStatus(run.status) === "completed").length;
@@ -390,14 +532,20 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
   useEffect(() => {
     let active = true;
     if (!projectId) {
-      setIssues([]);
-      setIssuesLoading(false);
+      void Promise.resolve().then(() => {
+        if (!active) return;
+        setIssues([]);
+        setIssuesLoading(false);
+      });
       return () => {
         active = false;
       };
     }
 
-    setIssuesLoading(true);
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      setIssuesLoading(true);
+    });
     void getProjectIssues(projectId, 20)
       .then((rows: IssueIntelligence[]) => {
         if (!active) return;
@@ -426,6 +574,42 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
       .finally(() => {
         if (!active) return;
         setIssuesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
+
+  useEffect(() => {
+    let active = true;
+    if (!projectId) {
+      void Promise.resolve().then(() => {
+        if (!active) return;
+        setWeeklyReport(null);
+        setWeeklyReportLoading(false);
+      });
+      return () => {
+        active = false;
+      };
+    }
+
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      setWeeklyReportLoading(true);
+    });
+    void getProjectWeeklyReport(projectId)
+      .then((report) => {
+        if (!active) return;
+        setWeeklyReport(report);
+      })
+      .catch(() => {
+        if (!active) return;
+        setWeeklyReport(null);
+      })
+      .finally(() => {
+        if (!active) return;
+        setWeeklyReportLoading(false);
       });
 
     return () => {
@@ -486,6 +670,8 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
           })}
         </div>
       </div>
+
+      <WeeklyReportPanel report={weeklyReport} loading={weeklyReportLoading} />
 
       <TopIssuesPanel issues={issues} loading={issuesLoading} onSelectIssue={(issue) => setSelectedIssue(issue)} />
 
