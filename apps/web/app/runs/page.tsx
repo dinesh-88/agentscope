@@ -5,6 +5,7 @@ import { AppShell } from "@/components/app-shell";
 import { ArtifactSearchPanel } from "@/components/artifact-search-panel";
 import { RunsAutoRefresh } from "@/components/runs-auto-refresh";
 import { getRuns } from "@/lib/server-api";
+import { formatUsd } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -140,7 +141,7 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
                           </td>
                           <td className="py-4 text-sm text-gray-600">{formatDuration(run.started_at, run.ended_at)}</td>
                           <td className="py-4 text-sm text-gray-600">{totalTokens > 0 ? totalTokens.toLocaleString() : "-"}</td>
-                          <td className="py-4 text-sm text-gray-600">{totalCostUsd > 0 ? `$${totalCostUsd.toFixed(3)}` : "-"}</td>
+                          <td className="py-4 text-sm text-gray-600">{totalCostUsd > 0 ? formatUsd(totalCostUsd, { decimals: 3, tinyThreshold: 0.001 }) : "-"}</td>
                           <td className="py-4 text-sm text-gray-600">{formatDate(run.started_at)}</td>
                         </tr>
                       );

@@ -16,6 +16,7 @@ import {
   type Span,
   type WeeklyReport,
 } from "@/lib/api";
+import { formatUsd } from "@/lib/utils";
 
 function durationMs(run: Run) {
   const start = new Date(run.started_at).getTime();
@@ -621,7 +622,7 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
     { title: "Total Runs", value: totalRuns.toLocaleString(), icon: Activity },
     { title: "Success / Failed", value: `${successfulRuns} / ${failedRuns}`, icon: AlertTriangle },
     { title: "Avg Latency", value: formatDuration(avgLatency), icon: Timer },
-    { title: "Avg Cost", value: `$${avgCost.toFixed(4)}`, icon: DollarSign },
+    { title: "Avg Cost", value: formatUsd(avgCost), icon: DollarSign },
   ];
 
   function statusBadge(status: string) {

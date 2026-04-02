@@ -8,6 +8,7 @@ import { ArrowUpRight, Search, SlidersHorizontal } from "lucide-react";
 
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { type Run } from "@/lib/api";
+import { formatUsd } from "@/lib/utils";
 
 type RunsScreenProps = {
   runs: Run[];
@@ -115,7 +116,7 @@ export function RunsScreen({ runs, initialFilters }: RunsScreenProps) {
         <div className="flex gap-3 text-xs text-neutral-600">
           <span className="rounded-lg bg-white/80 px-3 py-2">{runs.length} runs</span>
           <span className="rounded-lg bg-white/80 px-3 py-2">{totals.tokens.toLocaleString()} tokens</span>
-          <span className="rounded-lg bg-white/80 px-3 py-2">${totals.cost.toFixed(2)} cost</span>
+          <span className="rounded-lg bg-white/80 px-3 py-2">{formatUsd(totals.cost, { decimals: 2, tinyThreshold: 0.01 })} cost</span>
         </div>
       </div>
 
@@ -245,7 +246,7 @@ export function RunsScreen({ runs, initialFilters }: RunsScreenProps) {
                   </td>
                   <td className="py-3 text-neutral-700">{formatDuration(durationMs(run.started_at, run.ended_at))}</td>
                   <td className="py-3 text-neutral-700">{(run.total_tokens ?? 0).toLocaleString()}</td>
-                  <td className="py-3 text-neutral-700">${(run.total_cost_usd ?? 0).toFixed(4)}</td>
+                  <td className="py-3 text-neutral-700">{formatUsd(run.total_cost_usd ?? 0)}</td>
                   <td className="py-3 text-neutral-700">{run.agent_name}</td>
                   <td className="py-3">
                     <Link href={`/runs/${run.id}`} className="inline-flex items-center gap-1 text-sm font-medium text-blue-700 hover:text-blue-800">

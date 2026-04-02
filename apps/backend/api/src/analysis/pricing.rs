@@ -43,6 +43,30 @@ pub fn get_model_pricing(model: &str) -> Option<ModelPricing> {
             input_per_1k_tokens: 0.0025,
             output_per_1k_tokens: 0.0100,
         }),
+        value if value.starts_with("gpt-4.1-nano") => Some(ModelPricing {
+            input_per_1k_tokens: 0.00010,
+            output_per_1k_tokens: 0.00040,
+        }),
+        value if value.starts_with("gpt-4.1-mini") => Some(ModelPricing {
+            input_per_1k_tokens: 0.00040,
+            output_per_1k_tokens: 0.00160,
+        }),
+        value if value.starts_with("gpt-4.1") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0020,
+            output_per_1k_tokens: 0.0080,
+        }),
+        value if value.starts_with("o4-mini") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0011,
+            output_per_1k_tokens: 0.0044,
+        }),
+        value if value.starts_with("o3-mini") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0011,
+            output_per_1k_tokens: 0.0044,
+        }),
+        value if value.starts_with("o3") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0100,
+            output_per_1k_tokens: 0.0400,
+        }),
         value if value.starts_with("claude-3-5-haiku") => Some(ModelPricing {
             input_per_1k_tokens: 0.0008,
             output_per_1k_tokens: 0.0040,
@@ -51,9 +75,41 @@ pub fn get_model_pricing(model: &str) -> Option<ModelPricing> {
             input_per_1k_tokens: 0.0030,
             output_per_1k_tokens: 0.0150,
         }),
+        value if value.starts_with("claude-3-7-sonnet") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0030,
+            output_per_1k_tokens: 0.0150,
+        }),
+        value if value.starts_with("claude-sonnet-4") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0030,
+            output_per_1k_tokens: 0.0150,
+        }),
+        value if value.starts_with("claude-opus-4") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0150,
+            output_per_1k_tokens: 0.0750,
+        }),
         value if value.starts_with("claude-3-opus") => Some(ModelPricing {
             input_per_1k_tokens: 0.0150,
             output_per_1k_tokens: 0.0750,
+        }),
+        value if value.starts_with("gemini-2.5-pro") => Some(ModelPricing {
+            input_per_1k_tokens: 0.0025,
+            output_per_1k_tokens: 0.0100,
+        }),
+        value if value.starts_with("gemini-2.5-flash") => Some(ModelPricing {
+            input_per_1k_tokens: 0.00030,
+            output_per_1k_tokens: 0.0012,
+        }),
+        value if value.starts_with("gemini-2.0-flash") => Some(ModelPricing {
+            input_per_1k_tokens: 0.00030,
+            output_per_1k_tokens: 0.0012,
+        }),
+        value if value.starts_with("gemini-1.5-pro") => Some(ModelPricing {
+            input_per_1k_tokens: 0.00125,
+            output_per_1k_tokens: 0.0050,
+        }),
+        value if value.starts_with("gemini-1.5-flash") => Some(ModelPricing {
+            input_per_1k_tokens: 0.000075,
+            output_per_1k_tokens: 0.00030,
         }),
         _ => None,
     }

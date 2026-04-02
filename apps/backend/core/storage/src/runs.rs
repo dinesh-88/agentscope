@@ -179,7 +179,17 @@ impl Storage {
                    total_input_tokens,
                    total_output_tokens,
                    total_tokens,
-                   total_cost_usd,
+                   GREATEST(
+                       total_cost_usd,
+                       COALESCE(
+                           (
+                               SELECT SUM(COALESCE(spans.estimated_cost, 0.0))::double precision
+                               FROM spans
+                               WHERE spans.run_id = runs.id
+                           ),
+                           0.0
+                       )
+                   ) AS total_cost_usd,
                    success,
                    error_count,
                    avg_latency_ms,
@@ -223,7 +233,17 @@ impl Storage {
                    runs.total_input_tokens,
                    runs.total_output_tokens,
                    runs.total_tokens,
-                   runs.total_cost_usd,
+                   GREATEST(
+                       runs.total_cost_usd,
+                       COALESCE(
+                           (
+                               SELECT SUM(COALESCE(spans.estimated_cost, 0.0))::double precision
+                               FROM spans
+                               WHERE spans.run_id = runs.id
+                           ),
+                           0.0
+                       )
+                   ) AS total_cost_usd,
                    runs.success,
                    runs.error_count,
                    runs.avg_latency_ms,
@@ -271,7 +291,17 @@ impl Storage {
                    total_input_tokens,
                    total_output_tokens,
                    total_tokens,
-                   total_cost_usd,
+                   GREATEST(
+                       total_cost_usd,
+                       COALESCE(
+                           (
+                               SELECT SUM(COALESCE(spans.estimated_cost, 0.0))::double precision
+                               FROM spans
+                               WHERE spans.run_id = runs.id
+                           ),
+                           0.0
+                       )
+                   ) AS total_cost_usd,
                    success,
                    error_count,
                    avg_latency_ms,
@@ -319,7 +349,17 @@ impl Storage {
                    runs.total_input_tokens,
                    runs.total_output_tokens,
                    runs.total_tokens,
-                   runs.total_cost_usd,
+                   GREATEST(
+                       runs.total_cost_usd,
+                       COALESCE(
+                           (
+                               SELECT SUM(COALESCE(spans.estimated_cost, 0.0))::double precision
+                               FROM spans
+                               WHERE spans.run_id = runs.id
+                           ),
+                           0.0
+                       )
+                   ) AS total_cost_usd,
                    runs.success,
                    runs.error_count,
                    runs.avg_latency_ms,
@@ -459,7 +499,17 @@ impl Storage {
                    total_input_tokens,
                    total_output_tokens,
                    total_tokens,
-                   total_cost_usd,
+                   GREATEST(
+                       total_cost_usd,
+                       COALESCE(
+                           (
+                               SELECT SUM(COALESCE(spans.estimated_cost, 0.0))::double precision
+                               FROM spans
+                               WHERE spans.run_id = runs.id
+                           ),
+                           0.0
+                       )
+                   ) AS total_cost_usd,
                    success,
                    error_count,
                    avg_latency_ms,

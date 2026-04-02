@@ -8,6 +8,7 @@ import { RunTimelineView } from "@/components/run-timeline-view";
 import { type Artifact, type Run, type RunInsight, type RunRootCause, type Span } from "@/lib/api";
 import { useRunDetailStore } from "@/lib/run-detail-store";
 import { useRunStream } from "@/lib/use-run-stream";
+import { formatUsd } from "@/lib/utils";
 
 function formatDurationMs(ms: number) {
   if (ms <= 0 || !Number.isFinite(ms)) return "0.0s";
@@ -218,7 +219,7 @@ export function RunDetailView({
         <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400">
           <span>Duration: {formatDurationMs(runMs)}</span>
           <span>Tokens: {totalTokens.toLocaleString()}</span>
-          <span>Cost: ${totalCost.toFixed(4)}</span>
+          <span>Cost: {formatUsd(totalCost)}</span>
         </div>
       </div>
 
@@ -344,7 +345,7 @@ export function RunDetailView({
                         <td className="px-4 py-2">{span.span_type}</td>
                         <td className="px-4 py-2">{formatDurationMs(spanDurationMs(span))}</td>
                         <td className="px-4 py-2">{(span.total_tokens ?? 0).toLocaleString()}</td>
-                        <td className="px-4 py-2">${(span.estimated_cost ?? 0).toFixed(4)}</td>
+                        <td className="px-4 py-2">{formatUsd(span.estimated_cost ?? 0)}</td>
                       </tr>
                     ))}
                   </tbody>
