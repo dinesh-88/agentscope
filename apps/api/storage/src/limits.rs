@@ -82,7 +82,7 @@ impl Storage {
             FROM runs
             WHERE project_id = $1::uuid
               AND deleted_at IS NULL
-              AND status = 'running'
+              AND ended_at IS NULL
             "#,
         )
         .bind(project_id)
