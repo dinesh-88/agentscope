@@ -15,5 +15,6 @@ pub mod search;
 pub mod spans;
 pub mod team;
 pub mod usage;
+pub mod weekly_reports;
 
 pub use postgres::Storage;

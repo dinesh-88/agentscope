@@ -1,11 +1,14 @@
 mod alert_monitor;
 mod finalize_run;
+mod issue_fix_detector;
+mod issue_regression_detector;
 mod llm_client;
 mod pipeline;
 mod prompt_analyzer;
 mod rca_analyzer;
 mod scoring;
 mod usage_aggregator;
+mod weekly_report_generator;
 
 use agentscope_common::config::{init_tracing, Config};
 use agentscope_storage::Storage;
@@ -40,6 +43,20 @@ async fn main() {
     let evaluate_alerts = std::env::var("EVALUATE_ALERTS").ok().as_deref() == Some("true");
     let run_issue_pipeline_once =
         std::env::var("RUN_ISSUE_PIPELINE").ok().as_deref() == Some("true");
+    let run_weekly_reports_once = std::env::var("RUN_WEEKLY_REPORTS")
+        .ok()
+        .as_deref()
+        == Some("true");
+    let detect_issue_fixes = std::env::var("DETECT_ISSUE_FIXES")
+        .ok()
+        .as_deref()
+        .unwrap_or("true")
+        == "true";
+    let detect_issue_regressions = std::env::var("DETECT_ISSUE_REGRESSIONS")
+        .ok()
+        .as_deref()
+        .unwrap_or("true")
+        == "true";
     let issue_pipeline_top_n = std::env::var("ISSUE_PIPELINE_TOP_N")
         .ok()
         .and_then(|value| value.parse::<i64>().ok())
@@ -51,6 +68,21 @@ async fn main() {
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|value| *value > 0);
+    let weekly_reports_interval_seconds = std::env::var("WEEKLY_REPORT_INTERVAL_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0);
+    let issue_fix_detection_interval_seconds = std::env::var("ISSUE_FIX_DETECTION_INTERVAL_SECONDS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(900);
+    let issue_regression_detection_interval_seconds =
+        std::env::var("ISSUE_REGRESSION_DETECTION_INTERVAL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(900);
     let analysis_interval_seconds = std::env::var("ANALYSIS_POLL_INTERVAL_SECONDS")
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
@@ -84,6 +116,21 @@ async fn main() {
         pipeline::run_issue_pipeline(&storage, target_date, issue_pipeline_top_n)
             .await
             .expect("failed to run issue intelligence pipeline");
+        if detect_issue_fixes {
+            issue_fix_detector::detect(&storage)
+                .await
+                .expect("failed to run issue fix detector");
+        }
+        if detect_issue_regressions {
+            issue_regression_detector::detect(&storage)
+                .await
+                .expect("failed to run issue regression detector");
+        }
+    }
+    if run_weekly_reports_once {
+        weekly_report_generator::run_for_completed_week(&storage)
+            .await
+            .expect("failed to generate weekly reports");
     }
 
     if let Some(interval_seconds) = analysis_interval_seconds {
@@ -146,6 +193,59 @@ async fn main() {
                 pipeline::run_issue_pipeline(&storage_clone, target_date, issue_pipeline_top_n)
                     .await
                     .expect("failed to run recurring issue pipeline");
+                if detect_issue_fixes {
+                    issue_fix_detector::detect(&storage_clone)
+                        .await
+                        .expect("failed to run issue fix detector after issue pipeline");
+                }
+                if detect_issue_regressions {
+                    issue_regression_detector::detect(&storage_clone)
+                        .await
+                        .expect("failed to run issue regression detector after issue pipeline");
+                }
+            }
+        });
+    }
+
+    if let Some(interval_seconds) = weekly_reports_interval_seconds {
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            let mut ticker = time::interval(Duration::from_secs(interval_seconds));
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                weekly_report_generator::run_for_completed_week(&storage_clone)
+                    .await
+                    .expect("failed to run recurring weekly report generation");
+            }
+        });
+    }
+
+    if detect_issue_fixes {
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            let mut ticker = time::interval(Duration::from_secs(issue_fix_detection_interval_seconds));
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                issue_fix_detector::detect(&storage_clone)
+                    .await
+                    .expect("failed to run recurring issue fix detector");
+            }
+        });
+    }
+
+    if detect_issue_regressions {
+        let storage_clone = storage.clone();
+        tokio::spawn(async move {
+            let mut ticker =
+                time::interval(Duration::from_secs(issue_regression_detection_interval_seconds));
+            ticker.tick().await;
+            loop {
+                ticker.tick().await;
+                issue_regression_detector::detect(&storage_clone)
+                    .await
+                    .expect("failed to run recurring issue regression detector");
             }
         });
     }
@@ -154,6 +254,9 @@ async fn main() {
         || aggregate_usage
         || evaluate_alerts
         || issue_pipeline_interval_seconds.is_some()
+        || weekly_reports_interval_seconds.is_some()
+        || detect_issue_fixes
+        || detect_issue_regressions
     {
         loop {
             time::sleep(Duration::from_secs(3600)).await;

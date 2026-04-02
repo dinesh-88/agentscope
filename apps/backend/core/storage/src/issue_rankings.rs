@@ -6,6 +6,7 @@ use chrono::{DateTime, Utc};
 use chrono::{NaiveDate, NaiveDateTime};
 use serde::Serialize;
 use sqlx::{FromRow, Postgres, QueryBuilder};
+use tracing::{info, warn};
 use uuid::Uuid;
 
 use crate::Storage;
@@ -13,6 +14,16 @@ use crate::Storage;
 const FREQUENCY_WEIGHT: f64 = 0.5;
 const COST_WEIGHT: f64 = 0.3;
 const SEVERITY_WEIGHT: f64 = 0.2;
+const AUTO_FIX_BASELINE_MIN_FREQUENCY: f64 = 0.05;
+const AUTO_FIX_DROP_MULTIPLIER: f64 = 0.5;
+const AUTO_FIX_STABILITY_POINTS: usize = 3;
+const AUTO_FIX_BASELINE_POINTS: usize = 3;
+const AUTO_FIX_MIN_TOTAL_RUNS: i64 = 50;
+const REGRESSION_INCREASE_MULTIPLIER: f64 = 1.5;
+const REGRESSION_MIN_FREQUENCY: f64 = 0.05;
+const REGRESSION_STABILITY_POINTS: usize = 3;
+const REGRESSION_MIN_TOTAL_RUNS: i64 = 50;
+const REGRESSION_DEDUP_HOURS: i64 = 6;
 
 #[derive(Debug, FromRow)]
 struct FailureDailyAggRow {
@@ -73,6 +84,8 @@ pub struct IssueImpactImprovement {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct IssueImpact {
+    pub auto_detected: bool,
+    pub detection_confidence: Option<f64>,
     pub before: IssueImpactSlice,
     pub after: IssueImpactSlice,
     pub improvement: IssueImpactImprovement,
@@ -83,6 +96,43 @@ pub enum IssueImpactComputation {
     NoFix,
     Processing,
     Ready(IssueImpact),
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct IssueFixMetaRow {
+    fixed_at: DateTime<Utc>,
+    auto_detected: bool,
+    detection_confidence: Option<f64>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct IssueRankingPoint {
+    issue_key: String,
+    frequency_score: f64,
+    rn: i64,
+    already_fixed: bool,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct FixedIssueRow {
+    issue_key: String,
+    baseline_frequency: Option<f64>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct IssueRegressionPoint {
+    issue_key: String,
+    frequency_score: f64,
+    rn: i64,
+}
+
+#[derive(Debug, Clone, FromRow, Serialize)]
+pub struct ProjectIssueRegressionRow {
+    pub issue_key: String,
+    pub baseline_frequency: f64,
+    pub current_frequency: f64,
+    pub regression_severity: f64,
+    pub detected_at: DateTime<Utc>,
 }
 
 fn severity_score_for_category(category: &str) -> f64 {
@@ -120,6 +170,26 @@ impl Storage {
             ));
         }
 
+        let latest_frequency = sqlx::query_scalar::<_, Option<f64>>(
+            r#"
+            SELECT ir.frequency_score
+            FROM issue_rankings ir
+            WHERE ir.project_id = $1::uuid
+              AND ir.issue_key = $2
+            ORDER BY ir.date DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(project_id)
+        .bind(issue_key)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch latest issue frequency for project {project_id} issue {issue_key}: {error}"
+            ))
+        })?;
+
         sqlx::query(
             r#"
             INSERT INTO issue_fixes (
@@ -127,24 +197,37 @@ impl Storage {
                 project_id,
                 issue_key,
                 fixed_at,
-                created_by
+                created_by,
+                auto_detected,
+                detection_confidence,
+                baseline_frequency,
+                current_frequency
             )
             VALUES (
                 gen_random_uuid(),
                 $1::uuid,
                 $2,
                 now(),
-                $3::uuid
+                $3::uuid,
+                false,
+                NULL,
+                $4::double precision,
+                $4::double precision
             )
             ON CONFLICT (project_id, issue_key)
             DO UPDATE
             SET fixed_at = now(),
-                created_by = COALESCE(EXCLUDED.created_by, issue_fixes.created_by)
+                created_by = COALESCE(EXCLUDED.created_by, issue_fixes.created_by),
+                auto_detected = false,
+                detection_confidence = NULL,
+                baseline_frequency = EXCLUDED.baseline_frequency,
+                current_frequency = EXCLUDED.current_frequency
             "#,
         )
         .bind(project_id)
         .bind(issue_key)
         .bind(created_by)
+        .bind(latest_frequency)
         .execute(&self.pool)
         .await
         .map_err(|error| {
@@ -168,9 +251,12 @@ impl Storage {
             ));
         }
 
-        let fixed_at = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
+        let fix_meta = sqlx::query_as::<_, IssueFixMetaRow>(
             r#"
-            SELECT fixed_at
+            SELECT
+                fixed_at,
+                auto_detected,
+                detection_confidence
             FROM issue_fixes
             WHERE project_id = $1::uuid
               AND issue_key = $2
@@ -178,7 +264,7 @@ impl Storage {
         )
         .bind(project_id)
         .bind(issue_key)
-        .fetch_one(&self.pool)
+        .fetch_optional(&self.pool)
         .await
         .map_err(|error| {
             AgentScopeError::Storage(format!(
@@ -186,9 +272,10 @@ impl Storage {
             ))
         })?;
 
-        let Some(fixed_at) = fixed_at else {
+        let Some(fix_meta) = fix_meta else {
             return Ok(IssueImpactComputation::NoFix);
         };
+        let fixed_at = fix_meta.fixed_at;
 
         let before_start = fixed_at - chrono::Duration::hours(24);
         let before_end = fixed_at;
@@ -309,6 +396,8 @@ impl Storage {
         };
 
         let impact = IssueImpact {
+            auto_detected: fix_meta.auto_detected,
+            detection_confidence: fix_meta.detection_confidence,
             before: IssueImpactSlice {
                 failure_rate: failure_rate_before,
                 cost: cost_before,
@@ -324,6 +413,592 @@ impl Storage {
         };
 
         Ok(IssueImpactComputation::Ready(impact))
+    }
+
+    pub async fn list_projects_with_issue_rankings(
+        &self,
+        lookback_days: i32,
+    ) -> Result<Vec<String>, AgentScopeError> {
+        let normalized_lookback = lookback_days.max(1);
+        sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT DISTINCT project_id::text
+            FROM issue_rankings
+            WHERE date >= (CURRENT_DATE - $1::int)
+            ORDER BY project_id::text
+            "#,
+        )
+        .bind(normalized_lookback)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to list projects with issue rankings: {error}"
+            ))
+        })
+    }
+
+    pub async fn detect_fixed_issues(&self, project_id: &str) -> Result<usize, AgentScopeError> {
+        let latest_date = sqlx::query_scalar::<_, Option<NaiveDate>>(
+            r#"
+            SELECT MAX(date)
+            FROM issue_rankings
+            WHERE project_id = $1::uuid
+            "#,
+        )
+        .bind(project_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch latest issue ranking date for project {project_id}: {error}"
+            ))
+        })?;
+
+        let Some(latest_date) = latest_date else {
+            info!(project_id, "auto-fix detection skipped: no issue_rankings data");
+            return Ok(0);
+        };
+
+        let required_points = (AUTO_FIX_STABILITY_POINTS + AUTO_FIX_BASELINE_POINTS) as i64;
+        let points = sqlx::query_as::<_, IssueRankingPoint>(
+            r#"
+            WITH current_issues AS (
+                SELECT DISTINCT issue_key
+                FROM issue_rankings
+                WHERE project_id = $1::uuid
+                  AND date = $2
+            ),
+            ranked AS (
+                SELECT
+                    ir.issue_key,
+                    ir.date,
+                    ir.frequency_score,
+                    ROW_NUMBER() OVER (PARTITION BY ir.issue_key ORDER BY ir.date DESC) AS rn
+                FROM issue_rankings ir
+                JOIN current_issues ci
+                  ON ci.issue_key = ir.issue_key
+                WHERE ir.project_id = $1::uuid
+            )
+            SELECT
+                r.issue_key,
+                r.frequency_score,
+                r.rn,
+                EXISTS (
+                    SELECT 1
+                    FROM issue_fixes f
+                    WHERE f.project_id = $1::uuid
+                      AND f.issue_key = r.issue_key
+                ) AS already_fixed
+            FROM ranked r
+            WHERE r.rn <= $3
+            ORDER BY r.issue_key ASC, r.rn ASC
+            "#,
+        )
+        .bind(project_id)
+        .bind(latest_date)
+        .bind(required_points)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch issue ranking points for project {project_id}: {error}"
+            ))
+        })?;
+
+        if points.is_empty() {
+            info!(
+                project_id,
+                %latest_date,
+                "auto-fix detection skipped: no current issues for latest ranking date"
+            );
+            return Ok(0);
+        }
+
+        let stability_window_start = latest_date - chrono::Duration::days((AUTO_FIX_STABILITY_POINTS - 1) as i64);
+        let recent_total_runs = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COALESCE(SUM(run_count), 0)::bigint
+            FROM project_usage_daily
+            WHERE project_id = $1::uuid
+              AND date >= $2
+              AND date <= $3
+            "#,
+        )
+        .bind(project_id)
+        .bind(stability_window_start)
+        .bind(latest_date)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch recent total runs for project {project_id}: {error}"
+            ))
+        })?;
+
+        if recent_total_runs < AUTO_FIX_MIN_TOTAL_RUNS {
+            info!(
+                project_id,
+                %latest_date,
+                recent_total_runs,
+                min_total_runs = AUTO_FIX_MIN_TOTAL_RUNS,
+                "auto-fix detection skipped: total runs below threshold"
+            );
+            return Ok(0);
+        }
+
+        let mut by_issue: HashMap<String, (bool, Vec<IssueRankingPoint>)> = HashMap::new();
+        for point in points {
+            let entry = by_issue
+                .entry(point.issue_key.clone())
+                .or_insert_with(|| (point.already_fixed, Vec::new()));
+            entry.0 = point.already_fixed;
+            entry.1.push(point);
+        }
+
+        let mut detected_count = 0usize;
+
+        for (issue_key, (already_fixed, mut issue_points)) in by_issue {
+            if already_fixed {
+                info!(
+                    project_id,
+                    issue_key = %issue_key,
+                    "auto-fix detection skipped: issue already fixed"
+                );
+                continue;
+            }
+
+            issue_points.sort_by_key(|point| point.rn);
+
+            if issue_points.len() < (AUTO_FIX_STABILITY_POINTS + AUTO_FIX_BASELINE_POINTS) {
+                info!(
+                    project_id,
+                    issue_key = %issue_key,
+                    points = issue_points.len(),
+                    required_points = AUTO_FIX_STABILITY_POINTS + AUTO_FIX_BASELINE_POINTS,
+                    "auto-fix detection skipped: insufficient ranking points"
+                );
+                continue;
+            }
+
+            let stability_points = &issue_points[..AUTO_FIX_STABILITY_POINTS];
+            let baseline_points = &issue_points
+                [AUTO_FIX_STABILITY_POINTS..AUTO_FIX_STABILITY_POINTS + AUTO_FIX_BASELINE_POINTS];
+            let baseline_frequency = baseline_points
+                .iter()
+                .map(|point| point.frequency_score)
+                .sum::<f64>()
+                / baseline_points.len() as f64;
+            let current_frequency = stability_points[0].frequency_score;
+
+            if baseline_frequency <= AUTO_FIX_BASELINE_MIN_FREQUENCY {
+                info!(
+                    project_id,
+                    issue_key = %issue_key,
+                    baseline_frequency,
+                    min_frequency = AUTO_FIX_BASELINE_MIN_FREQUENCY,
+                    "auto-fix detection skipped: baseline below threshold"
+                );
+                continue;
+            }
+
+            let threshold = baseline_frequency * AUTO_FIX_DROP_MULTIPLIER;
+            let stable_drop = stability_points
+                .iter()
+                .all(|point| point.frequency_score < threshold);
+            if !(current_frequency < threshold && stable_drop) {
+                info!(
+                    project_id,
+                    issue_key = %issue_key,
+                    baseline_frequency,
+                    current_frequency,
+                    threshold,
+                    "auto-fix detection skipped: drop is not stable"
+                );
+                continue;
+            }
+
+            let confidence = ((baseline_frequency - current_frequency) / baseline_frequency)
+                .clamp(0.0, 1.0);
+
+            let insert_result = sqlx::query(
+                r#"
+                INSERT INTO issue_fixes (
+                    id,
+                    project_id,
+                    issue_key,
+                    fixed_at,
+                    created_by,
+                    auto_detected,
+                    detection_confidence,
+                    baseline_frequency,
+                    current_frequency
+                )
+                VALUES (
+                    gen_random_uuid(),
+                    $1::uuid,
+                    $2,
+                    now(),
+                    NULL,
+                    true,
+                    $3::double precision,
+                    $4::double precision,
+                    $5::double precision
+                )
+                ON CONFLICT (project_id, issue_key) DO NOTHING
+                "#,
+            )
+            .bind(project_id)
+            .bind(&issue_key)
+            .bind(confidence)
+            .bind(baseline_frequency)
+            .bind(current_frequency)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to insert auto-detected issue fix for project {project_id} issue {issue_key}: {error}"
+                ))
+            })?;
+
+            if insert_result.rows_affected() > 0 {
+                detected_count += 1;
+                info!(
+                    project_id,
+                    issue_key = %issue_key,
+                    baseline_frequency,
+                    current_frequency,
+                    confidence,
+                    "auto-fix detected and inserted"
+                );
+            } else {
+                warn!(
+                    project_id,
+                    issue_key = %issue_key,
+                    "auto-fix detection resolved as duplicate insert"
+                );
+            }
+        }
+
+        info!(
+            project_id,
+            %latest_date,
+            recent_total_runs,
+            detected_count,
+            "auto-fix detection cycle complete"
+        );
+
+        Ok(detected_count)
+    }
+
+    pub async fn detect_regressions(&self, project_id: &str) -> Result<usize, AgentScopeError> {
+        let fixed_issues = sqlx::query_as::<_, FixedIssueRow>(
+            r#"
+            SELECT issue_key, baseline_frequency
+            FROM issue_fixes
+            WHERE project_id = $1::uuid
+            "#,
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch fixed issues for project {project_id}: {error}"
+            ))
+        })?;
+
+        if fixed_issues.is_empty() {
+            info!(project_id, "regression detection skipped: no fixed issues");
+            return Ok(0);
+        }
+
+        let latest_date = sqlx::query_scalar::<_, Option<NaiveDate>>(
+            r#"
+            SELECT MAX(date)
+            FROM issue_rankings
+            WHERE project_id = $1::uuid
+            "#,
+        )
+        .bind(project_id)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch latest issue ranking date for project {project_id}: {error}"
+            ))
+        })?;
+
+        let Some(latest_date) = latest_date else {
+            info!(project_id, "regression detection skipped: no issue rankings");
+            return Ok(0);
+        };
+
+        let window_start =
+            latest_date - chrono::Duration::days((REGRESSION_STABILITY_POINTS - 1) as i64);
+        let recent_total_runs = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COALESCE(SUM(run_count), 0)::bigint
+            FROM project_usage_daily
+            WHERE project_id = $1::uuid
+              AND date >= $2
+              AND date <= $3
+            "#,
+        )
+        .bind(project_id)
+        .bind(window_start)
+        .bind(latest_date)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch recent total runs for regression detection on project {project_id}: {error}"
+            ))
+        })?;
+
+        if recent_total_runs < REGRESSION_MIN_TOTAL_RUNS {
+            info!(
+                project_id,
+                %latest_date,
+                recent_total_runs,
+                min_total_runs = REGRESSION_MIN_TOTAL_RUNS,
+                "regression detection skipped: total runs below threshold"
+            );
+            return Ok(0);
+        }
+
+        let issue_keys = fixed_issues
+            .iter()
+            .map(|row| row.issue_key.clone())
+            .collect::<Vec<_>>();
+        let required_points = REGRESSION_STABILITY_POINTS as i64;
+
+        let points = sqlx::query_as::<_, IssueRegressionPoint>(
+            r#"
+            WITH ranked AS (
+                SELECT
+                    ir.issue_key,
+                    ir.frequency_score,
+                    ROW_NUMBER() OVER (PARTITION BY ir.issue_key ORDER BY ir.date DESC) AS rn
+                FROM issue_rankings ir
+                WHERE ir.project_id = $1::uuid
+                  AND ir.issue_key = ANY($2::text[])
+            )
+            SELECT issue_key, frequency_score, rn
+            FROM ranked
+            WHERE rn <= $3
+            ORDER BY issue_key ASC, rn ASC
+            "#,
+        )
+        .bind(project_id)
+        .bind(&issue_keys)
+        .bind(required_points)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch recent ranking points for regression detection on project {project_id}: {error}"
+            ))
+        })?;
+
+        let mut points_by_issue: HashMap<String, Vec<IssueRegressionPoint>> = HashMap::new();
+        for point in points {
+            points_by_issue
+                .entry(point.issue_key.clone())
+                .or_default()
+                .push(point);
+        }
+
+        let mut detected_count = 0usize;
+
+        for fixed in fixed_issues {
+            let Some(baseline_frequency) = fixed.baseline_frequency else {
+                info!(
+                    project_id,
+                    issue_key = %fixed.issue_key,
+                    "regression detection skipped: missing baseline_frequency"
+                );
+                continue;
+            };
+
+            if baseline_frequency <= 0.0 {
+                info!(
+                    project_id,
+                    issue_key = %fixed.issue_key,
+                    baseline_frequency,
+                    "regression detection skipped: non-positive baseline"
+                );
+                continue;
+            }
+
+            let Some(issue_points) = points_by_issue.get(&fixed.issue_key) else {
+                info!(
+                    project_id,
+                    issue_key = %fixed.issue_key,
+                    "regression detection skipped: no recent ranking points"
+                );
+                continue;
+            };
+
+            if issue_points.len() < REGRESSION_STABILITY_POINTS {
+                info!(
+                    project_id,
+                    issue_key = %fixed.issue_key,
+                    points = issue_points.len(),
+                    required_points = REGRESSION_STABILITY_POINTS,
+                    "regression detection skipped: insufficient stability points"
+                );
+                continue;
+            }
+
+            let mut sorted_points = issue_points.clone();
+            sorted_points.sort_by_key(|point| point.rn);
+
+            let current_frequency = sorted_points[0].frequency_score;
+            let threshold = baseline_frequency * REGRESSION_INCREASE_MULTIPLIER;
+            let stable_increase = sorted_points
+                .iter()
+                .all(|point| point.frequency_score > threshold);
+            let monotonic_non_decreasing = sorted_points.windows(2).all(|pair| {
+                pair.first().map(|value| value.frequency_score).unwrap_or(0.0)
+                    >= pair.get(1).map(|value| value.frequency_score).unwrap_or(0.0)
+            });
+
+            if !(current_frequency > threshold
+                && current_frequency > REGRESSION_MIN_FREQUENCY
+                && stable_increase
+                && monotonic_non_decreasing)
+            {
+                info!(
+                    project_id,
+                    issue_key = %fixed.issue_key,
+                    baseline_frequency,
+                    current_frequency,
+                    threshold,
+                    "regression detection skipped: rule not satisfied"
+                );
+                continue;
+            }
+
+            let recent_exists = sqlx::query_scalar::<_, bool>(
+                r#"
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM issue_regressions
+                    WHERE project_id = $1::uuid
+                      AND issue_key = $2
+                      AND detected_at >= now() - ($3::text || ' hours')::interval
+                )
+                "#,
+            )
+            .bind(project_id)
+            .bind(&fixed.issue_key)
+            .bind(REGRESSION_DEDUP_HOURS.to_string())
+            .fetch_one(&self.pool)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to check dedupe window for regression detection on project {project_id} issue {}: {error}",
+                    fixed.issue_key
+                ))
+            })?;
+
+            if recent_exists {
+                info!(
+                    project_id,
+                    issue_key = %fixed.issue_key,
+                    dedupe_hours = REGRESSION_DEDUP_HOURS,
+                    "regression detection skipped: recent regression exists"
+                );
+                continue;
+            }
+
+            let regression_severity =
+                ((current_frequency - baseline_frequency) / baseline_frequency).max(0.0);
+            sqlx::query(
+                r#"
+                INSERT INTO issue_regressions (
+                    id,
+                    project_id,
+                    issue_key,
+                    detected_at,
+                    baseline_frequency,
+                    current_frequency,
+                    regression_severity
+                )
+                VALUES (
+                    gen_random_uuid(),
+                    $1::uuid,
+                    $2,
+                    now(),
+                    $3::double precision,
+                    $4::double precision,
+                    $5::double precision
+                )
+                "#,
+            )
+            .bind(project_id)
+            .bind(&fixed.issue_key)
+            .bind(baseline_frequency)
+            .bind(current_frequency)
+            .bind(regression_severity)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to insert regression for project {project_id} issue {}: {error}",
+                    fixed.issue_key
+                ))
+            })?;
+
+            detected_count += 1;
+            warn!(
+                project_id,
+                issue_key = %fixed.issue_key,
+                baseline_frequency,
+                current_frequency,
+                regression_severity,
+                "regression detected and recorded"
+            );
+        }
+
+        info!(
+            project_id,
+            %latest_date,
+            recent_total_runs,
+            detected_count,
+            "regression detection cycle complete"
+        );
+
+        Ok(detected_count)
+    }
+
+    pub async fn list_project_regressions(
+        &self,
+        project_id: &str,
+    ) -> Result<Vec<ProjectIssueRegressionRow>, AgentScopeError> {
+        sqlx::query_as::<_, ProjectIssueRegressionRow>(
+            r#"
+            SELECT
+                r.issue_key,
+                r.baseline_frequency,
+                r.current_frequency,
+                r.regression_severity,
+                r.detected_at
+            FROM issue_regressions r
+            WHERE r.project_id = $1::uuid
+            ORDER BY r.detected_at DESC
+            LIMIT 100
+            "#,
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to list regressions for project {project_id}: {error}"
+            ))
+        })
     }
 
     pub async fn list_project_issues(

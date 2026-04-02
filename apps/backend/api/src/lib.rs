@@ -18,10 +18,11 @@ use std::{
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::{
     analysis::TrendRunFilters,
-    issue_rankings::{IssueImpact, IssueImpactComputation},
+    issue_rankings::{IssueImpact, IssueImpactComputation, ProjectIssueRegressionRow},
     retention::{ProjectStorageSettings, RetentionApplyResult},
     runs::RunSearchFilters,
     search::ArtifactSearchFilters,
+    weekly_reports::WeeklyReportRecord,
     Storage,
 };
 use agentscope_trace::{
@@ -273,6 +274,16 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route(
             "/api/projects/:project_id/issues/:issue_key/impact",
             get(get_issue_impact)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
+        .route(
+            "/api/projects/:project_id/regressions",
+            get(get_project_regressions)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
+        .route(
+            "/api/projects/:project_id/reports/weekly",
+            get(get_project_weekly_report)
                 .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
         )
         .nest("/v1", sdk_routes.merge(ui_routes))
@@ -1597,6 +1608,26 @@ async fn get_issue_impact(
     };
 
     Ok(Json(response))
+}
+
+async fn get_project_regressions(
+    Path(project_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<ProjectIssueRegressionRow>>, ApiError> {
+    ensure_project_access(&state, &project_id, &user.id).await?;
+    let regressions = state.storage.list_project_regressions(&project_id).await?;
+    Ok(Json(regressions))
+}
+
+async fn get_project_weekly_report(
+    Path(project_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Option<WeeklyReportRecord>>, ApiError> {
+    ensure_project_access(&state, &project_id, &user.id).await?;
+    let report = state.storage.get_latest_weekly_report(&project_id).await?;
+    Ok(Json(report))
 }
 
 async fn get_project_trends(

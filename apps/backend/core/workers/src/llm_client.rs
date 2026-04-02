@@ -25,6 +25,14 @@ pub struct IssueInsightPayload {
     pub confidence_score: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WeeklySummaryInput {
+    pub failure_change_pct: f64,
+    pub cost_change_usd: f64,
+    pub top_fixed_issues: Vec<String>,
+    pub regressions: Vec<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct ChatCompletionsRequest {
     model: String,
@@ -230,6 +238,121 @@ impl LlmClient {
 
             parsed.confidence_score = parsed.confidence_score.clamp(0.0, 1.0);
             return Ok(Some(parsed));
+        }
+
+        Ok(None)
+    }
+
+    pub async fn summarize_weekly_report(
+        &self,
+        input: &WeeklySummaryInput,
+    ) -> Result<Option<String>, AgentScopeError> {
+        let url = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+        let prompt = format!(
+            "You are analyzing weekly performance of an AI system.\n\n\
+             Input:\n\
+             - failure change %: {failure_change_pct:.2}\n\
+             - cost change $: {cost_change_usd:.4}\n\
+             - top issues fixed: {top_fixed_issues}\n\
+             - regressions: {regressions}\n\n\
+             Write a concise weekly summary for engineers.\n\n\
+             Return JSON:\n\
+             {{\n\
+               \"summary\": \"key highlights, what improved, what needs attention\"\n\
+             }}",
+            failure_change_pct = input.failure_change_pct,
+            cost_change_usd = input.cost_change_usd,
+            top_fixed_issues = if input.top_fixed_issues.is_empty() {
+                "none".to_string()
+            } else {
+                input.top_fixed_issues.join(", ")
+            },
+            regressions = if input.regressions.is_empty() {
+                "none".to_string()
+            } else {
+                input.regressions.join(", ")
+            }
+        );
+
+        let req = ChatCompletionsRequest {
+            model: self.model.clone(),
+            messages: vec![
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: "Return only valid JSON.".to_string(),
+                },
+                ChatMessage {
+                    role: "user".to_string(),
+                    content: prompt,
+                },
+            ],
+            temperature: 0.1,
+            response_format: ResponseFormat {
+                format_type: "json_object".to_string(),
+            },
+        };
+
+        let mut attempt = 0;
+        while attempt < self.max_retries {
+            attempt += 1;
+            let response = self
+                .http
+                .post(&url)
+                .bearer_auth(&self.api_key)
+                .json(&req)
+                .send()
+                .await;
+
+            let response = match response {
+                Ok(res) => res,
+                Err(err) => {
+                    if attempt >= self.max_retries {
+                        return Err(AgentScopeError::Storage(format!(
+                            "weekly summary request failed after {attempt} attempts: {err}"
+                        )));
+                    }
+                    tokio::time::sleep(Duration::from_millis(250 * attempt as u64)).await;
+                    continue;
+                }
+            };
+
+            if !response.status().is_success() {
+                let status = response.status();
+                let body = response.text().await.unwrap_or_default();
+                if attempt >= self.max_retries {
+                    return Err(AgentScopeError::Storage(format!(
+                        "weekly summary response failed with status {status}: {body}"
+                    )));
+                }
+                tokio::time::sleep(Duration::from_millis(250 * attempt as u64)).await;
+                continue;
+            }
+
+            let payload = response
+                .json::<ChatCompletionsResponse>()
+                .await
+                .map_err(|e| AgentScopeError::Storage(format!("invalid weekly summary JSON: {e}")))?;
+
+            let content = payload
+                .choices
+                .first()
+                .map(|choice| choice.message.content.clone())
+                .unwrap_or_default();
+            if content.trim().is_empty() {
+                return Ok(None);
+            }
+
+            let value: Value = match serde_json::from_str(&content) {
+                Ok(v) => v,
+                Err(_) => return Ok(None),
+            };
+            let summary = value
+                .get("summary")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .map(ToOwned::to_owned);
+            return Ok(summary);
         }
 
         Ok(None)
