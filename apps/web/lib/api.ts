@@ -440,6 +440,24 @@ export type IssueIntelligence = {
   last_seen?: string | null;
 };
 
+export type IssueImpactSlice = {
+  failure_rate: number;
+  cost: number;
+};
+
+export type IssueImpactImprovement = {
+  failure_delta: number;
+  cost_saved: number;
+};
+
+export type IssueImpact = {
+  before: IssueImpactSlice;
+  after: IssueImpactSlice;
+  improvement: IssueImpactImprovement;
+};
+
+export type IssueImpactResponse = IssueImpact | "processing" | null;
+
 export type RunReplay = {
   id: string;
   original_run_id: string;
@@ -637,6 +655,21 @@ export async function getProjectIssues(projectId: string, limit = 20): Promise<I
   } catch (error) {
     if (isNotFound(error)) {
       return [];
+    }
+    throw error;
+  }
+}
+
+export async function markIssueFixed(projectId: string, issueKey: string): Promise<void> {
+  await postRequest(`/api/projects/${projectId}/issues/${encodeURIComponent(issueKey)}/fix`);
+}
+
+export async function getIssueImpact(projectId: string, issueKey: string): Promise<IssueImpactResponse> {
+  try {
+    return await request<IssueImpactResponse>(`/api/projects/${projectId}/issues/${encodeURIComponent(issueKey)}/impact`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
     }
     throw error;
   }

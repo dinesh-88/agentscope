@@ -5,7 +5,15 @@ import Link from "next/link";
 import { Activity, AlertTriangle, DollarSign, Gauge, Timer, Wrench } from "lucide-react";
 
 import { useAppTheme } from "@/components/app-shell";
-import { getProjectIssues, type IssueIntelligence, type Run, type Span } from "@/lib/api";
+import {
+  getIssueImpact,
+  getProjectIssues,
+  markIssueFixed,
+  type IssueImpact,
+  type IssueIntelligence,
+  type Run,
+  type Span,
+} from "@/lib/api";
 
 function durationMs(run: Run) {
   const start = new Date(run.started_at).getTime();
@@ -158,12 +166,95 @@ function TopIssuesPanel({
 
 function IssueDetailPanel({
   issue,
+  projectId,
   onClose,
 }: {
   issue: IssueItem | null;
+  projectId: string | null;
   onClose: () => void;
 }) {
+  const [impactData, setImpactData] = useState<IssueImpact | null>(null);
+  const [loadingImpact, setLoadingImpact] = useState(false);
+  const [isFixed, setIsFixed] = useState(false);
+  const [loadingFix, setLoadingFix] = useState(false);
+  const [impactError, setImpactError] = useState<string | null>(null);
+
+  function formatPercent(value: number) {
+    return `${(value * 100).toFixed(1)}%`;
+  }
+
+  function formatMoney(value: number) {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+
+  async function fetchIssueImpact(activeIssue: IssueItem) {
+    if (!projectId) return;
+    setImpactError(null);
+    setLoadingImpact(true);
+    try {
+      const response = await getIssueImpact(projectId, activeIssue.issue_key);
+      if (response === null) {
+        setImpactData(null);
+        setIsFixed(false);
+        setLoadingImpact(false);
+        return;
+      }
+      if (response === "processing") {
+        setImpactData(null);
+        setIsFixed(true);
+        setLoadingImpact(true);
+        return;
+      }
+      setImpactData(response);
+      setIsFixed(true);
+      setLoadingImpact(false);
+    } catch (error) {
+      console.error("Failed to fetch issue impact", error);
+      setImpactData(null);
+      setLoadingImpact(false);
+      setImpactError("Could not load impact data right now.");
+    }
+  }
+
+  useEffect(() => {
+    if (!issue || !projectId) {
+      setImpactData(null);
+      setLoadingImpact(false);
+      setIsFixed(false);
+      setLoadingFix(false);
+      setImpactError(null);
+      return;
+    }
+    void fetchIssueImpact(issue);
+  }, [issue, projectId]);
+
+  async function handleMarkFixed() {
+    if (!issue || !projectId) return;
+    setImpactError(null);
+    setLoadingFix(true);
+    try {
+      await markIssueFixed(projectId, issue.issue_key);
+      setIsFixed(true);
+      await fetchIssueImpact(issue);
+    } catch (error) {
+      console.error("Failed to mark issue fixed", error);
+      setImpactError("Could not mark this issue as fixed.");
+    } finally {
+      setLoadingFix(false);
+    }
+  }
+
   if (!issue) return null;
+
+  const improvementFailure = impactData?.improvement.failure_delta ?? 0;
+  const improvementCost = impactData?.improvement.cost_saved ?? 0;
+  const failureImproved = improvementFailure < 0;
+  const costImproved = improvementCost >= 0;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -190,6 +281,60 @@ function IssueDetailPanel({
             <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Subcategory</p>
             <p className="mt-1 text-sm text-gray-100">{issue.subcategory}</p>
           </div>
+        </div>
+        <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Expected Impact</p>
+          <p className="mt-1 text-sm text-gray-100">{issue.expected_impact ?? "No expected impact provided yet."}</p>
+        </div>
+        <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+          {impactError ? (
+            <>
+              <p className="text-sm text-red-300">Unable to load impact tracking right now.</p>
+              <p className="mt-1 text-xs text-gray-400">{impactError}</p>
+            </>
+          ) : !isFixed ? (
+            <>
+              <p className="text-sm text-gray-100">Track impact after fixing this issue</p>
+              <button
+                type="button"
+                onClick={handleMarkFixed}
+                disabled={loadingFix || !projectId}
+                className="mt-3 rounded-lg border border-white/15 px-3 py-1.5 text-sm text-gray-200 hover:bg-white/[0.05] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {loadingFix ? "Marking..." : "Mark as Fixed"}
+              </button>
+            </>
+          ) : !impactData || loadingImpact ? (
+            <>
+              <p className="text-sm text-gray-100">Tracking impact...</p>
+              <p className="mt-1 text-xs text-gray-400">We're measuring results after your fix</p>
+            </>
+          ) : (
+            <>
+              <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Impact After Fix</p>
+              <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Before</p>
+                  <p className="mt-1 text-sm text-gray-100">{formatPercent(impactData.before.failure_rate)} of runs affected</p>
+                  <p className="mt-1 text-sm text-gray-300">{formatMoney(impactData.before.cost)} wasted</p>
+                </div>
+                <div className="rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                  <p className="text-xs uppercase tracking-[0.2em] text-gray-400">After</p>
+                  <p className="mt-1 text-sm text-gray-100">{formatPercent(impactData.after.failure_rate)} of runs affected</p>
+                  <p className="mt-1 text-sm text-gray-300">{formatMoney(impactData.after.cost)} wasted</p>
+                </div>
+              </div>
+              <div className="mt-3 rounded-lg border border-white/10 bg-white/[0.02] p-3">
+                <p className="text-xs uppercase tracking-[0.2em] text-gray-400">Improvement</p>
+                <p className={`mt-1 text-sm font-medium ${failureImproved ? "text-emerald-300" : "text-red-300"}`}>
+                  {formatPercent(improvementFailure)} change
+                </p>
+                <p className={`mt-1 text-sm font-medium ${costImproved ? "text-emerald-300" : "text-red-300"}`}>
+                  {formatMoney(improvementCost)} saved
+                </p>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -483,7 +628,7 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
         </div>
       </div>
 
-      <IssueDetailPanel issue={selectedIssue} onClose={() => setSelectedIssue(null)} />
+      <IssueDetailPanel issue={selectedIssue} projectId={projectId} onClose={() => setSelectedIssue(null)} />
     </div>
   );
 }
