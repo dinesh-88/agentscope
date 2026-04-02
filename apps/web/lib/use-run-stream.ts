@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 
-import { API_BASE_URL, type Artifact, type Run, type Span } from "@/lib/api";
+import { API_BASE_URL, UI_SESSION_COOKIE_NAME, type Artifact, type Run, type Span } from "@/lib/api";
 import { useRunDetailStore, type RunLog, type RunStreamEvent } from "@/lib/run-detail-store";
 
 function toWsUrl(baseUrl: string, path: string): string {
@@ -14,6 +14,20 @@ function toWsUrl(baseUrl: string, path: string): string {
     return `ws://${normalized.slice("http://".length)}${path}`;
   }
   return `ws://${normalized}${path}`;
+}
+
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const needle = `${name}=`;
+  const parts = document.cookie.split(";");
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(needle)) {
+      const value = trimmed.slice(needle.length);
+      return value ? decodeURIComponent(value) : null;
+    }
+  }
+  return null;
 }
 
 type UseRunStreamParams = {
@@ -42,7 +56,13 @@ export function useRunStream({
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectAttemptRef = useRef(0);
   const rafRef = useRef<number | null>(null);
-  const streamUrl = useMemo(() => toWsUrl(API_BASE_URL, `/v1/runs/${runId}/stream`), [runId]);
+  const streamUrl = useMemo(() => {
+    const base = toWsUrl(API_BASE_URL, `/v1/runs/${runId}/stream`);
+    const token = readCookie(UI_SESSION_COOKIE_NAME);
+    if (!token) return base;
+    const separator = base.includes("?") ? "&" : "?";
+    return `${base}${separator}access_token=${encodeURIComponent(token)}`;
+  }, [runId]);
   const stableInitialLogs = useMemo(() => initialLogs ?? EMPTY_LOGS, [initialLogs]);
 
   useEffect(() => {

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 
-import { API_BASE_URL } from "@/lib/api";
+import { API_BASE_URL, UI_SESSION_COOKIE_NAME } from "@/lib/api";
 
 type RunsAutoRefreshProps = {
   debounceMs?: number;
@@ -24,6 +24,20 @@ function toWsUrl(baseUrl: string, path: string): string {
   return `ws://${normalized}${path}`;
 }
 
+function readCookie(name: string): string | null {
+  if (typeof document === "undefined") return null;
+  const needle = `${name}=`;
+  const parts = document.cookie.split(";");
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(needle)) {
+      const value = trimmed.slice(needle.length);
+      return value ? decodeURIComponent(value) : null;
+    }
+  }
+  return null;
+}
+
 export function RunsAutoRefresh({ debounceMs = 500 }: RunsAutoRefreshProps) {
   const router = useRouter();
   const reconnectRef = useRef<number | null>(null);
@@ -31,7 +45,13 @@ export function RunsAutoRefresh({ debounceMs = 500 }: RunsAutoRefreshProps) {
   const socketRef = useRef<WebSocket | null>(null);
   const reconnectAttemptRef = useRef(0);
   const closedRef = useRef(false);
-  const streamUrl = useMemo(() => toWsUrl(API_BASE_URL, "/v1/runs/stream"), []);
+  const streamUrl = useMemo(() => {
+    const base = toWsUrl(API_BASE_URL, "/v1/runs/stream");
+    const token = readCookie(UI_SESSION_COOKIE_NAME);
+    if (!token) return base;
+    const separator = base.includes("?") ? "&" : "?";
+    return `${base}${separator}access_token=${encodeURIComponent(token)}`;
+  }, []);
 
   useEffect(() => {
     closedRef.current = false;
