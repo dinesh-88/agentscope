@@ -437,8 +437,15 @@ fn normalize_spans(spans: &mut [Span]) {
         span.error_type = span.error_type.take().map(normalize_error_type);
         span.error_source = span.error_source.take().map(normalize_error_source);
         let span_failed = matches!(span.status.as_str(), "failed" | "error");
-        if span_failed && span.error_type.is_none() {
-            span.error_type = Some("unknown".to_string());
+        let error_type_unknown = span
+            .error_type
+            .as_deref()
+            .is_some_and(|value| value == "unknown" || value == "unknown_failure");
+        if span_failed && (span.error_type.is_none() || error_type_unknown) {
+            span.error_type = Some(match span.error_source.as_deref() {
+                Some("tool") => "tool_error".to_string(),
+                _ => "system_error".to_string(),
+            });
         }
         if span_failed && span.error_source.is_none() {
             span.error_source = Some("system".to_string());
@@ -1013,12 +1020,36 @@ fn sync_run_metrics_from_spans(run: &mut Run, spans: &[Span]) {
 }
 
 fn normalize_error_type(value: String) -> String {
-    match value.trim().to_lowercase().as_str() {
+    let raw = value.trim().to_lowercase();
+    if raw.is_empty() {
+        return "unknown".to_string();
+    }
+
+    // Preserve SDK-provided semantic labels instead of collapsing everything to "unknown".
+    // This keeps issue grouping useful (for example: schema_missing_field, context_overflow).
+    match raw.as_str() {
         "invalid_json" => "invalid_json".to_string(),
         "rate_limit" => "rate_limit".to_string(),
         "timeout" => "timeout".to_string(),
         "tool_error" => "tool_error".to_string(),
-        _ => "unknown".to_string(),
+        "system_error" => "system_error".to_string(),
+        _ => {
+            let normalized = raw
+                .chars()
+                .map(|ch| match ch {
+                    'a'..='z' | '0'..='9' => ch,
+                    ':' | '-' | ' ' | '/' | '.' => '_',
+                    _ => '_',
+                })
+                .collect::<String>()
+                .trim_matches('_')
+                .to_string();
+            if normalized.is_empty() {
+                "unknown".to_string()
+            } else {
+                normalized
+            }
+        }
     }
 }
 

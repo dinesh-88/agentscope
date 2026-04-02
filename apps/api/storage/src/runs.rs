@@ -72,7 +72,11 @@ impl Storage {
                 $2::uuid,
                 $3::uuid,
                 $4,
-                $5,
+                CASE
+                    WHEN $5 IS NULL THEN NULL
+                    WHEN $5 ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' THEN $5::uuid
+                    ELSE NULL
+                END,
                 $6,
                 $7,
                 $8,
@@ -159,7 +163,7 @@ impl Storage {
                    project_id::text AS project_id,
                    organization_id::text AS organization_id,
                    user_id,
-                   session_id,
+                   session_id::text AS session_id,
                    environment,
                    workflow_name,
                    agent_name,
@@ -203,7 +207,7 @@ impl Storage {
                    runs.project_id::text AS project_id,
                    runs.organization_id::text AS organization_id,
                    runs.user_id,
-                   runs.session_id,
+                   runs.session_id::text AS session_id,
                    runs.environment,
                    runs.workflow_name,
                    runs.agent_name,
@@ -251,7 +255,7 @@ impl Storage {
                    project_id::text AS project_id,
                    organization_id::text AS organization_id,
                    user_id,
-                   session_id,
+                   session_id::text AS session_id,
                    environment,
                    workflow_name,
                    agent_name,
@@ -299,7 +303,7 @@ impl Storage {
                    runs.project_id::text AS project_id,
                    runs.organization_id::text AS organization_id,
                    runs.user_id,
-                   runs.session_id,
+                   runs.session_id::text AS session_id,
                    runs.environment,
                    runs.workflow_name,
                    runs.agent_name,

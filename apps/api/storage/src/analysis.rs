@@ -583,7 +583,7 @@ impl Storage {
                 runs.project_id::text AS project_id,
                 runs.organization_id::text AS organization_id,
                 runs.user_id,
-                runs.session_id,
+                runs.session_id::text AS session_id,
                 runs.environment,
                 runs.workflow_name,
                 runs.agent_name,

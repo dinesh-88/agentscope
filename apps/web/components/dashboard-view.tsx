@@ -49,6 +49,62 @@ type IssueItem = {
   count: number;
 };
 
+function classifyFailureType(span: Span): string {
+  const errorType = (span.error_type ?? "").trim().toLowerCase();
+  const errorSource = (span.error_source ?? "").trim().toLowerCase();
+  const transitionReason = (span.step_transition?.cause_reason ?? "").trim().toLowerCase();
+
+  if (errorType && errorType !== "unknown" && errorType !== "unknown_failure") {
+    return errorType;
+  }
+
+  if (transitionReason.includes("token") || transitionReason.includes("context")) {
+    return "context_issue:context_overflow";
+  }
+  if (transitionReason.includes("json") || transitionReason.includes("schema")) {
+    return "tool_error:schema_invalid";
+  }
+  if (transitionReason.includes("timeout")) {
+    return "latency:timeout";
+  }
+
+  if (errorSource === "tool") return "tool_error:execution_failed";
+  if (errorSource === "provider") return "system_error:provider_failure";
+  if (errorSource === "system") return "system_error:runtime_failure";
+
+  return "unknown_failure";
+}
+
+function issueFromFailureType(failureType: string, count: number): IssueItem {
+  const normalized = failureType.trim().toLowerCase();
+  if (normalized === "unknown" || normalized === "unknown_failure" || normalized === "") {
+    return {
+      issue_key: "uncategorized:runtime_failure",
+      category: "uncategorized",
+      subcategory: "runtime_failure",
+      count,
+    };
+  }
+
+  if (normalized.includes(":")) {
+    const [category, ...rest] = normalized.split(":");
+    const subcategory = rest.join(":") || "general";
+    return {
+      issue_key: `${category}:${subcategory}`,
+      category: category || "uncategorized",
+      subcategory,
+      count,
+    };
+  }
+
+  return {
+    issue_key: `${normalized}:general`,
+    category: normalized,
+    subcategory: "general",
+    count,
+  };
+}
+
 function TopIssuesPanel({
   issues,
   onSelectIssue,
@@ -145,7 +201,7 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
   for (const span of allSpans) {
     const isFailed = span.status === "failed" || span.status === "error";
     if (!isFailed) continue;
-    const failureType = span.error_type ?? span.error_source ?? "unknown_failure";
+    const failureType = classifyFailureType(span);
     failureTypeCounts.set(failureType, (failureTypeCounts.get(failureType) ?? 0) + 1);
 
     const rootCause =
@@ -166,17 +222,7 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
 
   const recentRuns = [...runs].sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at)).slice(0, 5);
   const topIssues = useMemo<IssueItem[]>(
-    () =>
-      topFailureTypes.map(([failureType, count]) => {
-        const [category, ...rest] = failureType.split(":");
-        const subcategory = rest.join(":") || "unknown";
-        return {
-          issue_key: `${category}:${subcategory}`,
-          category: category || "unknown",
-          subcategory,
-          count,
-        };
-      }),
+    () => topFailureTypes.map(([failureType, count]) => issueFromFailureType(failureType, count)),
     [topFailureTypes],
   );
 
