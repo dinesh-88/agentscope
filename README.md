@@ -86,7 +86,7 @@ Or run directly:
 
 ## Migrations
 
-Migrations are in `apps/api/storage/migrations` and are executed on server startup.
+Migrations are in `apps/backend/core/storage/migrations` and are executed on server startup.
 
 ## Tests
 

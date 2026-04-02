@@ -24,7 +24,7 @@ services:
   api:
     build:
       context: .
-      dockerfile: apps/api/Dockerfile
+      dockerfile: apps/backend/Dockerfile
     env_file:
       - ./.env
     environment:

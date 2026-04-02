@@ -18,7 +18,7 @@ AgentScope engine is the Rust backend responsible for telemetry ingestion and qu
 ## Crates
 
 - `apps/backend/api`: Axum HTTP server and route handlers
-- `apps/api/trace`: telemetry models (`Run`, `Span`, `Artifact`, `TelemetryError`)
-- `apps/api/storage`: SQLx Postgres implementation and migrations
-- `apps/api/workers`: background worker entrypoint + `finalize_run`
-- `apps/api/common`: configuration and shared errors
+- `apps/backend/core/trace`: telemetry models (`Run`, `Span`, `Artifact`, `TelemetryError`)
+- `apps/backend/core/storage`: SQLx Postgres implementation and migrations
+- `apps/backend/core/workers`: background worker entrypoint + `finalize_run`
+- `apps/backend/core/common`: configuration and shared errors

@@ -2,10 +2,10 @@
 members = [
     "apps/llm-proxy",
     "apps/backend/api",
-    "apps/api/trace",
-    "apps/api/storage",
-    "apps/api/workers",
-    "apps/api/common"
+    "apps/backend/core/trace",
+    "apps/backend/core/storage",
+    "apps/backend/core/workers",
+    "apps/backend/core/common"
 ]
 resolver = "2"
 

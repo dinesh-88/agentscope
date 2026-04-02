@@ -4,9 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-agentscope-common = { path = "../../api/common" }
-agentscope-storage = { path = "../../api/storage" }
-agentscope-trace = { path = "../../api/trace" }
+agentscope-common = { path = "../core/common" }
+agentscope-storage = { path = "../core/storage" }
+agentscope-trace = { path = "../core/trace" }
 axum = { workspace = true, features = ["ws"] }
 futures-util = "0.3"
 serde = { workspace = true }

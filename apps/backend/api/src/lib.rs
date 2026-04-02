@@ -18,6 +18,7 @@ use std::{
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::{
     analysis::TrendRunFilters,
+    issue_rankings::{IssueImpact, IssueImpactComputation},
     retention::{ProjectStorageSettings, RetentionApplyResult},
     runs::RunSearchFilters,
     search::ArtifactSearchFilters,
@@ -91,6 +92,13 @@ struct ProjectIssueResponse {
 #[derive(Debug, Deserialize)]
 struct ProjectIssuesQuery {
     limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(untagged)]
+enum IssueImpactResponse {
+    Processing(String),
+    Impact(IssueImpact),
 }
 
 #[derive(Debug, Serialize)]
@@ -255,6 +263,16 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route(
             "/api/projects/:id/invite",
             post(create_project_invite)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
+        .route(
+            "/api/projects/:project_id/issues/:issue_key/fix",
+            post(mark_issue_fixed)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
+        .route(
+            "/api/projects/:project_id/issues/:issue_key/impact",
+            get(get_issue_impact)
                 .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
         )
         .nest("/v1", sdk_routes.merge(ui_routes))
@@ -1544,6 +1562,41 @@ async fn get_project_issues(
         .collect::<Vec<_>>();
 
     Ok(Json(issues))
+}
+
+async fn mark_issue_fixed(
+    Path((project_id, issue_key)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<StatusCode, ApiError> {
+    ensure_project_access(&state, &project_id, &user.id).await?;
+    state
+        .storage
+        .mark_issue_fixed(&project_id, &issue_key, Some(&user.id))
+        .await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_issue_impact(
+    Path((project_id, issue_key)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Option<IssueImpactResponse>>, ApiError> {
+    ensure_project_access(&state, &project_id, &user.id).await?;
+
+    let response = match state
+        .storage
+        .compute_issue_impact(&project_id, &issue_key)
+        .await?
+    {
+        IssueImpactComputation::NoFix => None,
+        IssueImpactComputation::Processing => {
+            Some(IssueImpactResponse::Processing("processing".to_string()))
+        }
+        IssueImpactComputation::Ready(impact) => Some(IssueImpactResponse::Impact(impact)),
+    };
+
+    Ok(Json(response))
 }
 
 async fn get_project_trends(

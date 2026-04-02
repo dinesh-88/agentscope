@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use agentscope_common::errors::AgentScopeError;
 use chrono::{DateTime, Utc};
 use chrono::{NaiveDate, NaiveDateTime};
+use serde::Serialize;
 use sqlx::{FromRow, Postgres, QueryBuilder};
 use uuid::Uuid;
 
@@ -58,6 +59,32 @@ pub struct ProjectIssueRow {
     pub last_seen: Option<DateTime<Utc>>,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct IssueImpactSlice {
+    pub failure_rate: f64,
+    pub cost: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IssueImpactImprovement {
+    pub failure_delta: f64,
+    pub cost_saved: f64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IssueImpact {
+    pub before: IssueImpactSlice,
+    pub after: IssueImpactSlice,
+    pub improvement: IssueImpactImprovement,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub enum IssueImpactComputation {
+    NoFix,
+    Processing,
+    Ready(IssueImpact),
+}
+
 fn severity_score_for_category(category: &str) -> f64 {
     match category.trim().to_ascii_lowercase().as_str() {
         "tool_error" => 1.0,
@@ -80,6 +107,225 @@ fn severity_label(score: f64) -> String {
 }
 
 impl Storage {
+    pub async fn mark_issue_fixed(
+        &self,
+        project_id: &str,
+        issue_key: &str,
+        created_by: Option<&str>,
+    ) -> Result<(), AgentScopeError> {
+        let issue_key = issue_key.trim();
+        if issue_key.is_empty() {
+            return Err(AgentScopeError::Validation(
+                "issue_key must not be empty".to_string(),
+            ));
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO issue_fixes (
+                id,
+                project_id,
+                issue_key,
+                fixed_at,
+                created_by
+            )
+            VALUES (
+                gen_random_uuid(),
+                $1::uuid,
+                $2,
+                now(),
+                $3::uuid
+            )
+            ON CONFLICT (project_id, issue_key)
+            DO UPDATE
+            SET fixed_at = now(),
+                created_by = COALESCE(EXCLUDED.created_by, issue_fixes.created_by)
+            "#,
+        )
+        .bind(project_id)
+        .bind(issue_key)
+        .bind(created_by)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to upsert issue fix marker for project {project_id} issue {issue_key}: {error}"
+            ))
+        })?;
+
+        Ok(())
+    }
+
+    pub async fn compute_issue_impact(
+        &self,
+        project_id: &str,
+        issue_key: &str,
+    ) -> Result<IssueImpactComputation, AgentScopeError> {
+        let issue_key = issue_key.trim();
+        if issue_key.is_empty() {
+            return Err(AgentScopeError::Validation(
+                "issue_key must not be empty".to_string(),
+            ));
+        }
+
+        let fixed_at = sqlx::query_scalar::<_, Option<DateTime<Utc>>>(
+            r#"
+            SELECT fixed_at
+            FROM issue_fixes
+            WHERE project_id = $1::uuid
+              AND issue_key = $2
+            "#,
+        )
+        .bind(project_id)
+        .bind(issue_key)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to fetch issue fix marker for project {project_id} issue {issue_key}: {error}"
+            ))
+        })?;
+
+        let Some(fixed_at) = fixed_at else {
+            return Ok(IssueImpactComputation::NoFix);
+        };
+
+        let before_start = fixed_at - chrono::Duration::hours(24);
+        let before_end = fixed_at;
+        let after_start = fixed_at;
+        let after_end = fixed_at + chrono::Duration::hours(24);
+
+        if Utc::now() < after_end {
+            return Ok(IssueImpactComputation::Processing);
+        }
+
+        let before_start_date = before_start.date_naive();
+        let before_end_date = before_end.date_naive();
+        let after_start_date = after_start.date_naive();
+        let after_end_date = after_end.date_naive();
+
+        let (affected_runs_before, cost_before) = sqlx::query_as::<_, (i64, f64)>(
+            r#"
+            SELECT
+                COALESCE(SUM(fmd.affected_run_count), 0)::bigint AS affected_runs,
+                COALESCE(SUM(fmd.failed_run_cost_usd), 0)::double precision AS failed_cost
+            FROM failure_metrics_daily fmd
+            WHERE fmd.project_id = $1::uuid
+              AND fmd.date >= $2
+              AND fmd.date < $3
+              AND (fmd.failure_key = $4 OR (fmd.category || ':' || fmd.subcategory) = $4)
+            "#,
+        )
+        .bind(project_id)
+        .bind(before_start_date)
+        .bind(before_end_date)
+        .bind(issue_key)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to compute before-window failure metrics for project {project_id} issue {issue_key}: {error}"
+            ))
+        })?;
+
+        let (affected_runs_after, cost_after) = sqlx::query_as::<_, (i64, f64)>(
+            r#"
+            SELECT
+                COALESCE(SUM(fmd.affected_run_count), 0)::bigint AS affected_runs,
+                COALESCE(SUM(fmd.failed_run_cost_usd), 0)::double precision AS failed_cost
+            FROM failure_metrics_daily fmd
+            WHERE fmd.project_id = $1::uuid
+              AND fmd.date >= $2
+              AND fmd.date < $3
+              AND (fmd.failure_key = $4 OR (fmd.category || ':' || fmd.subcategory) = $4)
+            "#,
+        )
+        .bind(project_id)
+        .bind(after_start_date)
+        .bind(after_end_date)
+        .bind(issue_key)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to compute after-window failure metrics for project {project_id} issue {issue_key}: {error}"
+            ))
+        })?;
+
+        let total_runs_before = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COALESCE(SUM(run_count), 0)::bigint
+            FROM project_usage_daily
+            WHERE project_id = $1::uuid
+              AND date >= $2
+              AND date < $3
+            "#,
+        )
+        .bind(project_id)
+        .bind(before_start_date)
+        .bind(before_end_date)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to compute before-window total runs for project {project_id}: {error}"
+            ))
+        })?;
+
+        let total_runs_after = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT COALESCE(SUM(run_count), 0)::bigint
+            FROM project_usage_daily
+            WHERE project_id = $1::uuid
+              AND date >= $2
+              AND date < $3
+            "#,
+        )
+        .bind(project_id)
+        .bind(after_start_date)
+        .bind(after_end_date)
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to compute after-window total runs for project {project_id}: {error}"
+            ))
+        })?;
+
+        if total_runs_after <= 0 {
+            return Ok(IssueImpactComputation::Processing);
+        }
+
+        let failure_rate_before = if total_runs_before > 0 {
+            affected_runs_before as f64 / total_runs_before as f64
+        } else {
+            0.0
+        };
+
+        let failure_rate_after = if total_runs_after > 0 {
+            affected_runs_after as f64 / total_runs_after as f64
+        } else {
+            0.0
+        };
+
+        let impact = IssueImpact {
+            before: IssueImpactSlice {
+                failure_rate: failure_rate_before,
+                cost: cost_before,
+            },
+            after: IssueImpactSlice {
+                failure_rate: failure_rate_after,
+                cost: cost_after,
+            },
+            improvement: IssueImpactImprovement {
+                failure_delta: failure_rate_after - failure_rate_before,
+                cost_saved: cost_before - cost_after,
+            },
+        };
+
+        Ok(IssueImpactComputation::Ready(impact))
+    }
+
     pub async fn list_project_issues(
         &self,
         project_id: &str,
