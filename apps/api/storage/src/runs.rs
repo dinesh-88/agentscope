@@ -80,7 +80,13 @@ impl Storage {
                 $6,
                 $7,
                 $8,
-                $9,
+                CASE
+                    WHEN lower(trim($9::text)) IN ('success', 'succeeded', 'ok', 'completed', 'complete') THEN 'success'::run_status_enum
+                    WHEN lower(trim($9::text)) IN ('failed', 'failure') THEN 'failed'::run_status_enum
+                    WHEN lower(trim($9::text)) IN ('error', 'errored') THEN 'error'::run_status_enum
+                    WHEN lower(trim($9::text)) IN ('partial', 'partially_successful', 'partial_success', 'running') THEN 'partial'::run_status_enum
+                    ELSE 'partial'::run_status_enum
+                END,
                 $10,
                 $11,
                 $12,
