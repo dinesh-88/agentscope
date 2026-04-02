@@ -39,7 +39,13 @@ pub async fn seed_user_with_role(
     email: &str,
     role: &str,
 ) -> String {
-    let normalized_role = if role == "member" { "developer" } else { role };
+    let normalized_role = if role == "developer" || role == "viewer" {
+        "member"
+    } else if role == "owner" {
+        "admin"
+    } else {
+        role
+    };
     let user_id: String = sqlx::query_scalar(
         r#"
         INSERT INTO users (email, password_hash, display_name)

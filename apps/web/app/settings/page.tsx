@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Bell, Copy, Database, Key, Loader2, RefreshCcw, Shield } from "lucide-react";
 import axios from "axios";
+import Link from "next/link";
 
 import { AppShell } from "@/components/app-shell";
 import {
@@ -236,6 +237,20 @@ export default function SettingsPage() {
         </div>
 
         <div className="max-w-3xl space-y-6">
+          <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/10 dark:bg-neutral-900/80">
+            <div className="mb-2 flex items-center gap-2">
+              <Shield className="h-5 w-5 text-gray-600 dark:text-gray-300" />
+              <h2 className="text-base font-medium text-gray-900 dark:text-gray-100">Team Access</h2>
+            </div>
+            <p className="mb-4 text-sm text-gray-600 dark:text-gray-300">Invite members, manage roles, and review pending invites.</p>
+            <Link
+              href="/settings/team"
+              className="inline-flex items-center rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-black"
+            >
+              Open Team Settings
+            </Link>
+          </div>
+
           <div className="rounded-xl border border-gray-200 bg-white p-6">
             <div className="mb-4 flex items-center gap-2">
               <Key className="h-5 w-5 text-gray-600" />

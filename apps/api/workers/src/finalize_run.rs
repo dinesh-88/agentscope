@@ -34,7 +34,10 @@ pub async fn finalize_run(
         .await
         .map_err(|e| AgentScopeError::Storage(format!("failed to finalize run {run_id}: {e}")))?;
 
-    if matches!(status, "completed" | "complete" | "success" | "succeeded" | "ok") {
+    if matches!(
+        status,
+        "completed" | "complete" | "success" | "succeeded" | "ok"
+    ) {
         prompt_analyzer::analyze_run(storage, run_id).await?;
         rca_analyzer::analyze_run(storage, run_id).await?;
     }

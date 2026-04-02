@@ -160,7 +160,11 @@ pub async fn compute_rankings_for_date(
                 .priority_score
                 .partial_cmp(&ranked[*a].priority_score)
                 .unwrap_or(Ordering::Equal)
-                .then_with(|| ranked[*b].affected_run_count.cmp(&ranked[*a].affected_run_count))
+                .then_with(|| {
+                    ranked[*b]
+                        .affected_run_count
+                        .cmp(&ranked[*a].affected_run_count)
+                })
                 .then_with(|| ranked[*a].issue_key.cmp(&ranked[*b].issue_key))
         });
 
@@ -186,11 +190,10 @@ pub async fn upsert_issue_rankings(
         .and_hms_opt(0, 0, 0)
         .ok_or_else(|| AgentScopeError::Validation("invalid target date".to_string()))?;
 
-    let mut tx = storage
-        .pool
-        .begin()
-        .await
-        .map_err(|e| AgentScopeError::Storage(format!("failed to begin ranking upsert tx: {e}")))?;
+    let mut tx =
+        storage.pool.begin().await.map_err(|e| {
+            AgentScopeError::Storage(format!("failed to begin ranking upsert tx: {e}"))
+        })?;
 
     for chunk in rankings.chunks(500) {
         // SQL query used:

@@ -41,6 +41,8 @@ export const config = {
     "/agents",
     "/dashboard",
     "/insights",
+    "/billing",
+    "/usage",
     "/runs/:path*",
     "/settings",
     "/demo",

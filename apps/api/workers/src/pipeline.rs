@@ -21,7 +21,10 @@ struct TopIssueRow {
     failed_cost_usd_30d: f64,
 }
 
-async fn fetch_total_runs(storage: &Storage, target_date: NaiveDate) -> Result<i64, AgentScopeError> {
+async fn fetch_total_runs(
+    storage: &Storage,
+    target_date: NaiveDate,
+) -> Result<i64, AgentScopeError> {
     sqlx::query_scalar::<_, i64>(
         r#"
         SELECT COUNT(*)::bigint
@@ -32,7 +35,9 @@ async fn fetch_total_runs(storage: &Storage, target_date: NaiveDate) -> Result<i
     .bind(target_date)
     .fetch_one(&storage.pool)
     .await
-    .map_err(|e| AgentScopeError::Storage(format!("failed to fetch total runs for enrichment: {e}")))
+    .map_err(|e| {
+        AgentScopeError::Storage(format!("failed to fetch total runs for enrichment: {e}"))
+    })
 }
 
 async fn fetch_top_issues(
@@ -108,11 +113,10 @@ async fn insert_issue_insights_batch(
         .and_hms_opt(0, 0, 0)
         .ok_or_else(|| AgentScopeError::Validation("invalid target date timestamp".to_string()))?;
 
-    let mut tx = storage
-        .pool
-        .begin()
-        .await
-        .map_err(|e| AgentScopeError::Storage(format!("failed to begin issue_insights tx: {e}")))?;
+    let mut tx =
+        storage.pool.begin().await.map_err(|e| {
+            AgentScopeError::Storage(format!("failed to begin issue_insights tx: {e}"))
+        })?;
 
     for chunk in rows.chunks(200) {
         // SQL query used:
@@ -151,15 +155,14 @@ async fn insert_issue_insights_batch(
 
         qb.push(" ON CONFLICT DO NOTHING");
 
-        qb.build()
-            .execute(&mut *tx)
-            .await
-            .map_err(|e| AgentScopeError::Storage(format!("failed to insert issue_insights: {e}")))?;
+        qb.build().execute(&mut *tx).await.map_err(|e| {
+            AgentScopeError::Storage(format!("failed to insert issue_insights: {e}"))
+        })?;
     }
 
-    tx.commit()
-        .await
-        .map_err(|e| AgentScopeError::Storage(format!("failed to commit issue_insights tx: {e}")))?;
+    tx.commit().await.map_err(|e| {
+        AgentScopeError::Storage(format!("failed to commit issue_insights tx: {e}"))
+    })?;
 
     Ok(())
 }

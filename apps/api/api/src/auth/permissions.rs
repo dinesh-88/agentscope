@@ -45,6 +45,12 @@ pub fn role_permissions(role: &str) -> &'static [Permission] {
             Permission::InsightRead,
             Permission::ApiKeyCreate,
         ],
+        "member" => &[
+            Permission::RunRead,
+            Permission::RunCompare,
+            Permission::InsightRead,
+            Permission::ApiKeyCreate,
+        ],
         "viewer" => &[Permission::RunRead, Permission::InsightRead],
         _ => &[],
     }

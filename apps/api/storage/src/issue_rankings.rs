@@ -2,6 +2,7 @@ use std::cmp::Ordering;
 use std::collections::HashMap;
 
 use agentscope_common::errors::AgentScopeError;
+use chrono::{DateTime, Utc};
 use chrono::{NaiveDate, NaiveDateTime};
 use sqlx::{FromRow, Postgres, QueryBuilder};
 use uuid::Uuid;
@@ -41,6 +42,22 @@ struct IssueScoreRow {
     rank_position: i32,
 }
 
+#[derive(Debug, Clone, FromRow)]
+pub struct ProjectIssueRow {
+    pub issue_key: String,
+    pub category: String,
+    pub subcategory: String,
+    pub frequency: f64,
+    pub cost_impact: f64,
+    pub priority_score: f64,
+    pub summary: Option<String>,
+    pub root_cause: Option<String>,
+    pub recommended_fix: Option<String>,
+    pub expected_impact: Option<String>,
+    pub confidence_score: Option<f64>,
+    pub last_seen: Option<DateTime<Utc>>,
+}
+
 fn severity_score_for_category(category: &str) -> f64 {
     match category.trim().to_ascii_lowercase().as_str() {
         "tool_error" => 1.0,
@@ -63,7 +80,75 @@ fn severity_label(score: f64) -> String {
 }
 
 impl Storage {
-    pub async fn compute_issue_rankings(&self, target_date: NaiveDate) -> Result<(), AgentScopeError> {
+    pub async fn list_project_issues(
+        &self,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<ProjectIssueRow>, AgentScopeError> {
+        let normalized_limit = limit.clamp(1, 20);
+
+        sqlx::query_as::<_, ProjectIssueRow>(
+            r#"
+            WITH latest AS (
+                SELECT MAX(ir.date) AS date
+                FROM issue_rankings ir
+                WHERE ir.project_id = $1::uuid
+            ),
+            last_seen_by_category AS (
+                SELECT
+                    fe.failure_category_id,
+                    MAX(fe.created_at) AS last_seen
+                FROM failure_events fe
+                WHERE fe.project_id = $1::uuid
+                GROUP BY fe.failure_category_id
+            )
+            SELECT
+                ir.issue_key,
+                COALESCE(fc.category, ir.category) AS category,
+                COALESCE(fc.subcategory, ir.subcategory) AS subcategory,
+                ir.frequency_score AS frequency,
+                ir.failed_cost_usd_30d AS cost_impact,
+                ir.priority_score,
+                ii.summary,
+                ii.root_cause,
+                ii.recommended_fix,
+                ii.expected_impact,
+                ii.confidence_score,
+                COALESCE(lsc.last_seen, ir.last_seen_at) AS last_seen
+            FROM issue_rankings ir
+            JOIN latest
+              ON latest.date IS NOT NULL
+             AND ir.date = latest.date
+            LEFT JOIN failure_categories fc
+              ON fc.category = ir.category
+             AND fc.subcategory = ir.subcategory
+            LEFT JOIN issue_insights ii
+              ON ii.project_id = ir.project_id
+             AND ii.version_id IS NOT DISTINCT FROM ir.version_id
+             AND ii.issue_key = ir.issue_key
+             AND ii.date = ir.date
+            LEFT JOIN last_seen_by_category lsc
+              ON lsc.failure_category_id = fc.id
+            WHERE ir.project_id = $1::uuid
+            ORDER BY ir.priority_score DESC, ir.affected_run_count_30d DESC, ir.issue_key ASC
+            LIMIT $2
+            "#,
+        )
+        .bind(project_id)
+        .bind(normalized_limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|e| {
+            AgentScopeError::Storage(format!(
+                "failed to list issue intelligence for project {project_id}: {e}"
+            ))
+        })
+    }
+
+    pub async fn compute_issue_rankings(
+        &self,
+        target_date: NaiveDate,
+    ) -> Result<(), AgentScopeError> {
         let mut tx = self.pool.begin().await.map_err(|e| {
             AgentScopeError::Storage(format!(
                 "failed to open transaction for issue rankings on {target_date}: {e}"
@@ -82,9 +167,7 @@ impl Storage {
         .fetch_one(&mut *tx)
         .await
         .map_err(|e| {
-            AgentScopeError::Storage(format!(
-                "failed to query total runs for {target_date}: {e}"
-            ))
+            AgentScopeError::Storage(format!("failed to query total runs for {target_date}: {e}"))
         })?;
 
         if total_runs == 0 {
@@ -202,9 +285,9 @@ impl Storage {
             }
         }
 
-        let snapshot_at: NaiveDateTime = target_date
-            .and_hms_opt(0, 0, 0)
-            .ok_or_else(|| AgentScopeError::Validation("invalid target_date timestamp".to_string()))?;
+        let snapshot_at: NaiveDateTime = target_date.and_hms_opt(0, 0, 0).ok_or_else(|| {
+            AgentScopeError::Validation("invalid target_date timestamp".to_string())
+        })?;
 
         // Batched upsert to avoid row-by-row round-trips.
         for chunk in score_rows.chunks(500) {
@@ -277,14 +360,11 @@ impl Storage {
                 "#,
             );
 
-            qb.build()
-                .execute(&mut *tx)
-                .await
-                .map_err(|e| {
-                    AgentScopeError::Storage(format!(
-                        "failed to upsert issue rankings batch for {target_date}: {e}"
-                    ))
-                })?;
+            qb.build().execute(&mut *tx).await.map_err(|e| {
+                AgentScopeError::Storage(format!(
+                    "failed to upsert issue rankings batch for {target_date}: {e}"
+                ))
+            })?;
         }
 
         tx.commit().await.map_err(|e| {

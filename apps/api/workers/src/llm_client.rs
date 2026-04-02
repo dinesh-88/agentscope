@@ -82,7 +82,9 @@ impl LlmClient {
         let http = Client::builder()
             .timeout(Duration::from_secs(30))
             .build()
-            .map_err(|e| AgentScopeError::Config(format!("failed to build LLM HTTP client: {e}")))?;
+            .map_err(|e| {
+                AgentScopeError::Config(format!("failed to build LLM HTTP client: {e}"))
+            })?;
 
         Ok(Self {
             http,

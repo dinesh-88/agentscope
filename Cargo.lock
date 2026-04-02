@@ -9,6 +9,7 @@ dependencies = [
  "agentscope-common",
  "agentscope-storage",
  "agentscope-trace",
+ "async-trait",
  "axum",
  "chrono",
  "futures-util",

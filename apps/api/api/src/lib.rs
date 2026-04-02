@@ -2,6 +2,7 @@
 
 pub mod analysis;
 pub mod auth;
+pub mod billing;
 mod engine;
 mod events;
 mod limits;
@@ -27,11 +28,12 @@ use agentscope_trace::{
     RunExplanation, RunInsight, RunMetrics, RunRootCause, Span, TrendReport,
 };
 use axum::{
+    body::Bytes,
     extract::{Extension, Path, Query, State},
     http::{header, Method, StatusCode},
     middleware::from_fn_with_state,
     response::IntoResponse,
-    routing::{get, post},
+    routing::{delete, get, post},
     Json, Router,
 };
 use chrono::{DateTime, Duration, Utc};
@@ -55,6 +57,7 @@ pub struct AppState {
     pub span_events: broadcast::Sender<events::SpanEvent>,
     pub run_events: events::RunEventHub,
     pub jwt: JwtSettings,
+    pub billing_provider: billing::DynBillingProvider,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -67,6 +70,46 @@ pub struct IngestPayload {
 #[derive(Debug, Serialize)]
 pub struct ProjectApiKeyResponse {
     pub api_key: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ProjectIssueResponse {
+    issue_key: String,
+    category: String,
+    subcategory: String,
+    frequency: f64,
+    cost_impact: f64,
+    priority_score: f64,
+    summary: Option<String>,
+    root_cause: Option<String>,
+    recommended_fix: Option<String>,
+    expected_impact: Option<String>,
+    confidence_score: Option<f64>,
+    last_seen: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ProjectIssuesQuery {
+    limit: Option<i64>,
+}
+
+#[derive(Debug, Serialize)]
+struct BillingResponse {
+    plan: String,
+    status: String,
+    runs_used: i64,
+    run_limit: i64,
+}
+
+#[derive(Debug, Deserialize)]
+struct CreateCheckoutSessionRequest {
+    success_url: String,
+    cancel_url: String,
+}
+
+#[derive(Debug, Serialize)]
+struct CreateCheckoutSessionResponse {
+    checkout_url: String,
 }
 
 pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
@@ -91,11 +134,19 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
                 .expect("localhost origin must parse")]
         });
 
+    let billing_provider: billing::DynBillingProvider =
+        if let Some(provider) = billing::stripe::StripeBillingProvider::from_env() {
+            Arc::new(provider)
+        } else {
+            Arc::new(billing::NoopBillingProvider)
+        };
+
     let state = Arc::new(AppState {
         storage,
         span_events: events::span_event_channel(),
         run_events: events::RunEventHub::default(),
         jwt,
+        billing_provider,
     });
 
     let sdk_routes = Router::new()
@@ -118,6 +169,12 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/runs/:id/root-cause", get(get_run_root_cause))
         .route("/runs/:id/compare/:other_id", get(compare_runs))
         .route("/projects/:id/insights", get(get_project_insights))
+        .route("/projects/:id/issues", get(get_project_issues))
+        .route("/projects/:id/billing", get(get_project_billing))
+        .route(
+            "/projects/:id/billing/checkout",
+            post(create_billing_checkout_session),
+        )
         .route(
             "/projects/:id/alerts/active",
             get(get_project_active_alerts),
@@ -137,14 +194,35 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
             post(apply_project_retention),
         )
         .route("/alerts", post(create_alert).get(list_alerts))
-        .route("/alerts/:id", axum::routing::delete(delete_alert))
+        .route("/alerts/:id", delete(delete_alert))
+        .route("/projects/:id/invite", post(create_project_invite))
+        .route("/projects/:id/invites", get(list_project_pending_invites))
+        .route(
+            "/projects/:id/invites/:invite_id/resend",
+            post(resend_project_invite),
+        )
+        .route(
+            "/projects/:id/invites/:invite_id",
+            delete(cancel_project_invite),
+        )
         .route("/alerts/events", get(list_alert_events))
-        .route("/orgs/:org_id/invites", post(create_org_invite))
+        .route(
+            "/orgs/:org_id/invites",
+            post(create_org_invite).get(list_org_pending_invites),
+        )
+        .route(
+            "/orgs/:org_id/invites/:invite_id/resend",
+            post(resend_org_invite),
+        )
+        .route(
+            "/orgs/:org_id/invites/:invite_id",
+            delete(cancel_org_invite),
+        )
         .route("/invites/accept", post(accept_invite))
         .route("/orgs/:org_id/members", get(list_org_members))
         .route(
             "/orgs/:org_id/members/:user_id",
-            axum::routing::delete(remove_org_member),
+            delete(remove_org_member).put(update_org_member_role),
         )
         .route("/projects/:id/api-keys", post(create_project_api_key))
         .route("/onboarding/state", get(get_onboarding_state))
@@ -167,6 +245,17 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route(
             "/v1/auth/oauth/:provider/callback",
             get(auth::oauth_callback),
+        )
+        .route("/v1/stripe/webhook", post(stripe_webhook))
+        .route(
+            "/api/projects/:id/issues",
+            get(get_project_issues)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
+        .route(
+            "/api/projects/:id/invite",
+            post(create_project_invite)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
         )
         .nest("/v1", sdk_routes.merge(ui_routes))
         .layer(
@@ -199,6 +288,7 @@ async fn ingest(
     sync_run_metrics_from_spans(&mut payload.run, &payload.spans);
     normalize_span_context(&mut payload.spans, &payload.artifacts);
     limits::check_rate_limit(&state, &payload.run.project_id).await?;
+    limits::check_subscription_run_quota(&state, &payload.run.project_id).await?;
     limits::check_token_quota(&state, &payload.run.project_id, payload.run.total_tokens).await?;
     apply_project_storage_policies(&state, &mut payload).await?;
 
@@ -260,6 +350,11 @@ struct ProjectUsagePoint {
 #[derive(Debug, Deserialize)]
 struct CreateInviteRequest {
     email: String,
+    role: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UpdateMemberRoleRequest {
     role: String,
 }
 
@@ -1419,6 +1514,38 @@ async fn get_project_insights(
     Ok(Json(analysis::insights_engine::to_insight_cards(&insights)))
 }
 
+async fn get_project_issues(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Query(query): Query<ProjectIssuesQuery>,
+) -> Result<Json<Vec<ProjectIssueResponse>>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+
+    let limit = query.limit.unwrap_or(20).clamp(1, 20);
+    let rows = state.storage.list_project_issues(&id, limit).await?;
+
+    let issues = rows
+        .into_iter()
+        .map(|row| ProjectIssueResponse {
+            issue_key: row.issue_key,
+            category: row.category,
+            subcategory: row.subcategory,
+            frequency: row.frequency,
+            cost_impact: row.cost_impact,
+            priority_score: row.priority_score,
+            summary: row.summary,
+            root_cause: row.root_cause,
+            recommended_fix: row.recommended_fix,
+            expected_impact: row.expected_impact,
+            confidence_score: row.confidence_score,
+            last_seen: row.last_seen,
+        })
+        .collect::<Vec<_>>();
+
+    Ok(Json(issues))
+}
+
 async fn get_project_trends(
     Path(id): Path<String>,
     State(state): State<Arc<AppState>>,
@@ -1519,6 +1646,116 @@ async fn get_project_usage(
         })
         .collect::<Vec<_>>();
     Ok(Json(response))
+}
+
+async fn get_project_billing(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<BillingResponse>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    let billing = state
+        .storage
+        .get_billing_overview_for_project(&id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("project {id} not found")))?;
+    Ok(Json(BillingResponse {
+        plan: billing.plan,
+        status: billing.status,
+        runs_used: billing.runs_used,
+        run_limit: billing.run_limit,
+    }))
+}
+
+async fn create_billing_checkout_session(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<CreateCheckoutSessionRequest>,
+) -> Result<Json<CreateCheckoutSessionResponse>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    ensure_project_manage_permission(&user)?;
+
+    let organization_id = state
+        .storage
+        .get_organization_id_for_project(&id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("project {id} not found")))?;
+    let subscription = ensure_subscription_record(&state, &organization_id).await?;
+    let customer_id = if let Some(customer_id) = subscription.stripe_customer_id {
+        customer_id
+    } else {
+        let created = state
+            .billing_provider
+            .create_customer(&user.email, Some(&organization_id))
+            .await?;
+        state
+            .storage
+            .set_subscription_customer_id(&organization_id, &created)
+            .await?;
+        created
+    };
+
+    let checkout_url = state
+        .billing_provider
+        .create_checkout_session(
+            &customer_id,
+            &organization_id,
+            &payload.success_url,
+            &payload.cancel_url,
+        )
+        .await?;
+    Ok(Json(CreateCheckoutSessionResponse { checkout_url }))
+}
+
+async fn stripe_webhook(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    body: Bytes,
+) -> Result<StatusCode, ApiError> {
+    let update = state
+        .billing_provider
+        .parse_subscription_update(&headers, &body)?;
+    let Some(update) = update else {
+        return Ok(StatusCode::OK);
+    };
+
+    if let Some(existing) = state
+        .storage
+        .get_subscription_by_stripe_subscription_id(&update.stripe_subscription_id)
+        .await?
+    {
+        state
+            .storage
+            .upsert_subscription(
+                &existing.organization_id,
+                &update.plan,
+                &update.status,
+                update
+                    .stripe_customer_id
+                    .as_deref()
+                    .or(existing.stripe_customer_id.as_deref()),
+                Some(&update.stripe_subscription_id),
+                update.current_period_start,
+                update.current_period_end,
+            )
+            .await?;
+    } else if let Some(organization_id) = update.organization_id {
+        state
+            .storage
+            .upsert_subscription(
+                &organization_id,
+                &update.plan,
+                &update.status,
+                update.stripe_customer_id.as_deref(),
+                Some(&update.stripe_subscription_id),
+                update.current_period_start,
+                update.current_period_end,
+            )
+            .await?;
+    }
+
+    Ok(StatusCode::OK)
 }
 
 async fn get_project_storage_settings(
@@ -1650,16 +1887,28 @@ async fn create_org_invite(
     Extension(user): Extension<AuthenticatedUser>,
     Json(payload): Json<CreateInviteRequest>,
 ) -> Result<Json<agentscope_storage::team::InviteRecord>, ApiError> {
-    ensure_org_manage_access(&state, &org_id, &user).await?;
-    let allowed_roles = ["owner", "admin", "developer", "viewer"];
-    if !allowed_roles.contains(&payload.role.as_str()) {
-        return Err(ApiError::Validation(
-            "role must be one of owner, admin, developer, viewer".to_string(),
-        ));
-    }
+    ensure_org_admin_access(&state, &org_id, &user).await?;
+    let email = validate_and_normalize_email(&payload.email)?;
+    let role = normalize_team_role(&payload.role)?;
     let invite = state
         .storage
-        .create_invite(&org_id, &payload.email, &payload.role)
+        .create_invite(&org_id, &email, role, None)
+        .await?;
+    Ok(Json(invite))
+}
+
+async fn create_project_invite(
+    Path(project_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<CreateInviteRequest>,
+) -> Result<Json<agentscope_storage::team::InviteRecord>, ApiError> {
+    let org_id = ensure_project_admin_access(&state, &project_id, &user).await?;
+    let email = validate_and_normalize_email(&payload.email)?;
+    let role = normalize_team_role(&payload.role)?;
+    let invite = state
+        .storage
+        .create_invite(&org_id, &email, role, Some(&project_id))
         .await?;
     Ok(Json(invite))
 }
@@ -1681,6 +1930,82 @@ async fn accept_invite(
     Ok(StatusCode::NO_CONTENT)
 }
 
+async fn list_org_pending_invites(
+    Path(org_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<agentscope_storage::team::InviteRecord>>, ApiError> {
+    ensure_org_admin_access(&state, &org_id, &user).await?;
+    let invites = state.storage.list_org_pending_invites(&org_id).await?;
+    Ok(Json(invites))
+}
+
+async fn list_project_pending_invites(
+    Path(project_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<agentscope_storage::team::InviteRecord>>, ApiError> {
+    let org_id = ensure_project_admin_access(&state, &project_id, &user).await?;
+    let invites = state.storage.list_org_pending_invites(&org_id).await?;
+    Ok(Json(invites))
+}
+
+async fn resend_org_invite(
+    Path((org_id, invite_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<agentscope_storage::team::InviteRecord>, ApiError> {
+    ensure_org_admin_access(&state, &org_id, &user).await?;
+    let invite = state
+        .storage
+        .resend_org_invite(&org_id, &invite_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("pending invite {invite_id} not found")))?;
+    Ok(Json(invite))
+}
+
+async fn resend_project_invite(
+    Path((project_id, invite_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<agentscope_storage::team::InviteRecord>, ApiError> {
+    let org_id = ensure_project_admin_access(&state, &project_id, &user).await?;
+    let invite = state
+        .storage
+        .resend_org_invite(&org_id, &invite_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("pending invite {invite_id} not found")))?;
+    Ok(Json(invite))
+}
+
+async fn cancel_org_invite(
+    Path((org_id, invite_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<StatusCode, ApiError> {
+    ensure_org_admin_access(&state, &org_id, &user).await?;
+    if !state.storage.cancel_org_invite(&org_id, &invite_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "pending invite {invite_id} not found"
+        )));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn cancel_project_invite(
+    Path((project_id, invite_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<StatusCode, ApiError> {
+    let org_id = ensure_project_admin_access(&state, &project_id, &user).await?;
+    if !state.storage.cancel_org_invite(&org_id, &invite_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "pending invite {invite_id} not found"
+        )));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
 async fn list_org_members(
     Path(org_id): Path<String>,
     State(state): State<Arc<AppState>>,
@@ -1696,8 +2021,28 @@ async fn remove_org_member(
     State(state): State<Arc<AppState>>,
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<StatusCode, ApiError> {
-    ensure_org_manage_access(&state, &org_id, &user).await?;
+    ensure_org_admin_access(&state, &org_id, &user).await?;
     if !state.storage.remove_org_member(&org_id, &user_id).await? {
+        return Err(ApiError::NotFound(format!(
+            "member {user_id} not found in organization {org_id}"
+        )));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn update_org_member_role(
+    Path((org_id, user_id)): Path<(String, String)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<UpdateMemberRoleRequest>,
+) -> Result<StatusCode, ApiError> {
+    ensure_org_admin_access(&state, &org_id, &user).await?;
+    let role = normalize_team_role(&payload.role)?;
+    if !state
+        .storage
+        .update_org_member_role(&org_id, &user_id, role)
+        .await?
+    {
         return Err(ApiError::NotFound(format!(
             "member {user_id} not found in organization {org_id}"
         )));
@@ -1911,7 +2256,7 @@ async fn ensure_org_member_access(
     Ok(())
 }
 
-async fn ensure_org_manage_access(
+async fn ensure_org_admin_access(
     state: &Arc<AppState>,
     organization_id: &str,
     user: &AuthenticatedUser,
@@ -1920,13 +2265,81 @@ async fn ensure_org_manage_access(
         .storage
         .get_role_for_organization(&user.id, organization_id)
         .await?;
-    let can_manage = matches!(role.as_deref(), Some("owner") | Some("admin"));
+    let can_manage = matches!(role.as_deref(), Some("admin") | Some("owner"));
     if !can_manage {
         return Err(ApiError::Forbidden(
-            "organization user management requires user:manage permission".to_string(),
+            "organization user management requires admin role".to_string(),
         ));
     }
     Ok(())
+}
+
+async fn ensure_project_admin_access(
+    state: &Arc<AppState>,
+    project_id: &str,
+    user: &AuthenticatedUser,
+) -> Result<String, ApiError> {
+    ensure_project_access(state, project_id, &user.id).await?;
+    let org_id = state
+        .storage
+        .get_project_organization_id(project_id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("project {project_id} not found")))?;
+    ensure_org_admin_access(state, &org_id, user).await?;
+    Ok(org_id)
+}
+
+fn normalize_team_role(role: &str) -> Result<&'static str, ApiError> {
+    match role.trim().to_lowercase().as_str() {
+        "admin" => Ok("admin"),
+        "member" => Ok("member"),
+        _ => Err(ApiError::Validation(
+            "role must be one of admin or member".to_string(),
+        )),
+    }
+}
+
+fn validate_and_normalize_email(email: &str) -> Result<String, ApiError> {
+    let normalized = email.trim().to_lowercase();
+    if !is_valid_email(&normalized) {
+        return Err(ApiError::Validation(
+            "email must be a valid email address".to_string(),
+        ));
+    }
+    Ok(normalized)
+}
+
+fn is_valid_email(email: &str) -> bool {
+    if email.is_empty() || email.len() > 254 || email.contains(char::is_whitespace) {
+        return false;
+    }
+    let mut parts = email.split('@');
+    let local = parts.next().unwrap_or_default();
+    let domain = parts.next().unwrap_or_default();
+    if parts.next().is_some() || local.is_empty() || domain.is_empty() {
+        return false;
+    }
+    if domain.starts_with('.') || domain.ends_with('.') || !domain.contains('.') {
+        return false;
+    }
+    true
+}
+
+async fn ensure_subscription_record(
+    state: &Arc<AppState>,
+    organization_id: &str,
+) -> Result<agentscope_storage::billing::Subscription, ApiError> {
+    if let Some(subscription) = state
+        .storage
+        .get_subscription_by_organization(organization_id)
+        .await?
+    {
+        return Ok(subscription);
+    }
+    Ok(state
+        .storage
+        .ensure_free_subscription(organization_id)
+        .await?)
 }
 
 pub enum ApiError {
@@ -1934,6 +2347,7 @@ pub enum ApiError {
     NotFound(String),
     Unauthorized(String),
     Forbidden(String),
+    PaymentRequired(String),
     TooManyRequests(String),
     Storage(String),
 }
@@ -1955,6 +2369,9 @@ impl IntoResponse for ApiError {
             Self::NotFound(message) => (StatusCode::NOT_FOUND, message).into_response(),
             Self::Unauthorized(message) => (StatusCode::UNAUTHORIZED, message).into_response(),
             Self::Forbidden(message) => (StatusCode::FORBIDDEN, message).into_response(),
+            Self::PaymentRequired(message) => {
+                (StatusCode::PAYMENT_REQUIRED, message).into_response()
+            }
             Self::TooManyRequests(message) => {
                 (StatusCode::TOO_MANY_REQUESTS, message).into_response()
             }

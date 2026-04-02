@@ -197,6 +197,23 @@ pub async fn register(
         )
         .await?;
 
+    let subscription = state
+        .storage
+        .ensure_free_subscription(&account.organization_id)
+        .await?;
+    if subscription.stripe_customer_id.is_none() {
+        if let Ok(customer_id) = state
+            .billing_provider
+            .create_customer(email, Some(&account.organization_id))
+            .await
+        {
+            state
+                .storage
+                .set_subscription_customer_id(&account.organization_id, &customer_id)
+                .await?;
+        }
+    }
+
     let session = create_user_session(
         &state,
         &headers,
@@ -355,6 +372,22 @@ pub async fn oauth_callback(
             .storage
             .ensure_default_workspace(&user.id, "My Organization", "Default Project")
             .await?;
+        let subscription = state
+            .storage
+            .ensure_free_subscription(&bootstrap.organization_id)
+            .await?;
+        if subscription.stripe_customer_id.is_none() {
+            if let Ok(customer_id) = state
+                .billing_provider
+                .create_customer(&oauth_user.email, Some(&bootstrap.organization_id))
+                .await
+            {
+                state
+                    .storage
+                    .set_subscription_customer_id(&bootstrap.organization_id, &customer_id)
+                    .await?;
+            }
+        }
         let session =
             create_user_session(&state, &headers, &user.id, Some(bootstrap.api_key.as_str()))
                 .await?;

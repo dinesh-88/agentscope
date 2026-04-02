@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, LayoutDashboard, Menu, Moon, PlaySquare, Settings, Sun, Users, X } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, CreditCard, LayoutDashboard, Menu, Moon, PlaySquare, Settings, Sun, Users, X } from "lucide-react";
 
 import { UI_SESSION_COOKIE_NAME, getCurrentUser, logout } from "@/lib/api";
 
@@ -18,6 +18,8 @@ const navItems = [
   { href: "/runs", label: "Runs", icon: PlaySquare },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/insights", label: "Insights", icon: AlertCircle },
+  { href: "/billing", label: "Billing", icon: CreditCard },
+  { href: "/settings/team", label: "Team", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -55,8 +57,8 @@ export function Sidebar({ activePath = "/dashboard", theme = "light", onToggleTh
   }, [desktopCollapsed]);
 
   const visibleItems = navItems.filter((item) => {
-    if (!permissions) return item.href !== "/settings";
-    if (item.href === "/settings") return permissions.includes("project:manage");
+    if (!permissions) return item.href !== "/settings" && item.href !== "/settings/team";
+    if (item.href === "/settings" || item.href === "/settings/team") return permissions.includes("project:manage");
     return true;
   });
 

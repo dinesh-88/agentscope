@@ -1,11 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Activity, AlertTriangle, DollarSign, Gauge, Timer, Wrench } from "lucide-react";
 
 import { useAppTheme } from "@/components/app-shell";
-import { type Run, type Span } from "@/lib/api";
+import { getProjectIssues, type IssueIntelligence, type Run, type Span } from "@/lib/api";
 
 function durationMs(run: Run) {
   const start = new Date(run.started_at).getTime();
@@ -47,6 +47,15 @@ type IssueItem = {
   category: string;
   subcategory: string;
   count: number;
+  frequency?: number;
+  cost_impact?: number;
+  priority_score?: number;
+  summary?: string | null;
+  root_cause?: string | null;
+  recommended_fix?: string | null;
+  expected_impact?: string | null;
+  confidence_score?: number | null;
+  last_seen?: string | null;
 };
 
 function classifyFailureType(span: Span): string {
@@ -107,9 +116,11 @@ function issueFromFailureType(failureType: string, count: number): IssueItem {
 
 function TopIssuesPanel({
   issues,
+  loading,
   onSelectIssue,
 }: {
   issues: IssueItem[];
+  loading: boolean;
   onSelectIssue: (issue: IssueItem) => void;
 }) {
   return (
@@ -118,8 +129,14 @@ function TopIssuesPanel({
         <AlertTriangle className="size-4 text-orange-300" />
         <h2 className="text-base font-medium text-gray-100">Top Issues</h2>
       </div>
-      {issues.length === 0 ? (
-        <p className="text-sm text-gray-400">No issue signals available.</p>
+      {loading ? (
+        <div className="space-y-2">
+          {Array.from({ length: 4 }).map((_, idx) => (
+            <div key={`issues-skeleton-${idx}`} className="h-10 animate-pulse rounded-lg border border-white/10 bg-white/[0.04]" />
+          ))}
+        </div>
+      ) : issues.length === 0 ? (
+        <p className="text-sm text-gray-400">No major issues detected.</p>
       ) : (
         <div className="space-y-2">
           {issues.map((issue) => (
@@ -183,6 +200,8 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
   const { theme } = useAppTheme();
   const dark = theme === "dark";
   const [selectedIssue, setSelectedIssue] = useState<IssueItem | null>(null);
+  const [issues, setIssues] = useState<IssueItem[]>([]);
+  const [issuesLoading, setIssuesLoading] = useState<boolean>(true);
 
   const totalRuns = runs.length;
   const successfulRuns = runs.filter((run) => normalizeStatus(run.status) === "completed").length;
@@ -221,10 +240,53 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
   const slowestSpans = [...allSpans].sort((a, b) => spanDurationMs(b) - spanDurationMs(a)).slice(0, 6);
 
   const recentRuns = [...runs].sort((a, b) => Date.parse(b.started_at) - Date.parse(a.started_at)).slice(0, 5);
-  const topIssues = useMemo<IssueItem[]>(
-    () => topFailureTypes.map(([failureType, count]) => issueFromFailureType(failureType, count)),
-    [topFailureTypes],
-  );
+  const projectId = runs[0]?.project_id ?? null;
+
+  useEffect(() => {
+    let active = true;
+    if (!projectId) {
+      setIssues([]);
+      setIssuesLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+
+    setIssuesLoading(true);
+    void getProjectIssues(projectId, 20)
+      .then((rows: IssueIntelligence[]) => {
+        if (!active) return;
+        setIssues(
+          rows.map((row) => ({
+            issue_key: row.issue_key,
+            category: row.category,
+            subcategory: row.subcategory,
+            count: Math.max(1, Math.round((row.frequency ?? 0) * 100)),
+            frequency: row.frequency,
+            cost_impact: row.cost_impact,
+            priority_score: row.priority_score,
+            summary: row.summary ?? null,
+            root_cause: row.root_cause ?? null,
+            recommended_fix: row.recommended_fix ?? null,
+            expected_impact: row.expected_impact ?? null,
+            confidence_score: row.confidence_score ?? null,
+            last_seen: row.last_seen ?? null,
+          })),
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setIssues([]);
+      })
+      .finally(() => {
+        if (!active) return;
+        setIssuesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [projectId]);
 
   const runHealthCards = [
     { title: "Total Runs", value: totalRuns.toLocaleString(), icon: Activity },
@@ -280,7 +342,7 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
         </div>
       </div>
 
-      <TopIssuesPanel issues={topIssues} onSelectIssue={(issue) => setSelectedIssue(issue)} />
+      <TopIssuesPanel issues={issues} loading={issuesLoading} onSelectIssue={(issue) => setSelectedIssue(issue)} />
 
       <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
         <div className="mb-4 flex items-center gap-2">

@@ -379,6 +379,13 @@ export type RetentionApplyResult = {
   cutoff_at: string | null;
 };
 
+export type BillingOverview = {
+  plan: "free" | "pro";
+  status: string;
+  runs_used: number;
+  run_limit: number;
+};
+
 export type Alert = {
   id: string;
   project_id: string;
@@ -416,6 +423,21 @@ export type FailureCluster = {
   sample_run_ids: string[];
   common_span: string | null;
   created_at: string;
+};
+
+export type IssueIntelligence = {
+  issue_key: string;
+  category: string;
+  subcategory: string;
+  frequency: number;
+  cost_impact: number;
+  priority_score: number;
+  summary?: string | null;
+  root_cause?: string | null;
+  recommended_fix?: string | null;
+  expected_impact?: string | null;
+  confidence_score?: number | null;
+  last_seen?: string | null;
 };
 
 export type RunReplay = {
@@ -480,14 +502,17 @@ export type TeamMember = {
   email: string;
   display_name: string | null;
   role: string;
+  membership_state: "active" | "pending";
   joined_at: string;
 };
 
 export type InviteRecord = {
   id: string;
   email: string;
+  project_id?: string | null;
   organization_id: string;
   role: string;
+  invite_state: "pending" | "active";
   token: string;
   expires_at: string;
   created_at: string;
@@ -605,6 +630,18 @@ export async function getProjectInsights(projectId: string): Promise<ProjectInsi
   }
 }
 
+export async function getProjectIssues(projectId: string, limit = 20): Promise<IssueIntelligence[]> {
+  const normalizedLimit = Math.max(1, Math.min(20, limit));
+  try {
+    return await request<IssueIntelligence[]>(`/api/projects/${projectId}/issues?limit=${normalizedLimit}`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
 export async function getRunRootCause(runId: string): Promise<RunRootCause | null> {
   try {
     return await request<RunRootCause>(`/v1/runs/${runId}/root-cause`);
@@ -714,6 +751,17 @@ export async function getProjectStorageSettings(projectId: string): Promise<Proj
   return request<ProjectStorageSettings>(`/v1/projects/${projectId}/storage-settings`);
 }
 
+export async function getProjectBilling(projectId: string): Promise<BillingOverview> {
+  return request<BillingOverview>(`/v1/projects/${projectId}/billing`);
+}
+
+export async function createBillingCheckout(
+  projectId: string,
+  payload: { success_url: string; cancel_url: string },
+): Promise<{ checkout_url: string }> {
+  return postRequestWithBody<{ checkout_url: string }>(`/v1/projects/${projectId}/billing/checkout`, payload);
+}
+
 export async function updateProjectStorageSettings(
   projectId: string,
   payload: UpdateProjectStorageSettingsRequest,
@@ -779,9 +827,16 @@ export async function getFailureClusters(projectId: string): Promise<FailureClus
 
 export async function createOrgInvite(
   organizationId: string,
-  payload: { email: string; role: string },
+  payload: { email: string; role: "admin" | "member" },
 ): Promise<InviteRecord> {
   return postRequestWithBody<InviteRecord>(`/v1/orgs/${organizationId}/invites`, payload);
+}
+
+export async function createProjectInvite(
+  projectId: string,
+  payload: { email: string; role: "admin" | "member" },
+): Promise<InviteRecord> {
+  return postRequestWithBody<InviteRecord>(`/v1/projects/${projectId}/invite`, payload);
 }
 
 export async function acceptInvite(token: string): Promise<void> {
@@ -801,6 +856,33 @@ export async function getOrgMembers(organizationId: string): Promise<TeamMember[
 
 export async function removeOrgMember(organizationId: string, userId: string): Promise<void> {
   return deleteRequest(`/v1/orgs/${organizationId}/members/${userId}`);
+}
+
+export async function updateOrgMemberRole(
+  organizationId: string,
+  userId: string,
+  role: "admin" | "member",
+): Promise<void> {
+  await putRequestWithBody<void>(`/v1/orgs/${organizationId}/members/${userId}`, { role });
+}
+
+export async function getOrgPendingInvites(organizationId: string): Promise<InviteRecord[]> {
+  try {
+    return await request<InviteRecord[]>(`/v1/orgs/${organizationId}/invites`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function resendOrgInvite(organizationId: string, inviteId: string): Promise<InviteRecord> {
+  return postRequestWithBody<InviteRecord>(`/v1/orgs/${organizationId}/invites/${inviteId}/resend`, {});
+}
+
+export async function cancelOrgInvite(organizationId: string, inviteId: string): Promise<void> {
+  await deleteRequest(`/v1/orgs/${organizationId}/invites/${inviteId}`);
 }
 
 export async function createProjectApiKey(projectId: string): Promise<ProjectApiKeyResponse> {

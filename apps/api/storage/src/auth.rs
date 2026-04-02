@@ -649,7 +649,7 @@ impl Storage {
         })?;
 
         sqlx::query(
-            "INSERT INTO memberships (user_id, organization_id, role) VALUES ($1::uuid, $2::uuid, 'owner')",
+            "INSERT INTO memberships (user_id, organization_id, role) VALUES ($1::uuid, $2::uuid, 'admin')",
         )
         .bind(user_id)
         .bind(&organization_id)
@@ -907,7 +907,7 @@ impl Storage {
                 SELECT 1
                 FROM memberships
                 WHERE user_id = $1::uuid
-                  AND role IN ('owner', 'admin')
+                  AND role = 'admin'
             )
             "#,
         )
