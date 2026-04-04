@@ -4,7 +4,7 @@ import Link from "next/link";
 import { AlertTriangle, Bell, ChevronRight } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-import { getActiveAlerts, getCurrentUser, type ActiveAlert } from "@/lib/api";
+import { getCurrentUser, getProjectAlerts, type ProjectAlertEvent } from "@/lib/api";
 
 type AlertsTopbarProps = {
   theme?: "light" | "dark";
@@ -19,7 +19,7 @@ function severityRank(severity: string) {
 }
 
 export function AlertsTopbar({ theme = "dark" }: AlertsTopbarProps) {
-  const [alerts, setAlerts] = useState<ActiveAlert[]>([]);
+  const [alerts, setAlerts] = useState<ProjectAlertEvent[]>([]);
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -33,7 +33,7 @@ export function AlertsTopbar({ theme = "dark" }: AlertsTopbarProps) {
         return;
       }
 
-      const nextAlerts = await getActiveAlerts(projectId);
+      const nextAlerts = await getProjectAlerts(projectId);
       if (!cancelled) {
         setAlerts(nextAlerts);
       }
@@ -92,13 +92,10 @@ export function AlertsTopbar({ theme = "dark" }: AlertsTopbarProps) {
               }`}
             >
               <p className={`mb-2 text-xs font-medium uppercase tracking-wide ${theme === "dark" ? "text-slate-400" : "text-gray-500"}`}>
-                Active alerts
+                Recent alerts
               </p>
               <div className="max-h-80 space-y-2 overflow-auto">
                 {sortedAlerts.map((alert) => {
-                  const runIds = Array.isArray(alert.evidence?.run_ids)
-                    ? (alert.evidence.run_ids as unknown[]).filter((value): value is string => typeof value === "string")
-                    : [];
                   return (
                     <div
                       key={alert.id}
@@ -119,21 +116,18 @@ export function AlertsTopbar({ theme = "dark" }: AlertsTopbarProps) {
                         </span>
                       </div>
                       <p className={`text-[11px] ${theme === "dark" ? "text-slate-400" : "text-gray-500"}`}>{alert.alert_type}</p>
-                      {runIds.length > 0 ? (
+                      {alert.issue_key ? (
                         <div className="mt-2 space-y-1">
-                          {runIds.slice(0, 3).map((runId) => (
-                            <Link
-                              key={runId}
-                              href={`/runs/${runId}`}
-                              className={`inline-flex items-center gap-1 text-xs ${
-                                theme === "dark" ? "text-blue-300 hover:text-blue-200" : "text-blue-600 hover:text-blue-500"
-                              }`}
-                            >
-                              <AlertTriangle className="h-3.5 w-3.5" />
-                              <span className="font-mono">{runId.slice(0, 8)}</span>
-                              <ChevronRight className="h-3 w-3" />
-                            </Link>
-                          ))}
+                          <Link
+                            href={`/dashboard?issue_key=${encodeURIComponent(alert.issue_key)}`}
+                            className={`inline-flex items-center gap-1 text-xs ${
+                              theme === "dark" ? "text-blue-300 hover:text-blue-200" : "text-blue-600 hover:text-blue-500"
+                            }`}
+                          >
+                            <AlertTriangle className="h-3.5 w-3.5" />
+                            <span className="font-mono">{alert.issue_key}</span>
+                            <ChevronRight className="h-3 w-3" />
+                          </Link>
                         </div>
                       ) : null}
                     </div>

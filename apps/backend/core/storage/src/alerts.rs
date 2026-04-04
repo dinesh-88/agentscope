@@ -1,8 +1,9 @@
 use agentscope_common::errors::AgentScopeError;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sqlx::{FromRow, Row};
+use tracing::info;
 
 use crate::Storage;
 
@@ -26,6 +27,17 @@ pub struct AlertEvent {
     pub payload: Value,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct ProjectAlertEvent {
+    pub id: String,
+    pub project_id: String,
+    pub alert_type: String,
+    pub issue_key: Option<String>,
+    pub message: String,
+    pub severity: String,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct AlertMetricSnapshot {
     pub failure_rate: f64,
@@ -34,6 +46,42 @@ pub struct AlertMetricSnapshot {
     pub cost_usd: f64,
     pub tool_error_rate: f64,
 }
+
+#[derive(Debug, Clone, FromRow)]
+struct NewIssueCandidate {
+    issue_key: String,
+    priority_score: f64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct RegressionAlertCandidate {
+    issue_key: String,
+    regression_severity: f64,
+    current_frequency: f64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct DailyCostPoint {
+    date: NaiveDate,
+    run_count: i64,
+    cost_usd: f64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct WeeklyReportAlertCandidate {
+    week_start: NaiveDate,
+    week_end: NaiveDate,
+}
+
+const ALERT_TYPE_NEW_ISSUE: &str = "new_issue";
+const ALERT_TYPE_REGRESSION: &str = "regression";
+const ALERT_TYPE_COST_SPIKE: &str = "cost_spike";
+const ALERT_TYPE_WEEKLY_REPORT: &str = "weekly_report";
+const INTELLIGENCE_ALERT_COOLDOWN_HOURS: i32 = 6;
+const NEW_ISSUE_PRIORITY_THRESHOLD: f64 = 0.65;
+const COST_SPIKE_RATIO_THRESHOLD: f64 = 0.30;
+const COST_SPIKE_MIN_BASELINE_USD: f64 = 0.10;
+const COST_SPIKE_MIN_RUNS: i64 = 50;
 
 impl Storage {
     pub async fn create_alert(
@@ -220,6 +268,458 @@ impl Storage {
         })?;
 
         Ok(events)
+    }
+
+    pub async fn list_projects_for_intelligence_alerts(&self) -> Result<Vec<String>, AgentScopeError> {
+        sqlx::query_scalar::<_, String>(
+            r#"
+            SELECT DISTINCT project_id::text
+            FROM (
+                SELECT project_id FROM issue_rankings WHERE date >= CURRENT_DATE - 14
+                UNION
+                SELECT project_id FROM issue_regressions WHERE detected_at >= now() - interval '14 days'
+                UNION
+                SELECT project_id FROM project_usage_daily WHERE date >= CURRENT_DATE - 14
+                UNION
+                SELECT project_id FROM weekly_reports WHERE created_at >= now() - interval '14 days'
+            ) project_ids
+            ORDER BY project_id::text
+            "#,
+        )
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to list projects for intelligence alerts: {error}"
+            ))
+        })
+    }
+
+    pub async fn list_project_alert_events(
+        &self,
+        project_id: &str,
+        limit: i64,
+    ) -> Result<Vec<ProjectAlertEvent>, AgentScopeError> {
+        let normalized_limit = limit.clamp(1, 200);
+        sqlx::query_as::<_, ProjectAlertEvent>(
+            r#"
+            SELECT
+                id::text AS id,
+                project_id::text AS project_id,
+                COALESCE(type, 'unknown') AS alert_type,
+                issue_key,
+                COALESCE(message, payload->>'message', payload::text) AS message,
+                COALESCE(severity, payload->>'severity', 'medium') AS severity,
+                COALESCE(created_at, triggered_at) AS created_at
+            FROM alert_events
+            WHERE project_id = $1::uuid
+              AND type IS NOT NULL
+            ORDER BY COALESCE(created_at, triggered_at) DESC
+            LIMIT $2
+            "#,
+        )
+        .bind(project_id)
+        .bind(normalized_limit)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to list project alert events for project {project_id}: {error}"
+            ))
+        })
+    }
+
+    async fn insert_project_alert_event(
+        &self,
+        project_id: &str,
+        alert_type: &str,
+        issue_key: Option<&str>,
+        message: &str,
+        severity: &str,
+        payload: Value,
+    ) -> Result<bool, AgentScopeError> {
+        let recent_exists = sqlx::query_scalar::<_, bool>(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM alert_events
+                WHERE project_id = $1::uuid
+                  AND type = $2
+                  AND issue_key IS NOT DISTINCT FROM $3
+                  AND created_at >= now() - ($4::text || ' hours')::interval
+            )
+            "#,
+        )
+        .bind(project_id)
+        .bind(alert_type)
+        .bind(issue_key)
+        .bind(INTELLIGENCE_ALERT_COOLDOWN_HOURS.to_string())
+        .fetch_one(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to check cooldown for project alert event on project {project_id}: {error}"
+            ))
+        })?;
+
+        if recent_exists {
+            info!(
+                project_id,
+                alert_type,
+                issue_key,
+                cooldown_hours = INTELLIGENCE_ALERT_COOLDOWN_HOURS,
+                "project alert skipped due to cooldown"
+            );
+            return Ok(false);
+        }
+
+        sqlx::query(
+            r#"
+            INSERT INTO alert_events (
+                id,
+                alert_id,
+                project_id,
+                type,
+                issue_key,
+                message,
+                severity,
+                payload,
+                created_at
+            )
+            VALUES (
+                gen_random_uuid(),
+                NULL,
+                $1::uuid,
+                $2,
+                $3,
+                $4,
+                $5,
+                $6::jsonb,
+                now()
+            )
+            "#,
+        )
+        .bind(project_id)
+        .bind(alert_type)
+        .bind(issue_key)
+        .bind(message)
+        .bind(severity)
+        .bind(payload)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to insert project alert event on project {project_id}: {error}"
+            ))
+        })?;
+
+        Ok(true)
+    }
+
+    pub async fn evaluate_issue_alerts_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<usize, AgentScopeError> {
+        let mut created = 0usize;
+        created += self
+            .detect_new_issue_alerts_for_project(project_id)
+            .await?;
+        created += self
+            .detect_regression_alerts_for_project(project_id)
+            .await?;
+        created += self
+            .detect_cost_spike_alert_for_project(project_id)
+            .await?;
+        created += self
+            .detect_weekly_report_alert_for_project(project_id)
+            .await?;
+        Ok(created)
+    }
+
+    async fn detect_new_issue_alerts_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<usize, AgentScopeError> {
+        let rows = sqlx::query_as::<_, NewIssueCandidate>(
+            r#"
+            WITH latest AS (
+                SELECT MAX(date) AS date
+                FROM issue_rankings
+                WHERE project_id = $1::uuid
+            )
+            SELECT
+                ir.issue_key,
+                ir.priority_score
+            FROM issue_rankings ir
+            JOIN latest
+              ON latest.date IS NOT NULL
+             AND ir.date = latest.date
+            WHERE ir.project_id = $1::uuid
+              AND ir.priority_score > $2
+              AND ir.first_seen_at::date = latest.date
+            ORDER BY ir.priority_score DESC, ir.issue_key ASC
+            LIMIT 20
+            "#,
+        )
+        .bind(project_id)
+        .bind(NEW_ISSUE_PRIORITY_THRESHOLD)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to detect new issue alerts for project {project_id}: {error}"
+            ))
+        })?;
+
+        let mut created = 0usize;
+        for row in rows {
+            let severity = if row.priority_score >= 0.9 {
+                "critical"
+            } else if row.priority_score >= 0.75 {
+                "high"
+            } else {
+                "medium"
+            };
+            let message = format!(
+                "New high-impact issue detected: {} (priority {:.2})",
+                row.issue_key, row.priority_score
+            );
+            let payload = json!({
+                "type": ALERT_TYPE_NEW_ISSUE,
+                "issue_key": row.issue_key,
+                "priority_score": row.priority_score,
+                "threshold": NEW_ISSUE_PRIORITY_THRESHOLD,
+                "message": message,
+                "severity": severity
+            });
+
+            if self
+                .insert_project_alert_event(
+                    project_id,
+                    ALERT_TYPE_NEW_ISSUE,
+                    Some(&row.issue_key),
+                    &message,
+                    severity,
+                    payload,
+                )
+                .await?
+            {
+                created += 1;
+            }
+        }
+
+        Ok(created)
+    }
+
+    async fn detect_regression_alerts_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<usize, AgentScopeError> {
+        let rows = sqlx::query_as::<_, RegressionAlertCandidate>(
+            r#"
+            SELECT
+                issue_key,
+                regression_severity,
+                current_frequency
+            FROM issue_regressions
+            WHERE project_id = $1::uuid
+              AND detected_at >= now() - interval '24 hours'
+            ORDER BY detected_at DESC
+            LIMIT 50
+            "#,
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to detect regression alerts for project {project_id}: {error}"
+            ))
+        })?;
+
+        let mut created = 0usize;
+        for row in rows {
+            let severity = if row.regression_severity >= 1.0 {
+                "critical"
+            } else if row.regression_severity >= 0.5 {
+                "high"
+            } else {
+                "medium"
+            };
+            let message = format!(
+                "Regression detected for {} (severity {:.2}, current frequency {:.3})",
+                row.issue_key, row.regression_severity, row.current_frequency
+            );
+            let payload = json!({
+                "type": ALERT_TYPE_REGRESSION,
+                "issue_key": row.issue_key,
+                "regression_severity": row.regression_severity,
+                "current_frequency": row.current_frequency,
+                "message": message,
+                "severity": severity
+            });
+
+            if self
+                .insert_project_alert_event(
+                    project_id,
+                    ALERT_TYPE_REGRESSION,
+                    Some(&row.issue_key),
+                    &message,
+                    severity,
+                    payload,
+                )
+                .await?
+            {
+                created += 1;
+            }
+        }
+
+        Ok(created)
+    }
+
+    async fn detect_cost_spike_alert_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<usize, AgentScopeError> {
+        let points = sqlx::query_as::<_, DailyCostPoint>(
+            r#"
+            SELECT
+                date,
+                run_count::bigint AS run_count,
+                cost_usd
+            FROM project_usage_daily
+            WHERE project_id = $1::uuid
+              AND date >= CURRENT_DATE - 8
+            ORDER BY date DESC
+            LIMIT 8
+            "#,
+        )
+        .bind(project_id)
+        .fetch_all(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to detect cost spike alerts for project {project_id}: {error}"
+            ))
+        })?;
+
+        let Some(current) = points.first() else {
+            return Ok(0);
+        };
+        let baseline_points = points
+            .iter()
+            .skip(1)
+            .filter(|point| point.run_count > 0)
+            .collect::<Vec<_>>();
+        if baseline_points.is_empty() {
+            return Ok(0);
+        }
+
+        let baseline_cost =
+            baseline_points.iter().map(|point| point.cost_usd).sum::<f64>() / baseline_points.len() as f64;
+        if baseline_cost < COST_SPIKE_MIN_BASELINE_USD || current.run_count < COST_SPIKE_MIN_RUNS {
+            return Ok(0);
+        }
+
+        let ratio = (current.cost_usd - baseline_cost) / baseline_cost;
+        if ratio <= COST_SPIKE_RATIO_THRESHOLD {
+            return Ok(0);
+        }
+
+        let severity = if ratio >= 1.0 {
+            "critical"
+        } else if ratio >= 0.5 {
+            "high"
+        } else {
+            "medium"
+        };
+        let message = format!(
+            "Cost spike detected: {:.1}% above baseline (${:.2} vs ${:.2})",
+            ratio * 100.0,
+            current.cost_usd,
+            baseline_cost
+        );
+        let payload = json!({
+            "type": ALERT_TYPE_COST_SPIKE,
+            "date": current.date,
+            "current_cost_usd": current.cost_usd,
+            "baseline_cost_usd": baseline_cost,
+            "ratio": ratio,
+            "threshold_ratio": COST_SPIKE_RATIO_THRESHOLD,
+            "message": message,
+            "severity": severity
+        });
+
+        if self
+            .insert_project_alert_event(
+                project_id,
+                ALERT_TYPE_COST_SPIKE,
+                Some("project-cost"),
+                &message,
+                severity,
+                payload,
+            )
+            .await?
+        {
+            return Ok(1);
+        }
+
+        Ok(0)
+    }
+
+    async fn detect_weekly_report_alert_for_project(
+        &self,
+        project_id: &str,
+    ) -> Result<usize, AgentScopeError> {
+        let report = sqlx::query_as::<_, WeeklyReportAlertCandidate>(
+            r#"
+            SELECT week_start, week_end
+            FROM weekly_reports
+            WHERE project_id = $1::uuid
+            ORDER BY week_start DESC
+            LIMIT 1
+            "#,
+        )
+        .bind(project_id)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to detect weekly report alert for project {project_id}: {error}"
+            ))
+        })?;
+
+        let Some(report) = report else {
+            return Ok(0);
+        };
+        let week_key = format!("week:{}", report.week_start);
+        let message = format!(
+            "Weekly report is ready ({} to {})",
+            report.week_start, report.week_end
+        );
+        let payload = json!({
+            "type": ALERT_TYPE_WEEKLY_REPORT,
+            "week_start": report.week_start,
+            "week_end": report.week_end,
+            "message": message,
+            "severity": "low"
+        });
+
+        if self
+            .insert_project_alert_event(
+                project_id,
+                ALERT_TYPE_WEEKLY_REPORT,
+                Some(&week_key),
+                &message,
+                "low",
+                payload,
+            )
+            .await?
+        {
+            return Ok(1);
+        }
+
+        Ok(0)
     }
 
     pub async fn compute_alert_metrics(

@@ -289,6 +289,11 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
             get(get_project_weekly_report)
                 .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
         )
+        .route(
+            "/api/projects/:id/alerts",
+            get(get_project_alert_events)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
         .nest("/v1", sdk_routes.merge(ui_routes))
         .layer(
             CorsLayer::new()
@@ -1863,6 +1868,15 @@ async fn get_project_active_alerts(
         existing => existing,
     };
     Ok(Json(alerts))
+}
+
+async fn get_project_alert_events(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<agentscope_storage::alerts::ProjectAlertEvent>>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    Ok(Json(state.storage.list_project_alert_events(&id, 100).await?))
 }
 
 async fn get_project_failure_clusters(

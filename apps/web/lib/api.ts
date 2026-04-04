@@ -414,6 +414,16 @@ export type AlertEvent = {
   payload: Record<string, unknown>;
 };
 
+export type ProjectAlertEvent = {
+  id: string;
+  project_id: string;
+  alert_type: "new_issue" | "regression" | "cost_spike" | "weekly_report" | string;
+  issue_key?: string | null;
+  message: string;
+  severity: string;
+  created_at: string;
+};
+
 export type FailureCluster = {
   id: string;
   project_id: string;
@@ -886,6 +896,17 @@ export async function getAlertEvents(): Promise<AlertEvent[]> {
 export async function getActiveAlerts(projectId: string): Promise<ActiveAlert[]> {
   try {
     return await request<ActiveAlert[]>(`/v1/projects/${projectId}/alerts/active`);
+  } catch (error) {
+    if (isNotFound(error)) {
+      return [];
+    }
+    throw error;
+  }
+}
+
+export async function getProjectAlerts(projectId: string): Promise<ProjectAlertEvent[]> {
+  try {
+    return await request<ProjectAlertEvent[]>(`/api/projects/${projectId}/alerts`);
   } catch (error) {
     if (isNotFound(error)) {
       return [];

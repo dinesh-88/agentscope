@@ -2,6 +2,7 @@ mod alert_monitor;
 mod cost_backfill;
 mod finalize_run;
 mod issue_fix_detector;
+mod intelligence_alerts;
 mod issue_regression_detector;
 mod llm_client;
 mod pipeline;
@@ -114,6 +115,9 @@ async fn main() {
         usage_aggregator::aggregate(&storage)
             .await
             .expect("failed to aggregate usage");
+        intelligence_alerts::evaluate(&storage)
+            .await
+            .expect("failed to evaluate intelligence alerts after usage aggregation");
     }
     if evaluate_alerts {
         alert_monitor::evaluate(&storage)
@@ -135,6 +139,9 @@ async fn main() {
                 .await
                 .expect("failed to run issue regression detector");
         }
+        intelligence_alerts::evaluate(&storage)
+            .await
+            .expect("failed to evaluate intelligence alerts after issue pipeline");
     }
     if run_cost_backfill_once {
         cost_backfill::backfill(&storage, cost_backfill_limit)
@@ -149,6 +156,9 @@ async fn main() {
         weekly_report_generator::run_for_completed_week(&storage)
             .await
             .expect("failed to generate weekly reports");
+        intelligence_alerts::evaluate(&storage)
+            .await
+            .expect("failed to evaluate intelligence alerts after weekly reports");
     }
 
     if let Some(interval_seconds) = analysis_interval_seconds {
@@ -183,6 +193,9 @@ async fn main() {
                 usage_aggregator::aggregate(&storage_clone)
                     .await
                     .expect("failed to run recurring usage aggregation");
+                intelligence_alerts::evaluate(&storage_clone)
+                    .await
+                    .expect("failed to evaluate intelligence alerts after recurring usage aggregation");
             }
         });
     }
@@ -221,6 +234,9 @@ async fn main() {
                         .await
                         .expect("failed to run issue regression detector after issue pipeline");
                 }
+                intelligence_alerts::evaluate(&storage_clone)
+                    .await
+                    .expect("failed to evaluate intelligence alerts after recurring issue pipeline");
             }
         });
     }
@@ -235,6 +251,9 @@ async fn main() {
                 weekly_report_generator::run_for_completed_week(&storage_clone)
                     .await
                     .expect("failed to run recurring weekly report generation");
+                intelligence_alerts::evaluate(&storage_clone)
+                    .await
+                    .expect("failed to evaluate intelligence alerts after recurring weekly report generation");
             }
         });
     }
@@ -264,6 +283,9 @@ async fn main() {
                 issue_regression_detector::detect(&storage_clone)
                     .await
                     .expect("failed to run recurring issue regression detector");
+                intelligence_alerts::evaluate(&storage_clone)
+                    .await
+                    .expect("failed to evaluate intelligence alerts after recurring issue regression detection");
             }
         });
     }
