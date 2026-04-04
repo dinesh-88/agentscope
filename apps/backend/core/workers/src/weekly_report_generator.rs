@@ -66,6 +66,8 @@ pub async fn run_for_window(
     week_start: NaiveDate,
     week_end: NaiveDate,
 ) -> Result<(), AgentScopeError> {
+    storage.aggregate_project_usage_daily().await?;
+
     let project_ids = storage
         .list_active_projects_for_window(week_start, week_end)
         .await?;

@@ -10,6 +10,7 @@ import {
   getProjectIssues,
   getProjectWeeklyReport,
   markIssueFixed,
+  triggerProjectWeeklyReport,
   type IssueImpact,
   type IssueIntelligence,
   type Run,
@@ -140,9 +141,13 @@ function TopIssuesPanel({
 function WeeklyReportPanel({
   report,
   loading,
+  triggering,
+  onTrigger,
 }: {
   report: WeeklyReport | null;
   loading: boolean;
+  triggering: boolean;
+  onTrigger: () => void;
 }) {
   function formatPercent(value: number) {
     return `${(value * 100).toFixed(1)}%`;
@@ -157,13 +162,27 @@ function WeeklyReportPanel({
     }).format(value);
   }
 
+  function renderHeader() {
+    return (
+      <div className="mb-4 flex items-center gap-2">
+        <FileText className="size-4 text-indigo-300" />
+        <h2 className="text-base font-medium text-gray-100">Weekly Report</h2>
+        <button
+          type="button"
+          onClick={onTrigger}
+          disabled={triggering}
+          className="ml-auto rounded-md border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-gray-200 hover:bg-white/[0.08] disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {triggering ? "Generating..." : "Generate Now"}
+        </button>
+      </div>
+    );
+  }
+
   if (loading) {
     return (
       <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
-        <div className="mb-4 flex items-center gap-2">
-          <FileText className="size-4 text-indigo-300" />
-          <h2 className="text-base font-medium text-gray-100">Weekly Report</h2>
-        </div>
+        {renderHeader()}
         <div className="space-y-3">
           {Array.from({ length: 4 }).map((_, idx) => (
             <div key={`weekly-report-loading-${idx}`} className="h-10 animate-pulse rounded-lg border border-white/10 bg-white/[0.04]" />
@@ -176,10 +195,7 @@ function WeeklyReportPanel({
   if (!report) {
     return (
       <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
-        <div className="mb-4 flex items-center gap-2">
-          <FileText className="size-4 text-indigo-300" />
-          <h2 className="text-base font-medium text-gray-100">Weekly Report</h2>
-        </div>
+        {renderHeader()}
         <p className="text-sm text-gray-400">No weekly report available yet.</p>
       </div>
     );
@@ -195,10 +211,7 @@ function WeeklyReportPanel({
 
   return (
     <div className="mb-8 rounded-xl border border-white/10 bg-[#101722] p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <FileText className="size-4 text-indigo-300" />
-        <h2 className="text-base font-medium text-gray-100">Weekly Report</h2>
-      </div>
+      {renderHeader()}
       <div className="mb-4 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-gray-400">
         <span>{report.week_start}</span>
         <span>to</span>
@@ -490,6 +503,7 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
   const [issuesLoading, setIssuesLoading] = useState<boolean>(true);
   const [weeklyReport, setWeeklyReport] = useState<WeeklyReport | null>(null);
   const [weeklyReportLoading, setWeeklyReportLoading] = useState<boolean>(true);
+  const [weeklyReportTriggering, setWeeklyReportTriggering] = useState<boolean>(false);
 
   const totalRuns = runs.length;
   const successfulRuns = runs.filter((run) => normalizeStatus(run.status) === "completed").length;
@@ -582,6 +596,25 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
     };
   }, [projectId]);
 
+  const handleWeeklyReportTrigger = useCallback(() => {
+    if (!projectId || weeklyReportTriggering) return;
+
+    setWeeklyReportTriggering(true);
+    setWeeklyReportLoading(true);
+
+    void triggerProjectWeeklyReport(projectId)
+      .then((report) => {
+        setWeeklyReport(report);
+      })
+      .catch(() => {
+        // Preserve existing report state on trigger errors.
+      })
+      .finally(() => {
+        setWeeklyReportTriggering(false);
+        setWeeklyReportLoading(false);
+      });
+  }, [projectId, weeklyReportTriggering]);
+
   useEffect(() => {
     let active = true;
     if (!projectId) {
@@ -672,7 +705,12 @@ export function DashboardView({ runs, spansByRun }: { runs: Run[]; spansByRun: R
         </div>
       </div>
 
-      <WeeklyReportPanel report={weeklyReport} loading={weeklyReportLoading} />
+      <WeeklyReportPanel
+        report={weeklyReport}
+        loading={weeklyReportLoading}
+        triggering={weeklyReportTriggering}
+        onTrigger={handleWeeklyReportTrigger}
+      />
 
       <TopIssuesPanel issues={issues} loading={issuesLoading} onSelectIssue={(issue) => setSelectedIssue(issue)} />
 

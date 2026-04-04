@@ -38,9 +38,10 @@ use axum::{
     routing::{delete, get, post},
     Json, Router,
 };
-use chrono::{DateTime, Duration, Utc};
+use chrono::{DateTime, Duration, NaiveDate, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use sqlx::FromRow;
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
 use tracing::{error, info};
@@ -120,6 +121,48 @@ struct CreateCheckoutSessionRequest {
 #[derive(Debug, Serialize)]
 struct CreateCheckoutSessionResponse {
     checkout_url: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct WeeklyReportTriggerRequest {
+    week_start: Option<String>,
+    week_end: Option<String>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct WeekUsageAggRow {
+    total_runs: i64,
+    before_runs: i64,
+    before_errors: i64,
+    after_runs: i64,
+    after_errors: i64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct WeekCostAggRow {
+    cost_before: f64,
+    cost_after: f64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct WeeklyTopIssueRow {
+    issue_key: String,
+    priority_score: f64,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct WeeklyFixedIssueRow {
+    issue_key: String,
+    fixed_at: DateTime<Utc>,
+    auto_detected: bool,
+    detection_confidence: Option<f64>,
+}
+
+#[derive(Debug, Clone, FromRow)]
+struct WeeklyRegressionRow {
+    issue_key: String,
+    detected_at: DateTime<Utc>,
+    regression_severity: f64,
 }
 
 pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
@@ -287,6 +330,11 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route(
             "/api/projects/:project_id/reports/weekly",
             get(get_project_weekly_report)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
+        .route(
+            "/api/projects/:project_id/reports/weekly/trigger",
+            post(trigger_project_weekly_report)
                 .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
         )
         .route(
@@ -1803,6 +1851,243 @@ async fn get_project_weekly_report(
     ensure_project_access(&state, &project_id, &user.id).await?;
     let report = state.storage.get_latest_weekly_report(&project_id).await?;
     Ok(Json(report))
+}
+
+async fn trigger_project_weekly_report(
+    Path(project_id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+    Json(payload): Json<WeeklyReportTriggerRequest>,
+) -> Result<Json<Option<WeeklyReportRecord>>, ApiError> {
+    ensure_project_access(&state, &project_id, &user.id).await?;
+    ensure_project_manage_permission(&user)?;
+
+    let (week_start, week_end) = resolve_week_window(payload.week_start.as_deref(), payload.week_end.as_deref())?;
+    state.storage.aggregate_project_usage_daily().await?;
+    generate_weekly_report_for_project(&state.storage, &project_id, week_start, week_end).await?;
+    let report = state.storage.get_latest_weekly_report(&project_id).await?;
+    Ok(Json(report))
+}
+
+fn resolve_week_window(
+    week_start: Option<&str>,
+    week_end: Option<&str>,
+) -> Result<(NaiveDate, NaiveDate), ApiError> {
+    match (week_start, week_end) {
+        (Some(start), Some(end)) => {
+            let parsed_start = NaiveDate::parse_from_str(start, "%Y-%m-%d").map_err(|_| {
+                ApiError::Validation("week_start must be YYYY-MM-DD".to_string())
+            })?;
+            let parsed_end = NaiveDate::parse_from_str(end, "%Y-%m-%d")
+                .map_err(|_| ApiError::Validation("week_end must be YYYY-MM-DD".to_string()))?;
+            if parsed_end < parsed_start {
+                return Err(ApiError::Validation(
+                    "week_end must be on or after week_start".to_string(),
+                ));
+            }
+            Ok((parsed_start, parsed_end))
+        }
+        (None, None) => {
+            let week_end = Utc::now().date_naive() - chrono::Duration::days(1);
+            let week_start = week_end - chrono::Duration::days(6);
+            Ok((week_start, week_end))
+        }
+        _ => Err(ApiError::Validation(
+            "both week_start and week_end are required when specifying window".to_string(),
+        )),
+    }
+}
+
+async fn generate_weekly_report_for_project(
+    storage: &Storage,
+    project_id: &str,
+    week_start: NaiveDate,
+    week_end: NaiveDate,
+) -> Result<(), ApiError> {
+    let split_date = week_start + chrono::Duration::days(3);
+
+    let usage = sqlx::query_as::<_, WeekUsageAggRow>(
+        r#"
+        SELECT
+            COALESCE(SUM(run_count), 0)::bigint AS total_runs,
+            COALESCE(SUM(CASE WHEN date <= $2 THEN run_count ELSE 0 END), 0)::bigint AS before_runs,
+            COALESCE(SUM(CASE WHEN date <= $2 THEN error_count ELSE 0 END), 0)::bigint AS before_errors,
+            COALESCE(SUM(CASE WHEN date > $2 THEN run_count ELSE 0 END), 0)::bigint AS after_runs,
+            COALESCE(SUM(CASE WHEN date > $2 THEN error_count ELSE 0 END), 0)::bigint AS after_errors
+        FROM project_usage_daily
+        WHERE project_id = $1::uuid
+          AND date >= $3
+          AND date <= $4
+        "#,
+    )
+    .bind(project_id)
+    .bind(split_date)
+    .bind(week_start)
+    .bind(week_end)
+    .fetch_one(&storage.pool)
+    .await
+    .map_err(|error| {
+        ApiError::Storage(format!(
+            "failed to aggregate weekly usage for project {project_id} window {week_start}..{week_end}: {error}"
+        ))
+    })?;
+
+    let costs = sqlx::query_as::<_, WeekCostAggRow>(
+        r#"
+        SELECT
+            COALESCE(SUM(CASE WHEN date <= $2 THEN failed_run_cost_usd ELSE 0 END), 0)::double precision AS cost_before,
+            COALESCE(SUM(CASE WHEN date > $2 THEN failed_run_cost_usd ELSE 0 END), 0)::double precision AS cost_after
+        FROM failure_metrics_daily
+        WHERE project_id = $1::uuid
+          AND date >= $3
+          AND date <= $4
+        "#,
+    )
+    .bind(project_id)
+    .bind(split_date)
+    .bind(week_start)
+    .bind(week_end)
+    .fetch_one(&storage.pool)
+    .await
+    .map_err(|error| {
+        ApiError::Storage(format!(
+            "failed to aggregate weekly failure costs for project {project_id} window {week_start}..{week_end}: {error}"
+        ))
+    })?;
+
+    let failure_rate_before = if usage.before_runs > 0 {
+        usage.before_errors as f64 / usage.before_runs as f64
+    } else {
+        0.0
+    };
+    let failure_rate_after = if usage.after_runs > 0 {
+        usage.after_errors as f64 / usage.after_runs as f64
+    } else {
+        0.0
+    };
+
+    let week_end_exclusive = week_end + chrono::Duration::days(1);
+
+    let top_issues = sqlx::query_as::<_, WeeklyTopIssueRow>(
+        r#"
+        SELECT issue_key, MAX(priority_score)::double precision AS priority_score
+        FROM issue_rankings
+        WHERE project_id = $1::uuid
+          AND date >= $2
+          AND date <= $3
+        GROUP BY issue_key
+        ORDER BY MAX(priority_score) DESC, issue_key ASC
+        LIMIT 10
+        "#,
+    )
+    .bind(project_id)
+    .bind(week_start)
+    .bind(week_end)
+    .fetch_all(&storage.pool)
+    .await
+    .map_err(|error| {
+        ApiError::Storage(format!(
+            "failed to fetch top weekly issues for project {project_id}: {error}"
+        ))
+    })?;
+
+    let fixed_issues = sqlx::query_as::<_, WeeklyFixedIssueRow>(
+        r#"
+        SELECT issue_key, fixed_at, auto_detected, detection_confidence
+        FROM issue_fixes
+        WHERE project_id = $1::uuid
+          AND fixed_at >= $2::date
+          AND fixed_at < $3::date
+        ORDER BY fixed_at DESC
+        LIMIT 10
+        "#,
+    )
+    .bind(project_id)
+    .bind(week_start)
+    .bind(week_end_exclusive)
+    .fetch_all(&storage.pool)
+    .await
+    .map_err(|error| {
+        ApiError::Storage(format!(
+            "failed to fetch fixed issues for project {project_id}: {error}"
+        ))
+    })?;
+
+    let regressions = sqlx::query_as::<_, WeeklyRegressionRow>(
+        r#"
+        SELECT issue_key, detected_at, regression_severity
+        FROM issue_regressions
+        WHERE project_id = $1::uuid
+          AND detected_at >= $2::date
+          AND detected_at < $3::date
+        ORDER BY detected_at DESC
+        LIMIT 10
+        "#,
+    )
+    .bind(project_id)
+    .bind(week_start)
+    .bind(week_end_exclusive)
+    .fetch_all(&storage.pool)
+    .await
+    .map_err(|error| {
+        ApiError::Storage(format!(
+            "failed to fetch regressions for project {project_id}: {error}"
+        ))
+    })?;
+
+    let failure_change = failure_rate_after - failure_rate_before;
+    let cost_change = costs.cost_after - costs.cost_before;
+    let improvement_summary = format!(
+        "Failure rate changed by {:+.2}% and failed-run cost changed by {:+.2} USD over the selected week.",
+        failure_change * 100.0,
+        cost_change
+    );
+
+    let report_json = json!({
+        "summary": {
+            "failure_change": failure_change,
+            "cost_change": cost_change,
+            "total_runs": usage.total_runs,
+        },
+        "top_fixed_issues": fixed_issues.iter().map(|row| {
+            json!({
+                "issue_key": row.issue_key,
+                "fixed_at": row.fixed_at,
+                "auto_detected": row.auto_detected,
+                "detection_confidence": row.detection_confidence,
+            })
+        }).collect::<Vec<_>>(),
+        "regressions": regressions.iter().map(|row| {
+            json!({
+                "issue_key": row.issue_key,
+                "detected_at": row.detected_at,
+                "regression_severity": row.regression_severity,
+            })
+        }).collect::<Vec<_>>(),
+        "top_issues": top_issues.iter().map(|row| {
+            json!({
+                "issue_key": row.issue_key,
+                "priority_score": row.priority_score,
+            })
+        }).collect::<Vec<_>>(),
+    });
+
+    storage
+        .upsert_weekly_report(agentscope_storage::weekly_reports::UpsertWeeklyReportInput {
+            project_id: project_id.to_string(),
+            week_start,
+            week_end,
+            total_runs: usage.total_runs.min(i32::MAX as i64) as i32,
+            failure_rate_before,
+            failure_rate_after,
+            cost_before: costs.cost_before,
+            cost_after: costs.cost_after,
+            improvement_summary,
+            report_json,
+        })
+        .await?;
+
+    Ok(())
 }
 
 async fn get_project_trends(

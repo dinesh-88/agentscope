@@ -732,6 +732,23 @@ export async function getProjectWeeklyReport(projectId: string): Promise<WeeklyR
   }
 }
 
+export async function triggerProjectWeeklyReport(
+  projectId: string,
+  payload?: { week_start?: string; week_end?: string },
+): Promise<WeeklyReport | null> {
+  try {
+    return await postRequestWithBody<WeeklyReport | null>(
+      `/api/projects/${projectId}/reports/weekly/trigger`,
+      payload ?? {},
+    );
+  } catch (error) {
+    if (isNotFound(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 export async function getRunRootCause(runId: string): Promise<RunRootCause | null> {
   try {
     return await request<RunRootCause>(`/v1/runs/${runId}/root-cause`);

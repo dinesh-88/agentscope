@@ -115,6 +115,9 @@ async fn main() {
         usage_aggregator::aggregate(&storage)
             .await
             .expect("failed to aggregate usage");
+        weekly_report_generator::run_for_completed_week(&storage)
+            .await
+            .expect("failed to generate weekly reports after usage aggregation");
         intelligence_alerts::evaluate(&storage)
             .await
             .expect("failed to evaluate intelligence alerts after usage aggregation");
@@ -139,6 +142,9 @@ async fn main() {
                 .await
                 .expect("failed to run issue regression detector");
         }
+        weekly_report_generator::run_for_completed_week(&storage)
+            .await
+            .expect("failed to generate weekly reports after issue pipeline");
         intelligence_alerts::evaluate(&storage)
             .await
             .expect("failed to evaluate intelligence alerts after issue pipeline");
@@ -193,6 +199,9 @@ async fn main() {
                 usage_aggregator::aggregate(&storage_clone)
                     .await
                     .expect("failed to run recurring usage aggregation");
+                weekly_report_generator::run_for_completed_week(&storage_clone)
+                    .await
+                    .expect("failed to generate weekly reports after recurring usage aggregation");
                 intelligence_alerts::evaluate(&storage_clone)
                     .await
                     .expect("failed to evaluate intelligence alerts after recurring usage aggregation");
@@ -234,6 +243,9 @@ async fn main() {
                         .await
                         .expect("failed to run issue regression detector after issue pipeline");
                 }
+                weekly_report_generator::run_for_completed_week(&storage_clone)
+                    .await
+                    .expect("failed to generate weekly reports after recurring issue pipeline");
                 intelligence_alerts::evaluate(&storage_clone)
                     .await
                     .expect("failed to evaluate intelligence alerts after recurring issue pipeline");
