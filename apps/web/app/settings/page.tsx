@@ -444,7 +444,7 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="font-medium text-gray-900">Redact Sensitive Data</p>
-                  <p className="text-sm text-gray-600">Automatically redact PII in logs</p>
+                  <p className="text-sm text-gray-600">Mask PII and secrets in prompt, response, and log payloads.</p>
                 </div>
                 <input
                   checked={Boolean(redactSensitiveData)}

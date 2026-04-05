@@ -3,7 +3,7 @@
 import { Maximize2, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { type Span } from "@/lib/api";
+import { type Artifact, type Span } from "@/lib/api";
 
 type TimelineStepType = "llm" | "tool";
 type TimelineStepStatus = "success" | "warning" | "error";
@@ -40,6 +40,7 @@ type TimelineLogEntry = {
 
 type RunTimelineViewProps = {
   spans: Span[];
+  artifacts?: Artifact[];
 };
 
 function chooseTickStep(maxTimeMs: number) {
@@ -219,11 +220,63 @@ function buildDepthResolver(spans: Span[]) {
   return resolveDepth;
 }
 
-function toTimelineSteps(spans: Span[]): TimelineStep[] {
+function extractArtifactText(payload: Record<string, unknown>): string | undefined {
+  const direct = pickStringFromObjects([payload], ["text", "content", "prompt", "response", "message", "output"]);
+  if (direct) return direct;
+
+  const messages = payload.messages;
+  if (Array.isArray(messages)) {
+    const parts = messages
+      .map((item) => {
+        if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+        const message = item as Record<string, unknown>;
+        return pickStringFromObjects([message], ["content", "text", "message"]);
+      })
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+    if (parts.length > 0) {
+      return parts.join("\n");
+    }
+  }
+
+  const nestedInput = toObject(payload.input);
+  if (nestedInput) {
+    return extractArtifactText(nestedInput);
+  }
+
+  return undefined;
+}
+
+function buildArtifactTextIndex(artifacts: Artifact[] | undefined) {
+  const promptsBySpan = new Map<string, string>();
+  const responsesBySpan = new Map<string, string>();
+
+  for (const artifact of artifacts ?? []) {
+    if (!artifact.span_id) continue;
+    const payload = toObject(artifact.payload);
+    if (!payload) continue;
+
+    const text = extractArtifactText(payload);
+    if (!text) continue;
+
+    const kind = artifact.kind.toLowerCase();
+    if (kind.includes("prompt")) {
+      promptsBySpan.set(artifact.span_id, text);
+      continue;
+    }
+    if (kind.includes("response")) {
+      responsesBySpan.set(artifact.span_id, text);
+    }
+  }
+
+  return { promptsBySpan, responsesBySpan };
+}
+
+function toTimelineSteps(spans: Span[], artifacts?: Artifact[]): TimelineStep[] {
   if (spans.length === 0) return [];
   const ordered = [...spans].sort((a, b) => +new Date(a.started_at) - +new Date(b.started_at));
   const firstStart = +new Date(ordered[0].started_at);
   const resolveDepth = buildDepthResolver(ordered);
+  const artifactIndex = buildArtifactTextIndex(artifacts);
 
   return ordered.map((span, index) => {
     const startAbsolute = +new Date(span.started_at);
@@ -252,8 +305,12 @@ function toTimelineSteps(spans: Span[]): TimelineStep[] {
       },
       cost: Math.max(0, span.estimated_cost ?? 0),
       model: span.model ?? undefined,
-      prompt: pickStringFromObjects([metadata, context], ["prompt", "input", "request", "query", "message"]),
-      response: pickStringFromObjects([metadata, context, evaluation], ["response", "output", "result", "content"]),
+      prompt:
+        artifactIndex.promptsBySpan.get(span.id) ??
+        pickStringFromObjects([metadata, context], ["prompt", "input", "request", "query", "message"]),
+      response:
+        artifactIndex.responsesBySpan.get(span.id) ??
+        pickStringFromObjects([metadata, context, evaluation], ["response", "output", "result", "content"]),
       params: pickObjectFromObjects([metadata, context], ["params", "arguments", "input", "request"]),
       result: pickObjectFromObjects([metadata, context, evaluation], ["result", "output", "response"]),
       metadata: metadata,
@@ -274,10 +331,10 @@ function toTimelineSteps(spans: Span[]): TimelineStep[] {
   });
 }
 
-export function RunTimelineView({ spans }: RunTimelineViewProps) {
+export function RunTimelineView({ spans, artifacts }: RunTimelineViewProps) {
   const [zoom, setZoom] = useState(1);
   const [selectedStep, setSelectedStep] = useState<number | null>(null);
-  const steps = useMemo(() => toTimelineSteps(spans), [spans]);
+  const steps = useMemo(() => toTimelineSteps(spans, artifacts), [spans, artifacts]);
 
   const maxTime = steps.length > 0 ? Math.max(...steps.map((s) => s.end)) : 0;
   const timeScale = Math.max(10, Math.ceil(maxTime / 10) * 10);
@@ -522,6 +579,13 @@ function DetailsPanel({ step }: { step: TimelineStep }) {
         <details className="border-t border-white/5 pt-3">
           <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-400">Prompt</summary>
           <div className="mt-2 rounded bg-black/30 p-3 text-sm text-gray-300">{step.prompt}</div>
+        </details>
+      ) : null}
+
+      {step.response ? (
+        <details className="border-t border-white/5 pt-3">
+          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-400">Response</summary>
+          <div className="mt-2 rounded bg-black/30 p-3 text-sm text-gray-300">{step.response}</div>
         </details>
       ) : null}
 

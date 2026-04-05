@@ -12,7 +12,7 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     hash::{Hash, Hasher},
-    sync::Arc,
+    sync::{Arc, OnceLock},
 };
 
 use agentscope_common::errors::AgentScopeError;
@@ -39,6 +39,7 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Duration, NaiveDate, Utc};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use sqlx::FromRow;
@@ -2767,29 +2768,131 @@ async fn apply_project_storage_policies(
         .storage
         .get_project_storage_settings(&payload.run.project_id)
         .await?;
-    if settings.store_prompts_responses && !settings.redact_sensitive_data {
+
+    if !settings.store_prompts_responses {
+        for artifact in &mut payload.artifacts {
+            if should_redact_prompt_response_payload(&artifact.kind) {
+                artifact.payload = serde_json::json!({
+                    "redacted": true,
+                    "reason": "store_prompts_responses_disabled",
+                });
+            }
+        }
+    }
+
+    if !settings.redact_sensitive_data {
         return Ok(());
     }
 
     for artifact in &mut payload.artifacts {
-        if should_redact_artifact_payload(&artifact.kind) {
-            artifact.payload = serde_json::json!({
-                "redacted": true,
-                "reason": if settings.store_prompts_responses {
-                    "redact_sensitive_data_enabled"
-                } else {
-                    "store_prompts_responses_disabled"
-                },
-            });
+        if should_apply_pii_redaction(&artifact.kind) {
+            redact_sensitive_json(&mut artifact.payload);
         }
     }
 
     Ok(())
 }
 
-fn should_redact_artifact_payload(kind: &str) -> bool {
+fn should_redact_prompt_response_payload(kind: &str) -> bool {
     let kind = kind.to_lowercase();
     kind.contains("prompt") || kind.contains("response")
+}
+
+fn should_apply_pii_redaction(kind: &str) -> bool {
+    let kind = kind.to_lowercase();
+    kind == "log"
+        || kind.contains("prompt")
+        || kind.contains("response")
+        || kind.contains("stdout")
+        || kind.contains("stderr")
+}
+
+fn redact_sensitive_json(value: &mut Value) {
+    match value {
+        Value::String(raw) => {
+            *raw = redact_sensitive_text(raw);
+        }
+        Value::Array(items) => {
+            for item in items {
+                redact_sensitive_json(item);
+            }
+        }
+        Value::Object(map) => {
+            for item in map.values_mut() {
+                redact_sensitive_json(item);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_sensitive_text(input: &str) -> String {
+    let mut output = input.to_string();
+    output = regex_email().replace_all(&output, "[REDACTED_EMAIL]").into_owned();
+    output = regex_phone().replace_all(&output, "[REDACTED_PHONE]").into_owned();
+    output = regex_ssn().replace_all(&output, "[REDACTED_SSN]").into_owned();
+    output = regex_credit_card()
+        .replace_all(&output, "[REDACTED_CARD]")
+        .into_owned();
+    output = regex_jwt().replace_all(&output, "[REDACTED_JWT]").into_owned();
+    output = regex_openai_key()
+        .replace_all(&output, "[REDACTED_API_KEY]")
+        .into_owned();
+    output = regex_aws_access_key()
+        .replace_all(&output, "[REDACTED_AWS_KEY]")
+        .into_owned();
+    output = regex_bearer_token()
+        .replace_all(&output, "Bearer [REDACTED_TOKEN]")
+        .into_owned();
+    output
+}
+
+fn regex_email() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)\b[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}\b")
+            .expect("email regex must compile")
+    })
+}
+
+fn regex_phone() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"(?x)\b(?:\+?\d[\d\-\.\(\) ]{7,}\d)\b").expect("phone regex must compile")
+    })
+}
+
+fn regex_ssn() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\b\d{3}-\d{2}-\d{4}\b").expect("ssn regex must compile"))
+}
+
+fn regex_credit_card() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\b(?:\d[ -]*?){13,19}\b").expect("card regex must compile"))
+}
+
+fn regex_jwt() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        Regex::new(r"\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
+            .expect("jwt regex must compile")
+    })
+}
+
+fn regex_openai_key() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bsk-[A-Za-z0-9]{20,}\b").expect("openai key regex must compile"))
+}
+
+fn regex_aws_access_key() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\bAKIA[0-9A-Z]{16}\b").expect("aws key regex must compile"))
+}
+
+fn regex_bearer_token() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?i)\bBearer\s+[A-Za-z0-9\._\-]+\b").expect("bearer regex must compile"))
 }
 
 async fn ensure_org_member_access(
