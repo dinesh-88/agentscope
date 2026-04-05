@@ -98,6 +98,16 @@ function buildTraceGroups(runs: Awaited<ReturnType<typeof getRuns>>) {
     });
 }
 
+function formatTraceGroupLabel(traceId: string | null) {
+  if (!traceId) {
+    return "Ungrouped runs";
+  }
+  if (traceId.length <= 16) {
+    return `Trace ${traceId}`;
+  }
+  return `Trace ${traceId.slice(0, 8)}...${traceId.slice(-4)}`;
+}
+
 export default async function RunsPage({ searchParams }: RunsPageProps) {
   noStore();
   const params = searchParams ? await searchParams : undefined;
@@ -182,7 +192,7 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
                   >
                     <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-4 py-3">
                       <div className="flex items-center gap-3">
-                        <span className="text-sm font-medium text-gray-900">Group {index + 1}</span>
+                        <span className="text-sm font-medium text-gray-900">{formatTraceGroupLabel(group.traceId)}</span>
                         <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700">
                           {group.runs.length} run{group.runs.length === 1 ? "" : "s"}
                         </span>
@@ -196,7 +206,7 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
                       <div className="flex items-center gap-3 text-xs">
                         {group.traceId ? (
                           <Link href={`/runs?trace_id=${encodeURIComponent(group.traceId)}`} className="text-blue-600 hover:text-blue-500">
-                            Filter to this group
+                            Filter to this trace
                           </Link>
                         ) : null}
                         {compareHref ? (
