@@ -18,8 +18,8 @@ export function LoginForm({ nextPath, initialMode = "login" }: LoginFormProps) {
   const router = useRouter();
   const [mode, setMode] = useState<"login" | "register">(initialMode);
   const [showPassword, setShowPassword] = useState(false);
-  const [email, setEmail] = useState(mode === "login" ? "owner@demo.agentscope.local" : "");
-  const [password, setPassword] = useState(mode === "login" ? "demo-password" : "");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [organizationName, setOrganizationName] = useState("");
   const [projectName, setProjectName] = useState("");
