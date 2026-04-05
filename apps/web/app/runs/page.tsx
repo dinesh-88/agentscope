@@ -154,100 +154,106 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
             </h2>
           </div>
 
-          <div className="px-6 pb-6">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="pb-3 text-left text-sm font-medium text-gray-600">Run Name</th>
-                    <th className="pb-3 text-left text-sm font-medium text-gray-600">Agent</th>
-                    <th className="pb-3 text-left text-sm font-medium text-gray-600">Status</th>
-                    <th className="pb-3 text-left text-sm font-medium text-gray-600">Duration</th>
-                    <th className="pb-3 text-left text-sm font-medium text-gray-600">Tokens</th>
-                    <th className="pb-3 text-left text-sm font-medium text-gray-600">Cost</th>
-                    <th className="pb-3 text-left text-sm font-medium text-gray-600">Started At</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {filteredRuns.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="py-8 text-center text-sm text-gray-500">
-                        {agentFilter
-                          ? "No runs found for this filter."
-                          : traceIdFilter
-                            ? "No runs found for this trace."
-                          : "No runs yet. Run the demo app to generate your first trace."}
-                      </td>
-                    </tr>
-                  ) : (
-                    traceGroups.flatMap((group) => {
-                      const latestFailed = group.runs.find((run) => isFailureStatus(run.status));
-                      const latestSuccess = group.runs.find((run) => !isFailureStatus(run.status));
-                      const compareHref =
-                        latestFailed && latestSuccess && latestFailed.id !== latestSuccess.id
-                          ? `/runs/compare/${latestFailed.id}/${latestSuccess.id}`
-                          : null;
+          <div className="space-y-3 px-6 pb-6">
+            {filteredRuns.length === 0 ? (
+              <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-8 text-center text-sm text-gray-500">
+                {agentFilter
+                  ? "No runs found for this filter."
+                  : traceIdFilter
+                    ? "No runs found for this trace."
+                    : "No runs yet. Run the demo app to generate your first trace."}
+              </div>
+            ) : (
+              traceGroups.map((group, index) => {
+                const latestFailed = group.runs.find((run) => isFailureStatus(run.status));
+                const latestSuccess = group.runs.find((run) => !isFailureStatus(run.status));
+                const compareHref =
+                  latestFailed && latestSuccess && latestFailed.id !== latestSuccess.id
+                    ? `/runs/compare/${latestFailed.id}/${latestSuccess.id}`
+                    : null;
+                const failedCount = group.runs.filter((run) => isFailureStatus(run.status)).length;
+                const newestRun = group.runs[0];
 
-                      const groupHeader = (
-                        <tr key={`group-${group.traceId ?? "no-trace"}`} className="bg-gray-50">
-                          <td colSpan={7} className="py-2 text-xs text-gray-600">
-                            <div className="flex flex-wrap items-center justify-between gap-3">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-gray-700">
-                                  {group.traceId ? `Trace: ${group.traceId}` : "No Trace ID"}
-                                </span>
-                                <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px] text-gray-700">
-                                  {group.runs.length} run{group.runs.length === 1 ? "" : "s"}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-3">
-                                {group.traceId ? (
-                                  <Link href={`/runs?trace_id=${encodeURIComponent(group.traceId)}`} className="text-blue-600 hover:text-blue-500">
-                                    Filter to this trace
-                                  </Link>
-                                ) : null}
-                                {compareHref ? (
-                                  <Link href={compareHref} className="text-blue-600 hover:text-blue-500">
-                                    Compare latest failed vs success
-                                  </Link>
-                                ) : null}
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      );
+                return (
+                  <details
+                    key={`group-${group.traceId ?? `no-trace-${index}`}`}
+                    open={Boolean(traceIdFilter) || index === 0}
+                    className="rounded-lg border border-gray-200 bg-white"
+                  >
+                    <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-sm font-medium text-gray-900">Group {index + 1}</span>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700">
+                          {group.runs.length} run{group.runs.length === 1 ? "" : "s"}
+                        </span>
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] text-gray-700">
+                          {failedCount} failed
+                        </span>
+                        {newestRun ? (
+                          <span className="text-xs text-gray-500">Latest: {formatDate(newestRun.started_at)}</span>
+                        ) : null}
+                      </div>
+                      <div className="flex items-center gap-3 text-xs">
+                        {group.traceId ? (
+                          <Link href={`/runs?trace_id=${encodeURIComponent(group.traceId)}`} className="text-blue-600 hover:text-blue-500">
+                            Filter to this group
+                          </Link>
+                        ) : null}
+                        {compareHref ? (
+                          <Link href={compareHref} className="text-blue-600 hover:text-blue-500">
+                            Compare latest failed vs success
+                          </Link>
+                        ) : null}
+                      </div>
+                    </summary>
 
-                      const rows = group.runs.map((run) => {
-                        const totalTokens = run.total_tokens ?? 0;
-                        const totalCostUsd = run.total_cost_usd ?? 0;
+                    <div className="border-t border-gray-200 px-4 py-3">
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead>
+                            <tr className="border-b border-gray-200">
+                              <th className="pb-3 text-left text-sm font-medium text-gray-600">Run Name</th>
+                              <th className="pb-3 text-left text-sm font-medium text-gray-600">Agent</th>
+                              <th className="pb-3 text-left text-sm font-medium text-gray-600">Status</th>
+                              <th className="pb-3 text-left text-sm font-medium text-gray-600">Duration</th>
+                              <th className="pb-3 text-left text-sm font-medium text-gray-600">Tokens</th>
+                              <th className="pb-3 text-left text-sm font-medium text-gray-600">Cost</th>
+                              <th className="pb-3 text-left text-sm font-medium text-gray-600">Started At</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-gray-100">
+                            {group.runs.map((run) => {
+                              const totalTokens = run.total_tokens ?? 0;
+                              const totalCostUsd = run.total_cost_usd ?? 0;
 
-                        return (
-                          <tr key={run.id} data-testid="run-item" className="hover:bg-gray-50">
-                            <td className="py-4">
-                              <Link href={`/runs/${run.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
-                                {run.workflow_name}
-                              </Link>
-                            </td>
-                            <td className="py-4 text-sm text-gray-600">{run.agent_name}</td>
-                            <td className="py-4">
-                              <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${getStatusColor(run.status)}`}>
-                                {run.status}
-                              </span>
-                            </td>
-                            <td className="py-4 text-sm text-gray-600">{formatDuration(run.started_at, run.ended_at)}</td>
-                            <td className="py-4 text-sm text-gray-600">{totalTokens > 0 ? totalTokens.toLocaleString() : "-"}</td>
-                            <td className="py-4 text-sm text-gray-600">{totalCostUsd > 0 ? formatUsd(totalCostUsd, { decimals: 3, tinyThreshold: 0.001 }) : "-"}</td>
-                            <td className="py-4 text-sm text-gray-600">{formatDate(run.started_at)}</td>
-                          </tr>
-                        );
-                      });
-
-                      return [groupHeader, ...rows];
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
+                              return (
+                                <tr key={run.id} data-testid="run-item" className="hover:bg-gray-50">
+                                  <td className="py-4">
+                                    <Link href={`/runs/${run.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
+                                      {run.workflow_name}
+                                    </Link>
+                                  </td>
+                                  <td className="py-4 text-sm text-gray-600">{run.agent_name}</td>
+                                  <td className="py-4">
+                                    <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${getStatusColor(run.status)}`}>
+                                      {run.status}
+                                    </span>
+                                  </td>
+                                  <td className="py-4 text-sm text-gray-600">{formatDuration(run.started_at, run.ended_at)}</td>
+                                  <td className="py-4 text-sm text-gray-600">{totalTokens > 0 ? totalTokens.toLocaleString() : "-"}</td>
+                                  <td className="py-4 text-sm text-gray-600">{totalCostUsd > 0 ? formatUsd(totalCostUsd, { decimals: 3, tinyThreshold: 0.001 }) : "-"}</td>
+                                  <td className="py-4 text-sm text-gray-600">{formatDate(run.started_at)}</td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </details>
+                );
+              })
+            )}
           </div>
         </div>
       </div>
