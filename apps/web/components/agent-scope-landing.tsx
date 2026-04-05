@@ -82,7 +82,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </nav>
 
       <section className="px-6 pb-14 pt-20">
-        <div className="mx-auto w-full max-w-[980px] text-center">
+        <div className="mx-auto w-full max-w-[1368px] text-center">
           <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
             Know exactly why your AI agent failed
           </h1>
@@ -108,7 +108,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section id="problem" className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[980px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
+        <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
           <h2 className="mb-2 text-3xl font-bold">Why AI Agents Fail</h2>
           <p className="mb-6 text-gray-400">AI agents fail in production for reasons that logs don&apos;t explain:</p>
           <ul className="mb-6 space-y-2 text-gray-200">
@@ -122,7 +122,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[980px]">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-3 text-3xl font-bold">Observe - Trace - Debug - Fix</h2>
           <ol className="grid gap-4 md:grid-cols-2">
             <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">1. Capture every agent step</li>
@@ -134,7 +134,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section id="features" className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[980px]">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-8 text-3xl font-bold">Features</h2>
           <div className="grid gap-4 md:grid-cols-2">
             {features.map((feature) => (
@@ -148,7 +148,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section id="comparison" className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[980px]">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-6 text-3xl font-bold">Traditional Logs vs AgentScope</h2>
           <div className="overflow-hidden rounded-2xl border border-white/10">
             <table className="w-full border-collapse text-left">
@@ -178,7 +178,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[980px]">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h2 className="mb-5 text-3xl font-bold">Use Cases</h2>
           <ul className="grid gap-3 md:grid-cols-2">
             {useCases.map((item) => (
@@ -191,7 +191,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </section>
 
       <section className="px-6 pb-24 pt-10">
-        <div className="mx-auto w-full max-w-[980px] rounded-3xl border border-white/10 bg-white/[0.02] px-8 py-14 text-center">
+        <div className="mx-auto w-full max-w-[1368px] rounded-3xl border border-white/10 bg-white/[0.02] px-8 py-14 text-center">
           <h2 className="mb-4 text-4xl font-bold md:text-5xl">Start debugging your AI agents today.</h2>
           <div className="flex flex-wrap items-center justify-center gap-4">
             <Link

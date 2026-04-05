@@ -55,6 +55,26 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
+function readRunLinkage(run: Run): {
+  traceId: string | null;
+  parentRunId: string | null;
+  rootRunId: string | null;
+} {
+  const metadata =
+    run.metadata && typeof run.metadata === "object" && !Array.isArray(run.metadata)
+      ? (run.metadata as Record<string, unknown>)
+      : {};
+  const readString = (key: "trace_id" | "parent_run_id" | "root_run_id") => {
+    const value = metadata[key];
+    return typeof value === "string" && value.trim().length > 0 ? value : null;
+  };
+  return {
+    traceId: readString("trace_id"),
+    parentRunId: readString("parent_run_id"),
+    rootRunId: readString("root_run_id"),
+  };
+}
+
 function readPayloadText(payload: Record<string, unknown>) {
   const candidates = ["message", "error", "summary", "content", "result", "output"];
   for (const key of candidates) {
@@ -140,6 +160,7 @@ export function RunDetailView({
     [insights],
   );
   const hasRca = Boolean(rootCause);
+  const linkage = readRunLinkage(currentRun);
   const rootCauseLabel = rootCause?.root_cause_type || "Unavailable";
   const rootCauseConfidence = typeof rootCause?.confidence === "number" ? `${Math.round(rootCause.confidence * 100)}% confidence` : null;
   const rootCauseMessage = rootCause?.message || "Run failed. Root cause not yet analyzed.";
@@ -220,6 +241,16 @@ export function RunDetailView({
           <span>Duration: {formatDurationMs(runMs)}</span>
           <span>Tokens: {totalTokens.toLocaleString()}</span>
           <span>Cost: {formatUsd(totalCost)}</span>
+          {linkage.traceId ? (
+            <span>
+              Trace:{" "}
+              <Link href={`/runs?trace_id=${encodeURIComponent(linkage.traceId)}`} className="text-blue-300 hover:text-blue-200">
+                {linkage.traceId}
+              </Link>
+            </span>
+          ) : null}
+          {linkage.parentRunId ? <span>Parent Run: {linkage.parentRunId}</span> : null}
+          {linkage.rootRunId ? <span>Root Run: {linkage.rootRunId}</span> : null}
         </div>
       </div>
 

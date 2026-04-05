@@ -1504,6 +1504,7 @@ struct ListRunsQuery {
     time_from: Option<String>,
     time_to: Option<String>,
     project_id: Option<String>,
+    trace_id: Option<String>,
     limit: Option<i64>,
 }
 
@@ -1549,6 +1550,7 @@ impl ListRunsQuery {
             time_from: parse_timestamp(self.time_from.as_deref(), "time_from")?,
             time_to: parse_timestamp(self.time_to.as_deref(), "time_to")?,
             project_id: self.project_id,
+            trace_id: self.trace_id,
             limit: self.limit,
         })
     }

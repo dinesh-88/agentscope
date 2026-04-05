@@ -20,6 +20,7 @@ pub struct RunSearchFilters {
     pub time_from: Option<chrono::DateTime<chrono::Utc>>,
     pub time_to: Option<chrono::DateTime<chrono::Utc>>,
     pub project_id: Option<String>,
+    pub trace_id: Option<String>,
     pub limit: Option<i64>,
 }
 
@@ -466,6 +467,11 @@ impl Storage {
         {
             builder.push(" AND runs.project_id = ");
             builder.push_bind(project_id).push("::uuid");
+        }
+
+        if let Some(trace_id) = filters.trace_id.as_deref().filter(|value| !value.is_empty()) {
+            builder.push(" AND runs.metadata ->> 'trace_id' = ");
+            builder.push_bind(trace_id);
         }
 
         builder.push(" ORDER BY runs.started_at DESC LIMIT ");

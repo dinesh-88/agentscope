@@ -93,6 +93,7 @@ export type RunSearchFilters = {
   time_from?: string;
   time_to?: string;
   project_id?: string;
+  trace_id?: string;
   limit?: number | string;
 };
 

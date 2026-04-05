@@ -4,7 +4,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { AppShell } from "@/components/app-shell";
 import { ArtifactSearchPanel } from "@/components/artifact-search-panel";
 import { RunsAutoRefresh } from "@/components/runs-auto-refresh";
-import { getRuns } from "@/lib/server-api";
+import { getRuns, getRunsFiltered } from "@/lib/server-api";
 import { formatUsd } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -14,6 +14,7 @@ export const fetchCache = "force-no-store";
 type RunsPageProps = {
   searchParams?: Promise<{
     agent?: string | string[];
+    trace_id?: string | string[];
   }>;
 };
 
@@ -58,14 +59,35 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
+function readTraceIdFromMetadata(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+  const value = (metadata as Record<string, unknown>).trace_id;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 export default async function RunsPage({ searchParams }: RunsPageProps) {
   noStore();
   const params = searchParams ? await searchParams : undefined;
   const agentFilter = normalizeQueryParam(params?.agent)?.trim();
-  const runs = await getRuns();
-  const filteredRuns = agentFilter
-    ? runs.filter((run) => (run.agent_name ?? "").toLowerCase() === agentFilter.toLowerCase())
-    : runs;
+  const traceIdFilter = normalizeQueryParam(params?.trace_id)?.trim();
+  const runs =
+    agentFilter || traceIdFilter
+      ? await getRunsFiltered({
+        agent_name: agentFilter,
+        trace_id: traceIdFilter,
+      })
+      : await getRuns();
+  const filteredRuns = runs.filter((run) => {
+    if (agentFilter && (run.agent_name ?? "").toLowerCase() !== agentFilter.toLowerCase()) {
+      return false;
+    }
+    if (traceIdFilter && readTraceIdFromMetadata(run.metadata) !== traceIdFilter) {
+      return false;
+    }
+    return true;
+  });
 
   return (
     <AppShell activePath="/runs">
@@ -75,8 +97,10 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
           <div>
             <h1 className="mb-2 text-2xl font-semibold text-gray-900">Runs</h1>
             <p className="text-gray-600">
-              {agentFilter
-                ? `Showing runs for agent: ${agentFilter}`
+              {traceIdFilter
+                ? `Showing runs for trace: ${traceIdFilter}`
+                : agentFilter
+                  ? `Showing runs for agent: ${agentFilter}`
                 : "Browse all workflow runs from production data"}
             </p>
           </div>
@@ -117,7 +141,9 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
                     <tr>
                       <td colSpan={7} className="py-8 text-center text-sm text-gray-500">
                         {agentFilter
-                          ? "No runs found for this agent."
+                          ? "No runs found for this filter."
+                          : traceIdFilter
+                            ? "No runs found for this trace."
                           : "No runs yet. Run the demo app to generate your first trace."}
                       </td>
                     </tr>
