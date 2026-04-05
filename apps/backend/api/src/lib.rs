@@ -249,6 +249,10 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
             "/projects/:id/storage-settings/apply",
             post(apply_project_retention),
         )
+        .route(
+            "/projects/:id/storage-settings/delete-all",
+            post(delete_all_project_data),
+        )
         .route("/alerts", post(create_alert).get(list_alerts))
         .route("/alerts/:id", delete(delete_alert))
         .route("/projects/:id/invite", post(create_project_invite))
@@ -1346,6 +1350,43 @@ fn normalize_run(run: &mut Run) {
             .take(20)
             .collect::<Vec<_>>()
     });
+
+    ensure_run_trace_linkage_metadata(run);
+}
+
+fn ensure_run_trace_linkage_metadata(run: &mut Run) {
+    let mut metadata = match run.metadata.take() {
+        Some(Value::Object(object)) => object,
+        _ => Map::new(),
+    };
+
+    let trace_id = metadata
+        .get("trace_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| run.id.clone());
+    metadata.insert("trace_id".to_string(), Value::String(trace_id));
+
+    let parent_run_id = metadata
+        .get("parent_run_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    let root_run_id = metadata
+        .get("root_run_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+
+    if root_run_id.is_none() && parent_run_id.is_none() {
+        metadata.insert("root_run_id".to_string(), Value::String(run.id.clone()));
+    }
+
+    run.metadata = Some(Value::Object(metadata));
 }
 
 fn sync_run_metrics_from_spans(run: &mut Run, spans: &[Span]) {
@@ -2375,6 +2416,17 @@ async fn apply_project_retention(
     ensure_project_access(&state, &id, &user.id).await?;
     ensure_project_manage_permission(&user)?;
     let result = state.storage.apply_project_retention(&id).await?;
+    Ok(Json(result))
+}
+
+async fn delete_all_project_data(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<RetentionApplyResult>, ApiError> {
+    ensure_project_access(&state, &id, &user.id).await?;
+    ensure_project_manage_permission(&user)?;
+    let result = state.storage.delete_all_project_runs(&id).await?;
     Ok(Json(result))
 }
 

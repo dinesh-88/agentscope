@@ -9,6 +9,7 @@ import { AppShell } from "@/components/app-shell";
 import {
   applyProjectRetention,
   createProjectApiKey,
+  deleteAllProjectData,
   getCurrentUser,
   getProjectStorageSettings,
   updateProjectStorageSettings,
@@ -77,6 +78,7 @@ export default function SettingsPage() {
   const [storageLoading, setStorageLoading] = useState(true);
   const [storageSaving, setStorageSaving] = useState(false);
   const [storageApplying, setStorageApplying] = useState(false);
+  const [storageDeletingAll, setStorageDeletingAll] = useState(false);
   const [storageMessage, setStorageMessage] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [lastApplyResult, setLastApplyResult] = useState<RetentionApplyResult | null>(null);
@@ -225,6 +227,33 @@ export default function SettingsPage() {
       setStorageError(getApiErrorMessage(error, "Failed to apply retention policy."));
     } finally {
       setStorageApplying(false);
+    }
+  }
+
+  async function handleDeleteAllData() {
+    if (!defaultProjectId || !canManageProject) return;
+
+    const confirmed = window.confirm(
+      `Delete all run data for this project using "${cleanupMode}" mode?\n\nThis action affects all runs.`,
+    );
+    if (!confirmed) return;
+
+    setStorageDeletingAll(true);
+    setStorageError(null);
+    setStorageMessage(null);
+
+    try {
+      const result = await deleteAllProjectData(defaultProjectId);
+      setLastApplyResult(result);
+      setStorageMessage(
+        result.affected_runs > 0
+          ? `Delete-all completed. ${result.affected_runs} run(s) processed via ${result.mode}.`
+          : "Delete-all completed. No runs were affected.",
+      );
+    } catch (error) {
+      setStorageError(getApiErrorMessage(error, "Failed to delete all project data."));
+    } finally {
+      setStorageDeletingAll(false);
     }
   }
 
@@ -414,11 +443,20 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   onClick={handleApplyRetention}
-                  disabled={storageLoading || storageApplying || !defaultProjectId || !canManageProject}
+                  disabled={storageLoading || storageApplying || storageDeletingAll || !defaultProjectId || !canManageProject}
                   className="inline-flex items-center rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {storageApplying ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   {storageApplying ? "Applying..." : "Apply Retention Now"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteAllData}
+                  disabled={storageLoading || storageApplying || storageDeletingAll || !defaultProjectId || !canManageProject}
+                  className="inline-flex items-center rounded-lg border border-red-300 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {storageDeletingAll ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {storageDeletingAll ? "Deleting..." : "Delete All Data"}
                 </button>
               </div>
 

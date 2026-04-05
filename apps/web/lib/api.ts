@@ -880,6 +880,10 @@ export async function applyProjectRetention(projectId: string): Promise<Retentio
   return postRequestWithBody<RetentionApplyResult>(`/v1/projects/${projectId}/storage-settings/apply`, {});
 }
 
+export async function deleteAllProjectData(projectId: string): Promise<RetentionApplyResult> {
+  return postRequestWithBody<RetentionApplyResult>(`/v1/projects/${projectId}/storage-settings/delete-all`, {});
+}
+
 export async function getAlerts(): Promise<Alert[]> {
   try {
     return await request<Alert[]>("/v1/alerts");

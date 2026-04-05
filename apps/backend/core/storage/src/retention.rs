@@ -187,4 +187,53 @@ impl Storage {
             cutoff_at: Some(cutoff),
         })
     }
+
+    pub async fn delete_all_project_runs(
+        &self,
+        project_id: &str,
+    ) -> Result<RetentionApplyResult, AgentScopeError> {
+        let settings = self.get_project_storage_settings(project_id).await?;
+
+        let affected = if settings.cleanup_mode == "hard_delete" {
+            let result = sqlx::query(
+                r#"
+                DELETE FROM runs
+                WHERE project_id = $1::uuid
+                "#,
+            )
+            .bind(project_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to hard-delete all runs for project {project_id}: {error}"
+                ))
+            })?;
+            result.rows_affected() as i64
+        } else {
+            let result = sqlx::query(
+                r#"
+                UPDATE runs
+                SET deleted_at = now()
+                WHERE project_id = $1::uuid
+                  AND deleted_at IS NULL
+                "#,
+            )
+            .bind(project_id)
+            .execute(&self.pool)
+            .await
+            .map_err(|error| {
+                AgentScopeError::Storage(format!(
+                    "failed to soft-delete all runs for project {project_id}: {error}"
+                ))
+            })?;
+            result.rows_affected() as i64
+        };
+
+        Ok(RetentionApplyResult {
+            affected_runs: affected,
+            mode: format!("{}_all", settings.cleanup_mode),
+            cutoff_at: None,
+        })
+    }
 }
