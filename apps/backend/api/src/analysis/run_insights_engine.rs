@@ -43,7 +43,7 @@ pub async fn analyze_run(
 
     let detections = detect_failure_types(&spans, &artifacts);
     let transitions = build_step_transitions_with_causes(&spans, &artifacts, &detections);
-    let classification = classify_root_cause(&detections);
+    let classification = classify_root_cause(&spans, &artifacts, &detections);
 
     let recent_runs = get_recent_runs(storage, &run.project_id, RECENT_RUN_LIMIT).await?;
     let avg_cost = compute_avg_cost(&recent_runs);

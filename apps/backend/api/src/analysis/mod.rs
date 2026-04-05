@@ -1,3 +1,4 @@
+pub mod causal_graph;
 pub mod classifiers;
 pub mod context_analyzer;
 pub mod detectors;

@@ -16,7 +16,7 @@ pub async fn analyze_run(storage: &Storage, run_id: &str) -> Result<RunAnalysis,
     let artifacts = storage.get_artifacts(run_id).await?;
 
     let detections = detect_failure_types(&spans, &artifacts);
-    let classification = classify_root_cause(&detections);
+    let classification = classify_root_cause(&spans, &artifacts, &detections);
     let now = Utc::now();
 
     let analysis = RunAnalysis {

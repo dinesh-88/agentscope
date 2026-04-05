@@ -1,117 +1,296 @@
-use serde_json::json;
+use std::collections::HashMap;
 
-use crate::analysis::detectors::Detection;
+use agentscope_trace::{Artifact, Span};
+use serde_json::{json, Value};
+
+use crate::analysis::{
+    causal_graph::{build_causal_graph, find_root_causes},
+    detectors::Detection,
+};
+
+const MIN_GRAPH_CONFIDENCE: f64 = 0.2;
 
 #[derive(Debug, Clone)]
 pub struct Classification {
     pub root_cause_category: &'static str,
     pub summary: String,
+    pub primary_cause: String,
+    pub contributing_factors: Vec<String>,
     pub suggested_fixes: Vec<String>,
     pub evidence: serde_json::Value,
 }
 
-pub fn classify_root_cause(detections: &[Detection]) -> Classification {
-    let primary = detections.first();
+pub fn classify_root_cause(
+    spans: &[Span],
+    artifacts: &[Artifact],
+    detections: &[Detection],
+) -> Classification {
+    let fallback = legacy_classification(detections);
 
-    match primary.map(|detection| detection.failure_type) {
-        Some("SCHEMA_VALIDATION_ERROR") => Classification {
-            root_cause_category: "LLM_OUTPUT_FORMAT_ERROR",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Strengthen the output schema instructions and include a strict JSON example.".to_string(),
-                "Validate and repair model output before passing it downstream.".to_string(),
-                "Lower response creativity for structured generations.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        Some("TOOL_FAILURE") => Classification {
-            root_cause_category: "TOOL_EXECUTION_ERROR",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Validate tool arguments before execution.".to_string(),
-                "Add retries or fallback behavior for transient tool errors.".to_string(),
-                "Emit richer tool error artifacts to isolate bad inputs from infrastructure failures.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        Some("TOKEN_OVERFLOW") => Classification {
-            root_cause_category: "PROMPT_TOO_LARGE",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Trim or summarize conversation history before the model call.".to_string(),
-                "Reduce retrieved context and cap examples injected into the prompt.".to_string(),
-                "Switch to a larger-context model only when prompt reduction is not enough.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        Some("INSTRUCTION_DRIFT") => Classification {
-            root_cause_category: "INSTRUCTION_DRIFT",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Keep instruction files and runtime overrides consistent across spans in a run.".to_string(),
-                "Version instruction bundles explicitly when changes are intentional.".to_string(),
-                "Pin instruction hashes for stable run behavior.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        Some("TRANSITION_CAUSE") => Classification {
-            root_cause_category: "STEP_TRANSITION_CAUSE",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Validate tool output before injecting it into next-step context.".to_string(),
-                "Keep transition context minimal and remove noisy intermediate outputs.".to_string(),
-                "Gate instruction changes and context growth with explicit checks.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        Some("MISSING_OUTPUT_CONSTRAINT") => Classification {
-            root_cause_category: "INSTRUCTION_OUTPUT_CONSTRAINT_MISSING",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Add explicit output format constraints (for example strict JSON schema).".to_string(),
-                "Provide concise examples of valid output in runtime instructions.".to_string(),
-                "Validate model output and retry with stricter constraints on failure.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        Some("INSTRUCTION_CONFLICT") => Classification {
-            root_cause_category: "INSTRUCTION_CONFLICT",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Resolve conflicting instruction files and remove duplicate contradictory sources.".to_string(),
-                "Enforce precedence rules runtime > local > global with explicit audit logs.".to_string(),
-                "Use a single canonical instruction source per path/version.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        Some("TIMEOUT") => Classification {
-            root_cause_category: "TIMEOUT",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Set shorter internal steps and fail fast on slow dependencies.".to_string(),
-                "Add retries with backoff only for idempotent operations.".to_string(),
-                "Reduce prompt size or tool work if latency spikes are model-driven.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        Some("API_ERROR") => Classification {
-            root_cause_category: "API_FAILURE",
-            summary: primary.unwrap().summary.clone(),
-            suggested_fixes: vec![
-                "Retry transient upstream failures with backoff.".to_string(),
-                "Handle provider rate limits and 5xx responses explicitly.".to_string(),
-                "Add provider failover or queueing if the workflow is latency-sensitive.".to_string(),
-            ],
-            evidence: primary.unwrap().evidence.clone(),
-        },
-        _ => Classification {
+    let Some(graph) = build_causal_graph(spans, artifacts, detections) else {
+        return fallback;
+    };
+
+    let mut ordered = spans.iter().collect::<Vec<_>>();
+    ordered.sort_by_key(|span| span.started_at);
+    let span_order = ordered
+        .iter()
+        .enumerate()
+        .map(|(index, span)| (span.id.clone(), index))
+        .collect::<HashMap<_, _>>();
+
+    let Some(root) = find_root_causes(&graph, &span_order) else {
+        return fallback;
+    };
+
+    if root.confidence_score < MIN_GRAPH_CONFIDENCE || root.causal_chain.len() < 2 {
+        return fallback;
+    }
+
+    let category = category_from_failure_type(&root.root_cause_type);
+    let primary_cause = root.root_cause_type.clone();
+
+    let contributing_factors = root
+        .contributing_nodes
+        .iter()
+        .skip(1)
+        .take(4)
+        .map(|(span_id, _)| {
+            graph
+                .nodes
+                .get(span_id)
+                .and_then(primary_detection_type)
+                .unwrap_or_else(|| "CONTRIBUTING_SPAN".to_string())
+        })
+        .collect::<Vec<_>>();
+
+    let summary = format!(
+        "Failure occurred at {} due to {} introduced in previous steps (chain length: {}).",
+        root.failure_span,
+        normalize_failure_label(&root.root_cause_type),
+        root.causal_chain.len()
+    );
+
+    let suggested_fixes = build_fixes(&primary_cause, &contributing_factors);
+
+    let evidence = json!({
+        "root_cause_span": root.root_cause_span,
+        "root_cause_type": root.root_cause_type,
+        "causal_chain": root.causal_chain,
+        "contributing_nodes": root
+            .contributing_nodes
+            .iter()
+            .map(|(span_id, score)| {
+                json!({
+                    "span_id": span_id,
+                    "score": score,
+                    "node_type": graph
+                        .nodes
+                        .get(span_id)
+                        .map(|node| node.span_type.clone())
+                        .unwrap_or_default(),
+                    "status": graph
+                        .nodes
+                        .get(span_id)
+                        .map(|node| node.status.clone())
+                        .unwrap_or_default(),
+                })
+            })
+            .collect::<Vec<Value>>(),
+        "confidence_score": root.confidence_score,
+        "downstream_failure_type": root.downstream_failure_type,
+        "graph": {
+            "nodes": graph
+                .nodes
+                .values()
+                .map(|node| {
+                    json!({
+                        "span_id": node.span_id,
+                        "span_type": node.span_type,
+                        "status": node.status,
+                        "detections": node
+                            .detections
+                            .iter()
+                            .map(|detection| {
+                                json!({
+                                    "failure_type": detection.failure_type,
+                                    "confidence": detection.confidence,
+                                    "summary": detection.summary,
+                                })
+                            })
+                            .collect::<Vec<Value>>()
+                    })
+                })
+                .collect::<Vec<Value>>(),
+            "edges": graph
+                .edges
+                .iter()
+                .map(|edge| {
+                    json!({
+                        "from": edge.from,
+                        "to": edge.to,
+                        "weight": edge.weight,
+                        "reason": edge.reason,
+                    })
+                })
+                .collect::<Vec<Value>>()
+        }
+    });
+
+    Classification {
+        root_cause_category: category,
+        summary,
+        primary_cause,
+        contributing_factors,
+        suggested_fixes,
+        evidence,
+    }
+}
+
+fn legacy_classification(detections: &[Detection]) -> Classification {
+    if detections.is_empty() {
+        return Classification {
             root_cause_category: "API_FAILURE",
             summary: "No specific failure pattern was detected from spans and artifacts.".to_string(),
+            primary_cause: "UNKNOWN".to_string(),
+            contributing_factors: Vec::new(),
             suggested_fixes: vec![
                 "Capture richer error artifacts around failed LLM and tool steps.".to_string(),
-                "Record provider status codes, timeout flags, and parser failures for future analysis.".to_string(),
+                "Record provider status codes, timeout flags, and parser failures for future analysis."
+                    .to_string(),
             ],
-            evidence: json!({ "detections": [] }),
-        },
+            evidence: json!({"detections": []}),
+        };
+    }
+
+    let primary = detections
+        .iter()
+        .max_by(|left, right| left.confidence.total_cmp(&right.confidence))
+        .expect("detections non-empty");
+
+    let category = category_from_failure_type(primary.failure_type);
+    let contributing_factors = detections
+        .iter()
+        .filter(|detection| detection.failure_type != primary.failure_type)
+        .map(|detection| detection.failure_type.to_string())
+        .collect::<Vec<_>>();
+
+    Classification {
+        root_cause_category: category,
+        summary: primary.summary.clone(),
+        primary_cause: primary.failure_type.to_string(),
+        contributing_factors: contributing_factors.clone(),
+        suggested_fixes: build_fixes(primary.failure_type, &contributing_factors),
+        evidence: json!({
+            "detections": detections
+                .iter()
+                .map(|detection| {
+                    json!({
+                        "failure_type": detection.failure_type,
+                        "confidence": detection.confidence,
+                        "span_count": detection.span_count,
+                        "affected_spans": detection.affected_spans,
+                        "summary": detection.summary,
+                        "evidence": detection.evidence
+                    })
+                })
+                .collect::<Vec<Value>>()
+        }),
+    }
+}
+
+fn primary_detection_type(node: &crate::analysis::causal_graph::CausalNode) -> Option<String> {
+    node.detections
+        .iter()
+        .max_by(|left, right| left.confidence.total_cmp(&right.confidence))
+        .map(|detection| detection.failure_type.to_string())
+}
+
+fn build_fixes(primary: &str, secondary: &[String]) -> Vec<String> {
+    let mut fixes = fix_templates(primary)
+        .into_iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>();
+
+    for factor in secondary {
+        for fix in fix_templates(factor) {
+            if !fixes.iter().any(|existing| existing == fix) {
+                fixes.push(fix.to_string());
+            }
+        }
+    }
+
+    fixes
+}
+
+fn category_from_failure_type(failure_type: &str) -> &'static str {
+    match failure_type {
+        "SCHEMA_VALIDATION_ERROR" => "LLM_OUTPUT_FORMAT_ERROR",
+        "TOOL_FAILURE" => "TOOL_EXECUTION_ERROR",
+        "TOKEN_OVERFLOW" => "PROMPT_TOO_LARGE",
+        "INSTRUCTION_DRIFT" => "INSTRUCTION_DRIFT",
+        "TRANSITION_CAUSE" => "STEP_TRANSITION_CAUSE",
+        "MISSING_OUTPUT_CONSTRAINT" => "INSTRUCTION_OUTPUT_CONSTRAINT_MISSING",
+        "INSTRUCTION_CONFLICT" => "INSTRUCTION_CONFLICT",
+        "TIMEOUT" => "TIMEOUT",
+        "API_ERROR" => "API_FAILURE",
+        _ => "API_FAILURE",
+    }
+}
+
+fn normalize_failure_label(failure_type: &str) -> &'static str {
+    match failure_type {
+        "TOOL_FAILURE" => "tool output",
+        "API_ERROR" => "upstream API error",
+        "TRANSITION_CAUSE" => "step-transition context",
+        "TOKEN_OVERFLOW" => "context overflow",
+        "SCHEMA_VALIDATION_ERROR" => "invalid JSON",
+        "MISSING_OUTPUT_CONSTRAINT" => "missing output constraints",
+        _ => "upstream signal",
+    }
+}
+
+fn fix_templates(failure_type: &str) -> Vec<&'static str> {
+    match failure_type {
+        "SCHEMA_VALIDATION_ERROR" => vec![
+            "Strengthen output schema instructions and include strict JSON examples.",
+            "Validate and repair model output before passing it downstream.",
+        ],
+        "TOOL_FAILURE" => vec![
+            "Validate tool arguments before execution.",
+            "Add retries or fallback behavior for transient tool errors.",
+        ],
+        "TOKEN_OVERFLOW" => vec![
+            "Trim or summarize conversation history before the model call.",
+            "Reduce retrieved context and cap examples injected into the prompt.",
+        ],
+        "INSTRUCTION_DRIFT" => vec![
+            "Keep instruction files and runtime overrides consistent across spans in a run.",
+            "Pin instruction hashes for stable run behavior.",
+        ],
+        "TRANSITION_CAUSE" => vec![
+            "Validate tool output before injecting it into next-step context.",
+            "Keep transition context minimal and remove noisy intermediate outputs.",
+        ],
+        "MISSING_OUTPUT_CONSTRAINT" => vec![
+            "Add explicit output format constraints (for example strict JSON schema).",
+            "Validate model output and retry with stricter constraints on failure.",
+        ],
+        "INSTRUCTION_CONFLICT" => vec![
+            "Resolve conflicting instruction files and remove duplicate contradictory sources.",
+            "Enforce precedence rules runtime > local > global with explicit audit logs.",
+        ],
+        "TIMEOUT" => vec![
+            "Set shorter internal steps and fail fast on slow dependencies.",
+            "Add retries with backoff only for idempotent operations.",
+        ],
+        "API_ERROR" => vec![
+            "Retry transient upstream failures with backoff.",
+            "Handle provider rate limits and 5xx responses explicitly.",
+        ],
+        _ => vec![
+            "Capture richer error artifacts around failed LLM and tool steps.",
+            "Inspect span and artifact evidence and patch the earliest failing step.",
+        ],
     }
 }
