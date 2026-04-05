@@ -44,16 +44,19 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             <span className="text-lg font-semibold">AgentScope</span>
           </Link>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex items-center gap-4">
             <div className="hidden items-center gap-1 rounded-full border border-white/5 bg-white/5 p-1 text-sm md:flex">
-              <Link href="/why-ai-agents-fail" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
-                Problem
-              </Link>
               <Link href="/features" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
                 Features
               </Link>
-              <Link href="/llm-observability" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
-                Comparison
+              <Link href="/demo" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
+                Demo
+              </Link>
+              <Link href="/pricing" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
+                Pricing
+              </Link>
+              <Link href="/docs" className="rounded-full px-3 py-1 text-gray-400 transition-colors hover:bg-white/10 hover:text-white">
+                Docs
               </Link>
             </div>
 
@@ -65,7 +68,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                 Go to Dashboard
               </Link>
             ) : (
-              <>
+              <div className="flex items-center gap-3">
                 <Link href="/login" className="text-sm text-gray-400 transition-colors hover:text-white">
                   Sign In
                 </Link>
@@ -73,9 +76,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                   href="/signup"
                   className="rounded-lg bg-[#7C9EFF] px-4 py-2 text-sm font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
                 >
-                  Start Free
+                  Start Free and Send First Trace
                 </Link>
-              </>
+              </div>
             )}
           </div>
         </div>
