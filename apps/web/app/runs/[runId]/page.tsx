@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { AppShell } from "@/components/app-shell";
 import { RunDetailView } from "@/components/run-detail-view";
-import { getRun, getRunArtifacts, getRunInsights, getRunRootCause, getRunSpans } from "@/lib/server-api";
+import { getRun, getRunArtifacts, getRunInsights, getRunRootCause, getRunSpans, getRunsFiltered } from "@/lib/server-api";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +24,19 @@ export default async function RunDetailPage({ params }: RunDetailPageProps) {
     notFound();
   }
 
+  const traceId =
+    run.metadata && typeof run.metadata === "object" && !Array.isArray(run.metadata)
+      ? (run.metadata as Record<string, unknown>).trace_id
+      : null;
+
+  const relatedRuns =
+    typeof traceId === "string" && traceId.trim().length > 0
+      ? await getRunsFiltered({ trace_id: traceId })
+      : [];
+
   return (
     <AppShell activePath="/runs" theme="dark" mainClassName="px-0 pb-0">
-      <RunDetailView run={run} spans={spans} artifacts={artifacts} insights={insights} rootCause={rootCause} />
+      <RunDetailView run={run} spans={spans} artifacts={artifacts} insights={insights} rootCause={rootCause} relatedRuns={relatedRuns} />
     </AppShell>
   );
 }

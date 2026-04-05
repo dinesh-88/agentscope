@@ -67,6 +67,37 @@ function readTraceIdFromMetadata(metadata: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function isFailureStatus(status: string) {
+  const normalized = status.toLowerCase();
+  return normalized === "failed" || normalized === "error";
+}
+
+function buildTraceGroups(runs: Awaited<ReturnType<typeof getRuns>>) {
+  const groups = new Map<string, { traceId: string | null; runs: typeof runs }>();
+
+  for (const run of runs) {
+    const traceId = readTraceIdFromMetadata(run.metadata);
+    const key = traceId ?? "__no_trace__";
+    if (!groups.has(key)) {
+      groups.set(key, { traceId, runs: [] });
+    }
+    groups.get(key)!.runs.push(run);
+  }
+
+  return Array.from(groups.values())
+    .map((group) => ({
+      ...group,
+      runs: [...group.runs].sort((a, b) => +new Date(b.started_at) - +new Date(a.started_at)),
+    }))
+    .sort((a, b) => {
+      if (a.traceId && !b.traceId) return -1;
+      if (!a.traceId && b.traceId) return 1;
+      const aStarted = +new Date(a.runs[0]?.started_at ?? 0);
+      const bStarted = +new Date(b.runs[0]?.started_at ?? 0);
+      return bStarted - aStarted;
+    });
+}
+
 export default async function RunsPage({ searchParams }: RunsPageProps) {
   noStore();
   const params = searchParams ? await searchParams : undefined;
@@ -88,6 +119,7 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
     }
     return true;
   });
+  const traceGroups = buildTraceGroups(filteredRuns);
 
   return (
     <AppShell activePath="/runs">
@@ -148,29 +180,69 @@ export default async function RunsPage({ searchParams }: RunsPageProps) {
                       </td>
                     </tr>
                   ) : (
-                    filteredRuns.map((run) => {
-                      const totalTokens = run.total_tokens ?? 0;
-                      const totalCostUsd = run.total_cost_usd ?? 0;
+                    traceGroups.flatMap((group) => {
+                      const latestFailed = group.runs.find((run) => isFailureStatus(run.status));
+                      const latestSuccess = group.runs.find((run) => !isFailureStatus(run.status));
+                      const compareHref =
+                        latestFailed && latestSuccess && latestFailed.id !== latestSuccess.id
+                          ? `/runs/compare/${latestFailed.id}/${latestSuccess.id}`
+                          : null;
 
-                      return (
-                        <tr key={run.id} data-testid="run-item" className="hover:bg-gray-50">
-                          <td className="py-4">
-                            <Link href={`/runs/${run.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
-                              {run.workflow_name}
-                            </Link>
+                      const groupHeader = (
+                        <tr key={`group-${group.traceId ?? "no-trace"}`} className="bg-gray-50">
+                          <td colSpan={7} className="py-2 text-xs text-gray-600">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-gray-700">
+                                  {group.traceId ? `Trace: ${group.traceId}` : "No Trace ID"}
+                                </span>
+                                <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[11px] text-gray-700">
+                                  {group.runs.length} run{group.runs.length === 1 ? "" : "s"}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3">
+                                {group.traceId ? (
+                                  <Link href={`/runs?trace_id=${encodeURIComponent(group.traceId)}`} className="text-blue-600 hover:text-blue-500">
+                                    Filter to this trace
+                                  </Link>
+                                ) : null}
+                                {compareHref ? (
+                                  <Link href={compareHref} className="text-blue-600 hover:text-blue-500">
+                                    Compare latest failed vs success
+                                  </Link>
+                                ) : null}
+                              </div>
+                            </div>
                           </td>
-                          <td className="py-4 text-sm text-gray-600">{run.agent_name}</td>
-                          <td className="py-4">
-                            <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${getStatusColor(run.status)}`}>
-                              {run.status}
-                            </span>
-                          </td>
-                          <td className="py-4 text-sm text-gray-600">{formatDuration(run.started_at, run.ended_at)}</td>
-                          <td className="py-4 text-sm text-gray-600">{totalTokens > 0 ? totalTokens.toLocaleString() : "-"}</td>
-                          <td className="py-4 text-sm text-gray-600">{totalCostUsd > 0 ? formatUsd(totalCostUsd, { decimals: 3, tinyThreshold: 0.001 }) : "-"}</td>
-                          <td className="py-4 text-sm text-gray-600">{formatDate(run.started_at)}</td>
                         </tr>
                       );
+
+                      const rows = group.runs.map((run) => {
+                        const totalTokens = run.total_tokens ?? 0;
+                        const totalCostUsd = run.total_cost_usd ?? 0;
+
+                        return (
+                          <tr key={run.id} data-testid="run-item" className="hover:bg-gray-50">
+                            <td className="py-4">
+                              <Link href={`/runs/${run.id}`} className="text-sm font-medium text-gray-900 hover:text-blue-600">
+                                {run.workflow_name}
+                              </Link>
+                            </td>
+                            <td className="py-4 text-sm text-gray-600">{run.agent_name}</td>
+                            <td className="py-4">
+                              <span className={`inline-flex rounded-full px-2 py-1 text-xs font-medium capitalize ${getStatusColor(run.status)}`}>
+                                {run.status}
+                              </span>
+                            </td>
+                            <td className="py-4 text-sm text-gray-600">{formatDuration(run.started_at, run.ended_at)}</td>
+                            <td className="py-4 text-sm text-gray-600">{totalTokens > 0 ? totalTokens.toLocaleString() : "-"}</td>
+                            <td className="py-4 text-sm text-gray-600">{totalCostUsd > 0 ? formatUsd(totalCostUsd, { decimals: 3, tinyThreshold: 0.001 }) : "-"}</td>
+                            <td className="py-4 text-sm text-gray-600">{formatDate(run.started_at)}</td>
+                          </tr>
+                        );
+                      });
+
+                      return [groupHeader, ...rows];
                     })
                   )}
                 </tbody>

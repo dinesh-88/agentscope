@@ -113,12 +113,14 @@ export function RunDetailView({
   artifacts,
   insights,
   rootCause,
+  relatedRuns,
 }: {
   run: Run;
   spans: Span[];
   artifacts: Artifact[];
   insights: RunInsight[];
   rootCause: RunRootCause | null;
+  relatedRuns: Run[];
 }) {
   useRunStream({
     runId: run.id,
@@ -161,6 +163,18 @@ export function RunDetailView({
   );
   const hasRca = Boolean(rootCause);
   const linkage = readRunLinkage(currentRun);
+  const relatedRunsOrdered = useMemo(
+    () =>
+      [...relatedRuns]
+        .sort((a, b) => +new Date(b.started_at) - +new Date(a.started_at)),
+    [relatedRuns],
+  );
+  const latestFailedRelated = relatedRunsOrdered.find((entry) => isFailureStatus(entry.status));
+  const latestSuccessRelated = relatedRunsOrdered.find((entry) => !isFailureStatus(entry.status));
+  const traceCompareHref =
+    latestFailedRelated && latestSuccessRelated && latestFailedRelated.id !== latestSuccessRelated.id
+      ? `/runs/compare/${latestFailedRelated.id}/${latestSuccessRelated.id}`
+      : null;
   const rootCauseLabel = rootCause?.root_cause_type || "Unavailable";
   const rootCauseConfidence = typeof rootCause?.confidence === "number" ? `${Math.round(rootCause.confidence * 100)}% confidence` : null;
   const rootCauseMessage = rootCause?.message || "Run failed. Root cause not yet analyzed.";
@@ -255,6 +269,46 @@ export function RunDetailView({
       </div>
 
       <div className="space-y-6 px-6 py-6">
+        {linkage.traceId ? (
+          <div className="rounded-lg border border-white/5 bg-white/[0.02] p-4">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-xs uppercase tracking-wide text-gray-500">Trace Group</p>
+                <p className="text-sm text-gray-200">{linkage.traceId}</p>
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <Link href={`/runs?trace_id=${encodeURIComponent(linkage.traceId)}`} className="text-blue-300 hover:text-blue-200">
+                  View all trace runs
+                </Link>
+                {traceCompareHref ? (
+                  <Link href={traceCompareHref} className="text-blue-300 hover:text-blue-200">
+                    Compare latest failed vs success
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400">
+              {linkage.rootRunId ? (
+                <span>
+                  Root:{" "}
+                  <Link href={`/runs/${linkage.rootRunId}`} className="text-blue-300 hover:text-blue-200">
+                    {linkage.rootRunId}
+                  </Link>
+                </span>
+              ) : null}
+              {linkage.parentRunId ? (
+                <span>
+                  Parent:{" "}
+                  <Link href={`/runs/${linkage.parentRunId}`} className="text-blue-300 hover:text-blue-200">
+                    {linkage.parentRunId}
+                  </Link>
+                </span>
+              ) : null}
+              <span>Runs in trace: {relatedRunsOrdered.length}</span>
+            </div>
+          </div>
+        ) : null}
+
         <div className="border-b border-white/5">
           <div className="flex items-center gap-1">
             {tabs.map((tab) => {
