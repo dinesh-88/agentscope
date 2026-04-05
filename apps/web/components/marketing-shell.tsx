@@ -14,7 +14,7 @@ export async function MarketingShell({ children }: MarketingShellProps) {
   const isAuthenticated = Boolean(token);
 
   return (
-    <div className="min-h-screen bg-[#0B0F17] text-white">
+    <div className="flex min-h-screen flex-col bg-[#0B0F17] text-white">
       <nav className="sticky top-0 z-50 border-b border-white/5 bg-[#0B0F17]/80 backdrop-blur-lg">
         <div className="mx-auto flex w-full max-w-[1368px] items-center justify-between px-6 py-4">
           <Link href="/" className="flex items-center gap-2">
@@ -61,7 +61,7 @@ export async function MarketingShell({ children }: MarketingShellProps) {
         </div>
       </nav>
 
-      {children}
+      <div className="flex-1">{children}</div>
 
       <footer className="border-t border-white/5 px-6 py-12">
         <div className="mx-auto w-full max-w-[1368px]">
