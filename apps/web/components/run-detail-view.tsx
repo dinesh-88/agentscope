@@ -192,9 +192,11 @@ export function RunDetailView({
       : 0;
   const spansById = useMemo(() => new Map(orderedSpans.map((span) => [span.id, span])), [orderedSpans]);
   const logEntries = useMemo(() => {
-    const spanLogs = orderedSpans.map((span) => ({
+    const spanLogs = orderedSpans.map((span, index) => ({
       id: `span-${span.id}`,
       at: span.started_at,
+      atMs: Number.isFinite(new Date(span.started_at).getTime()) ? new Date(span.started_at).getTime() : 0,
+      seq: index,
       level: severityForSpan(span),
       source: span.tool_name ?? span.name ?? span.span_type,
       message:
@@ -202,17 +204,20 @@ export function RunDetailView({
         span.error_source ??
         `${span.span_type} ${span.status.toLowerCase()} (${formatDurationMs(spanDurationMs(span))})`,
     }));
-    const artifactLogs = currentArtifacts.map((artifact) => {
+    const artifactLogs = currentArtifacts.map((artifact, index) => {
       const span = artifact.span_id ? spansById.get(artifact.span_id) : undefined;
+      const at = span?.started_at ?? currentRun.started_at;
       return {
         id: `artifact-${artifact.id}`,
-        at: span?.started_at ?? currentRun.started_at,
+        at,
+        atMs: Number.isFinite(new Date(at).getTime()) ? new Date(at).getTime() : 0,
+        seq: spanLogs.length + index,
         level: "info" as const,
         source: artifact.kind,
         message: readPayloadText(artifact.payload ?? {}),
       };
     });
-    return [...spanLogs, ...artifactLogs].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+    return [...spanLogs, ...artifactLogs].sort((a, b) => b.atMs - a.atMs || b.seq - a.seq);
   }, [orderedSpans, currentArtifacts, spansById, currentRun.started_at]);
   const tabs = [
     { id: "timeline" as const, label: "Timeline", icon: Activity, count: null },
