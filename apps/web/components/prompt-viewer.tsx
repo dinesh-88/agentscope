@@ -1,49 +1,17 @@
 "use client";
 
 import { useMemo } from "react";
-import { MessagesSquare, ScrollText } from "lucide-react";
+import { ScrollText } from "lucide-react";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PromptPayloadPanel } from "@/components/prompt-payload-panel";
 import { type Artifact } from "@/lib/api";
+import { buildPromptPresentation } from "@/lib/prompt-presentation";
 import { useRunDetailStore } from "@/lib/run-detail-store";
 
 type PromptViewerProps = {
   artifacts: Artifact[];
 };
-
-type ChatMessage = {
-  role: string;
-  content: string;
-};
-
-function normalizeMessages(payload: Record<string, unknown>): ChatMessage[] {
-  const messages = payload.messages;
-  if (Array.isArray(messages)) {
-    return messages.map((message) => {
-      if (typeof message === "string") {
-        return { role: "user", content: message };
-      }
-
-      if (message && typeof message === "object") {
-        const role = typeof message.role === "string" ? message.role : "user";
-        const content =
-          typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? message, null, 2);
-        return { role, content };
-      }
-
-      return { role: "user", content: JSON.stringify(message, null, 2) };
-    });
-  }
-
-  const fallback = payload.prompt ?? payload.input ?? payload.payload ?? payload;
-  return [{ role: "user", content: typeof fallback === "string" ? fallback : JSON.stringify(fallback, null, 2) }];
-}
-
-function roleTone(role: string) {
-  if (role === "system") return "border-blue-200 bg-blue-50";
-  if (role === "assistant") return "border-emerald-200 bg-emerald-50";
-  return "border-black/8 bg-neutral-50";
-}
 
 export function PromptViewer({ artifacts }: PromptViewerProps) {
   const selectedSpanId = useRunDetailStore((state) => state.selectedSpanId);
@@ -57,6 +25,11 @@ export function PromptViewer({ artifacts }: PromptViewerProps) {
       null
     );
   }, [artifacts, selectedSpanId]);
+
+  const presentation = useMemo(
+    () => buildPromptPresentation(promptArtifact?.payload ?? {}),
+    [promptArtifact?.payload],
+  );
 
   if (!promptArtifact) {
     return (
@@ -74,9 +47,6 @@ export function PromptViewer({ artifacts }: PromptViewerProps) {
     );
   }
 
-  const payload = promptArtifact.payload;
-  const messages = normalizeMessages(payload);
-
   return (
     <Card className="border border-black/8 shadow-none">
       <CardHeader>
@@ -87,30 +57,12 @@ export function PromptViewer({ artifacts }: PromptViewerProps) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="rounded-xl border border-black/8 bg-neutral-50 p-4">
-          <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-neutral-500">
-              <MessagesSquare className="size-3.5" />
-              Messages
-          </div>
-          <div className="text-2xl font-semibold text-neutral-950 dark:text-neutral-100">{messages.length}</div>
+          <div className="mb-1 text-xs uppercase tracking-[0.2em] text-neutral-500">Structured Sections</div>
+          <div className="text-2xl font-semibold text-neutral-950 dark:text-neutral-100">{presentation.sections.length}</div>
           <div className="mt-1 text-xs text-neutral-500">{promptArtifact.kind}</div>
         </div>
 
-        <div className="space-y-3">
-          {messages.map((message, index) => (
-            <div key={`${message.role}-${index}`} className={`rounded-xl border p-4 ${roleTone(message.role)}`}>
-              <div className="mb-2 text-xs uppercase tracking-[0.2em] text-neutral-600">{message.role}</div>
-              <pre className="overflow-auto whitespace-pre-wrap break-words text-sm leading-6 text-neutral-950 dark:text-neutral-100">
-                {message.content}
-              </pre>
-            </div>
-          ))}
-        </div>
-
-        <div className="rounded-xl bg-neutral-950 p-4 text-xs leading-6 text-neutral-100">
-          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words">
-            {JSON.stringify(promptArtifact.payload, null, 2)}
-          </pre>
-          </div>
+        <PromptPayloadPanel title="Prompt Payload" payload={promptArtifact.payload} variant="light" />
       </CardContent>
     </Card>
   );

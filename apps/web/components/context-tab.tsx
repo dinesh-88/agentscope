@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 
+import { PromptPayloadPanel } from "@/components/prompt-payload-panel";
 import { type Artifact, type Span } from "@/lib/api";
 
 type SpanContextPayload = {
@@ -30,15 +31,13 @@ type ContextTabProps = {
   artifact: Artifact | null;
 };
 
-function toFinalPrompt(artifact: Artifact | null): string {
+function toFinalPromptPayload(artifact: Artifact | null): unknown {
   if (!artifact || artifact.kind !== "llm.context") {
-    return "";
+    return null;
   }
   const root = artifact.payload;
   const data = root.data && typeof root.data === "object" ? (root.data as Record<string, unknown>) : root;
-  const value = data.final_prompt;
-  if (typeof value === "string") return value;
-  return value ? JSON.stringify(value, null, 2) : "";
+  return data.final_prompt ?? null;
 }
 
 function parseSpanContext(span: Span | null): SpanContextPayload | null {
@@ -113,7 +112,7 @@ function severityTone(usagePercent: number) {
 
 export function ContextTab({ span, previousSpan, artifact }: ContextTabProps) {
   const context = useMemo(() => parseSpanContext(span), [span]);
-  const finalPrompt = useMemo(() => toFinalPrompt(artifact), [artifact]);
+  const finalPromptPayload = useMemo(() => toFinalPromptPayload(artifact), [artifact]);
   const usagePercent = typeof span?.context_usage_percent === "number" ? span.context_usage_percent : null;
 
   if (!context) {
@@ -212,11 +211,8 @@ export function ContextTab({ span, previousSpan, artifact }: ContextTabProps) {
         ) : null}
       </div>
 
-      {finalPrompt ? (
-        <div className="rounded-xl border border-black/8 bg-slate-950 p-3 text-xs text-slate-100 dark:border-white/10">
-          <p className="mb-2 text-[11px] uppercase tracking-wide text-slate-400">Final Prompt Sent to Model</p>
-          <pre className="max-h-56 overflow-auto whitespace-pre-wrap break-words font-mono">{finalPrompt}</pre>
-        </div>
+      {finalPromptPayload !== null ? (
+        <PromptPayloadPanel title="Final Prompt Sent to Model" payload={finalPromptPayload} variant="light" />
       ) : null}
     </div>
   );

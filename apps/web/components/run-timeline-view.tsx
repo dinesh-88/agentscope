@@ -3,6 +3,7 @@
 import { Maximize2, Search, X, ZoomIn, ZoomOut } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { PromptPayloadPanel } from "@/components/prompt-payload-panel";
 import { type Artifact, type Span } from "@/lib/api";
 
 type TimelineStepType = "llm" | "tool";
@@ -20,7 +21,9 @@ type TimelineStep = {
   tokens: { input: number; output: number; total: number };
   cost: number;
   model?: string;
+  promptPayload?: unknown;
   prompt?: string;
+  responsePayload?: unknown;
   response?: string;
   metadata?: Record<string, unknown>;
   params?: Record<string, unknown>;
@@ -104,6 +107,41 @@ function pickObjectFromObjects(objects: Array<Record<string, unknown> | undefine
     for (const key of keys) {
       const value = toObject(source[key]);
       if (value) return value;
+    }
+  }
+  return undefined;
+}
+
+function pickValueFromObjects(objects: Array<Record<string, unknown> | undefined>, keys: string[]) {
+  for (const source of objects) {
+    if (!source) continue;
+    for (const key of keys) {
+      const value = source[key];
+      if (value !== undefined && value !== null) return value;
+    }
+  }
+  return undefined;
+}
+
+function payloadToText(value: unknown): string | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return undefined;
+    }
+  }
+  if (typeof value === "object") {
+    const object = value as Record<string, unknown>;
+    const direct = toStringValue(object.message) ?? toStringValue(object.content) ?? toStringValue(object.output) ?? toStringValue(object.result);
+    if (direct) return direct;
+    try {
+      return JSON.stringify(object, null, 2);
+    } catch {
+      return undefined;
     }
   }
   return undefined;
@@ -220,55 +258,26 @@ function buildDepthResolver(spans: Span[]) {
   return resolveDepth;
 }
 
-function extractArtifactText(payload: Record<string, unknown>): string | undefined {
-  const direct = pickStringFromObjects([payload], ["text", "content", "prompt", "response", "message", "output"]);
-  if (direct) return direct;
-
-  const messages = payload.messages;
-  if (Array.isArray(messages)) {
-    const parts = messages
-      .map((item) => {
-        if (!item || typeof item !== "object" || Array.isArray(item)) return null;
-        const message = item as Record<string, unknown>;
-        return pickStringFromObjects([message], ["content", "text", "message"]);
-      })
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
-    if (parts.length > 0) {
-      return parts.join("\n");
-    }
-  }
-
-  const nestedInput = toObject(payload.input);
-  if (nestedInput) {
-    return extractArtifactText(nestedInput);
-  }
-
-  return undefined;
-}
-
-function buildArtifactTextIndex(artifacts: Artifact[] | undefined) {
-  const promptsBySpan = new Map<string, string>();
-  const responsesBySpan = new Map<string, string>();
+function buildArtifactPayloadIndex(artifacts: Artifact[] | undefined) {
+  const promptPayloadBySpan = new Map<string, Record<string, unknown>>();
+  const responsePayloadBySpan = new Map<string, Record<string, unknown>>();
 
   for (const artifact of artifacts ?? []) {
     if (!artifact.span_id) continue;
     const payload = toObject(artifact.payload);
     if (!payload) continue;
 
-    const text = extractArtifactText(payload);
-    if (!text) continue;
-
     const kind = artifact.kind.toLowerCase();
     if (kind.includes("prompt")) {
-      promptsBySpan.set(artifact.span_id, text);
+      promptPayloadBySpan.set(artifact.span_id, payload);
       continue;
     }
     if (kind.includes("response")) {
-      responsesBySpan.set(artifact.span_id, text);
+      responsePayloadBySpan.set(artifact.span_id, payload);
     }
   }
 
-  return { promptsBySpan, responsesBySpan };
+  return { promptPayloadBySpan, responsePayloadBySpan };
 }
 
 function toTimelineSteps(spans: Span[], artifacts?: Artifact[]): TimelineStep[] {
@@ -276,7 +285,7 @@ function toTimelineSteps(spans: Span[], artifacts?: Artifact[]): TimelineStep[] 
   const ordered = [...spans].sort((a, b) => +new Date(a.started_at) - +new Date(b.started_at));
   const firstStart = +new Date(ordered[0].started_at);
   const resolveDepth = buildDepthResolver(ordered);
-  const artifactIndex = buildArtifactTextIndex(artifacts);
+  const artifactIndex = buildArtifactPayloadIndex(artifacts);
 
   return ordered.map((span, index) => {
     const startAbsolute = +new Date(span.started_at);
@@ -288,6 +297,13 @@ function toTimelineSteps(spans: Span[], artifacts?: Artifact[]): TimelineStep[] 
     const evaluation = toObject(span.evaluation);
     const status: TimelineStepStatus = toTimelineStatus(span);
     const type: TimelineStepType = isToolSpan(span) ? "tool" : "llm";
+
+    const promptPayload =
+      artifactIndex.promptPayloadBySpan.get(span.id) ??
+      pickValueFromObjects([metadata, context], ["prompt", "input", "request", "query", "message"]);
+    const responsePayload =
+      artifactIndex.responsePayloadBySpan.get(span.id) ??
+      pickValueFromObjects([metadata, context, evaluation], ["response", "output", "result", "content"]);
 
     return {
       id: index + 1,
@@ -305,12 +321,10 @@ function toTimelineSteps(spans: Span[], artifacts?: Artifact[]): TimelineStep[] 
       },
       cost: Math.max(0, span.estimated_cost ?? 0),
       model: span.model ?? undefined,
-      prompt:
-        artifactIndex.promptsBySpan.get(span.id) ??
-        pickStringFromObjects([metadata, context], ["prompt", "input", "request", "query", "message"]),
-      response:
-        artifactIndex.responsesBySpan.get(span.id) ??
-        pickStringFromObjects([metadata, context, evaluation], ["response", "output", "result", "content"]),
+      promptPayload,
+      prompt: payloadToText(promptPayload),
+      responsePayload,
+      response: payloadToText(responsePayload),
       params: pickObjectFromObjects([metadata, context], ["params", "arguments", "input", "request"]),
       result: pickObjectFromObjects([metadata, context, evaluation], ["result", "output", "response"]),
       metadata: metadata,
@@ -575,18 +589,16 @@ function DetailsPanel({ step }: { step: TimelineStep }) {
         </div>
       </div>
 
-      {step.prompt ? (
-        <details className="border-t border-white/5 pt-3">
-          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-400">Prompt</summary>
-          <div className="mt-2 rounded bg-black/30 p-3 text-sm text-gray-300">{step.prompt}</div>
-        </details>
+      {step.promptPayload !== undefined ? (
+        <div className="border-t border-white/5 pt-3">
+          <PromptPayloadPanel title="Prompt" payload={step.promptPayload} variant="dark" />
+        </div>
       ) : null}
 
-      {step.response ? (
-        <details className="border-t border-white/5 pt-3">
-          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-gray-400">Response</summary>
-          <div className="mt-2 rounded bg-black/30 p-3 text-sm text-gray-300">{step.response}</div>
-        </details>
+      {step.responsePayload !== undefined ? (
+        <div className="border-t border-white/5 pt-3">
+          <PromptPayloadPanel title="Response" payload={step.responsePayload} variant="dark" defaultStructuredOpen={false} />
+        </div>
       ) : null}
 
       {step.errorDetails ? <p className="border-t border-white/5 pt-3 text-xs text-gray-400">{step.errorDetails}</p> : null}
