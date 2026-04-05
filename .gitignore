@@ -34,6 +34,7 @@ __pycache__/
 packages/python-sdk/dist/
 packages/python-sdk/dist-*/
 packages/python-sdk/build/
+packages/python-sdk/*.egg-info/
 *.whl
 *.tar.gz
 
@@ -43,3 +44,6 @@ node_modules/
 .next/
 
 apps/web/figma
+
+packages/ts-sdk/dist/
+packages/ts-sdk/*.tgz
