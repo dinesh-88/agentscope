@@ -228,6 +228,11 @@ fn category_from_failure_type(failure_type: &str) -> &'static str {
         "SCHEMA_VALIDATION_ERROR" => "LLM_OUTPUT_FORMAT_ERROR",
         "TOOL_FAILURE" => "TOOL_EXECUTION_ERROR",
         "TOKEN_OVERFLOW" => "PROMPT_TOO_LARGE",
+        "HALLUCINATION_UNSUPPORTED_CLAIM" => "HALLUCINATION_UNSUPPORTED_CLAIM",
+        "HALLUCINATION_CONTRADICTION" => "HALLUCINATION_CONTRADICTION",
+        "HALLUCINATION_FABRICATED_CITATION" => "HALLUCINATION_FABRICATED_CITATION",
+        "HALLUCINATION_INSUFFICIENT_RETRIEVAL" => "HALLUCINATION_INSUFFICIENT_RETRIEVAL",
+        "HALLUCINATION_OVERCONFIDENT_INFERENCE" => "HALLUCINATION_OVERCONFIDENT_INFERENCE",
         "INSTRUCTION_DRIFT" => "INSTRUCTION_DRIFT",
         "TRANSITION_CAUSE" => "STEP_TRANSITION_CAUSE",
         "MISSING_OUTPUT_CONSTRAINT" => "INSTRUCTION_OUTPUT_CONSTRAINT_MISSING",
@@ -244,6 +249,11 @@ fn normalize_failure_label(failure_type: &str) -> &'static str {
         "API_ERROR" => "upstream API error",
         "TRANSITION_CAUSE" => "step-transition context",
         "TOKEN_OVERFLOW" => "context overflow",
+        "HALLUCINATION_UNSUPPORTED_CLAIM" => "unsupported factual claims",
+        "HALLUCINATION_CONTRADICTION" => "contradictory claims",
+        "HALLUCINATION_FABRICATED_CITATION" => "fabricated citations",
+        "HALLUCINATION_INSUFFICIENT_RETRIEVAL" => "insufficient retrieval grounding",
+        "HALLUCINATION_OVERCONFIDENT_INFERENCE" => "overconfident inference",
         "SCHEMA_VALIDATION_ERROR" => "invalid JSON",
         "MISSING_OUTPUT_CONSTRAINT" => "missing output constraints",
         _ => "upstream signal",
@@ -263,6 +273,15 @@ fn fix_templates(failure_type: &str) -> Vec<&'static str> {
         "TOKEN_OVERFLOW" => vec![
             "Trim or summarize conversation history before the model call.",
             "Reduce retrieved context and cap examples injected into the prompt.",
+        ],
+        "HALLUCINATION_UNSUPPORTED_CLAIM"
+        | "HALLUCINATION_CONTRADICTION"
+        | "HALLUCINATION_FABRICATED_CITATION"
+        | "HALLUCINATION_INSUFFICIENT_RETRIEVAL"
+        | "HALLUCINATION_OVERCONFIDENT_INFERENCE" => vec![
+            "Require citations tied to retrieved/tool evidence for factual claims.",
+            "Constrain final answers to retrieved evidence and fail closed when retrieval quality is insufficient.",
+            "Validate critical claims against tool or validator outputs before returning final response.",
         ],
         "INSTRUCTION_DRIFT" => vec![
             "Keep instruction files and runtime overrides consistent across spans in a run.",

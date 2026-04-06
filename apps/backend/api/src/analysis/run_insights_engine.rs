@@ -550,6 +550,16 @@ fn structured_template_for_type(
                 "Summarize previous steps".to_string(),
             ],
         )),
+        "HALLUCINATION_UNSUPPORTED_CLAIM" => Some((
+            "Potential hallucination risk".to_string(),
+            "Response contains assertive or numeric claims with weak grounding evidence."
+                .to_string(),
+            "Users may receive incorrect information presented as factual.".to_string(),
+            vec![
+                "Require evidence-backed answers".to_string(),
+                "Add verification step or citations".to_string(),
+            ],
+        )),
         _ => None,
     }
 }
@@ -1222,6 +1232,8 @@ pub fn compute_impact_score(insight: &RunInsight) -> f32 {
     let type_score = if insight.insight_type.contains("RUN_FAILURE")
         || insight.insight_type.contains("ROOT_CAUSE")
     {
+        0.2
+    } else if insight.insight_type.contains("HALLUCINATION") {
         0.2
     } else if insight.insight_type.contains("PROMPT")
         || insight.insight_type.contains("COST")

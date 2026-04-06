@@ -49,6 +49,21 @@ pub fn detect_failure_types(spans: &[Span], artifacts: &[Artifact]) -> Vec<Detec
     if let Some(detection) = detect_transition_cause(spans, artifacts, &detections) {
         detections.push(detection);
     }
+    if let Some(detection) = detect_hallucination_unsupported_claim(spans, artifacts) {
+        detections.push(detection);
+    }
+    if let Some(detection) = detect_hallucination_contradiction(spans, artifacts) {
+        detections.push(detection);
+    }
+    if let Some(detection) = detect_hallucination_fabricated_citation(spans, artifacts) {
+        detections.push(detection);
+    }
+    if let Some(detection) = detect_hallucination_insufficient_retrieval(spans, artifacts) {
+        detections.push(detection);
+    }
+    if let Some(detection) = detect_hallucination_overconfident_inference(spans, artifacts) {
+        detections.push(detection);
+    }
 
     detections.sort_by(|left, right| right.confidence.total_cmp(&left.confidence));
     detections
@@ -487,6 +502,239 @@ fn detect_token_overflow(spans: &[Span], artifacts: &[Artifact]) -> Option<Detec
     })
 }
 
+#[derive(Debug, Clone)]
+struct FinalOutputSnapshot {
+    text: String,
+    span_id: Option<String>,
+    artifact_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct RetrievalSnapshot {
+    artifact_id: String,
+    span_id: Option<String>,
+    text: String,
+    doc_count: usize,
+}
+
+fn detect_hallucination_unsupported_claim(
+    spans: &[Span],
+    artifacts: &[Artifact],
+) -> Option<Detection> {
+    let final_output = extract_final_output(spans, artifacts)?;
+    if final_output.text.len() < 120 {
+        return None;
+    }
+
+    let retrieval = collect_retrieval_outputs(artifacts);
+    let tool_support = collect_support_outputs(artifacts);
+    let support_text = format!(
+        "{} {}",
+        retrieval
+            .iter()
+            .map(|item| item.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" "),
+        tool_support.join(" ")
+    );
+    let support_text_lower = support_text.to_lowercase();
+    let claims = extract_specific_claims(&final_output.text);
+    if claims.is_empty() {
+        return None;
+    }
+
+    let unsupported = claims
+        .iter()
+        .filter(|claim| !support_text_lower.contains(claim.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    if unsupported.is_empty() {
+        return None;
+    }
+
+    let unsupported_ratio = unsupported.len() as f64 / claims.len() as f64;
+    if unsupported_ratio < 0.35 {
+        return None;
+    }
+
+    Some(Detection {
+        failure_type: "HALLUCINATION_UNSUPPORTED_CLAIM",
+        confidence: (0.72 + unsupported_ratio * 0.24).clamp(0.72, 0.96),
+        summary: "Final response includes specific claims that are not supported by retrieved/tool evidence.".to_string(),
+        span_count: final_output.span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: final_output.span_id.clone().into_iter().collect(),
+        evidence: json!({
+            "final_output_artifact_id": final_output.artifact_id,
+            "unsupported_claims": unsupported,
+            "total_specific_claims": claims.len(),
+            "unsupported_ratio": unsupported_ratio,
+            "retrieval_artifact_ids": retrieval.iter().map(|item| item.artifact_id.clone()).collect::<Vec<_>>()
+        }),
+    })
+}
+
+fn detect_hallucination_contradiction(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
+    let final_output = extract_final_output(spans, artifacts)?;
+    let output_lower = final_output.text.to_lowercase();
+
+    let contains_no_data_claim = [
+        "no data",
+        "no records",
+        "not found",
+        "none found",
+        "empty result",
+    ]
+    .iter()
+    .any(|needle| output_lower.contains(needle));
+    if !contains_no_data_claim {
+        return None;
+    }
+
+    let retrieval = collect_retrieval_outputs(artifacts);
+    let has_non_empty_retrieval = retrieval
+        .iter()
+        .any(|item| item.doc_count > 0 || item.text.len() >= 60);
+    let has_non_empty_tools = collect_support_outputs(artifacts)
+        .iter()
+        .any(|text| contains_positive_data_signal(text));
+    if !(has_non_empty_retrieval || has_non_empty_tools) {
+        return None;
+    }
+
+    Some(Detection {
+        failure_type: "HALLUCINATION_CONTRADICTION",
+        confidence: 0.89,
+        summary: "Final response contradicts upstream data presence (claims no data while evidence exists).".to_string(),
+        span_count: final_output.span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: final_output.span_id.clone().into_iter().collect(),
+        evidence: json!({
+            "final_output_artifact_id": final_output.artifact_id,
+            "contradiction": "output_claims_no_data_but_upstream_contains_data",
+            "retrieval_artifact_ids": retrieval.iter().map(|item| item.artifact_id.clone()).collect::<Vec<_>>(),
+            "retrieval_doc_counts": retrieval.iter().map(|item| item.doc_count).collect::<Vec<_>>(),
+            "tool_data_present": has_non_empty_tools
+        }),
+    })
+}
+
+fn detect_hallucination_fabricated_citation(
+    spans: &[Span],
+    artifacts: &[Artifact],
+) -> Option<Detection> {
+    let final_output = extract_final_output(spans, artifacts)?;
+    let cited_urls = extract_urls(&final_output.text);
+    let citation_markers = count_citation_markers(&final_output.text);
+
+    let retrieval = collect_retrieval_outputs(artifacts);
+    let support_urls = collect_all_urls_from_artifacts(artifacts);
+    let fabricated_urls = cited_urls
+        .iter()
+        .filter(|url| !support_urls.contains(url.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+
+    let has_fabricated_markers = citation_markers > 0 && retrieval.is_empty();
+    if fabricated_urls.is_empty() && !has_fabricated_markers {
+        return None;
+    }
+
+    Some(Detection {
+        failure_type: "HALLUCINATION_FABRICATED_CITATION",
+        confidence: if !fabricated_urls.is_empty() {
+            0.93
+        } else {
+            0.84
+        },
+        summary:
+            "Final response references citations or URLs not present in run context artifacts."
+                .to_string(),
+        span_count: final_output.span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: final_output.span_id.clone().into_iter().collect(),
+        evidence: json!({
+            "final_output_artifact_id": final_output.artifact_id,
+            "fabricated_urls": fabricated_urls,
+            "citation_marker_count": citation_markers,
+            "known_context_urls": support_urls
+        }),
+    })
+}
+
+fn detect_hallucination_insufficient_retrieval(
+    spans: &[Span],
+    artifacts: &[Artifact],
+) -> Option<Detection> {
+    let final_output = extract_final_output(spans, artifacts)?;
+    if !is_detailed_factual_answer(&final_output.text) {
+        return None;
+    }
+
+    let retrieval = collect_retrieval_outputs(artifacts);
+    let retrieval_doc_count = retrieval.iter().map(|item| item.doc_count).sum::<usize>();
+    let retrieval_chars = retrieval.iter().map(|item| item.text.len()).sum::<usize>();
+    let retrieval_weak = retrieval_doc_count == 0 || retrieval_chars < 120;
+    if !retrieval_weak {
+        return None;
+    }
+
+    Some(Detection {
+        failure_type: "HALLUCINATION_INSUFFICIENT_RETRIEVAL",
+        confidence: if retrieval_doc_count == 0 { 0.91 } else { 0.82 },
+        summary:
+            "Retrieval evidence is empty/weak while final output provides detailed factual content."
+                .to_string(),
+        span_count: final_output.span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: final_output.span_id.clone().into_iter().collect(),
+        evidence: json!({
+            "final_output_artifact_id": final_output.artifact_id,
+            "retrieval_doc_count": retrieval_doc_count,
+            "retrieval_total_chars": retrieval_chars,
+            "retrieval_artifact_ids": retrieval.iter().map(|item| item.artifact_id.clone()).collect::<Vec<_>>(),
+            "retrieval_span_ids": retrieval.iter().filter_map(|item| item.span_id.clone()).collect::<Vec<_>>()
+        }),
+    })
+}
+
+fn detect_hallucination_overconfident_inference(
+    spans: &[Span],
+    artifacts: &[Artifact],
+) -> Option<Detection> {
+    let final_output = extract_final_output(spans, artifacts)?;
+    let certainty_markers = extract_certainty_markers(&final_output.text);
+    if certainty_markers.is_empty() {
+        return None;
+    }
+
+    let retrieval = collect_retrieval_outputs(artifacts);
+    let support = collect_support_outputs(artifacts).join(" ").to_lowercase();
+    let claims = extract_specific_claims(&final_output.text);
+    let unsupported_count = claims
+        .iter()
+        .filter(|claim| !support.contains(claim.as_str()))
+        .count();
+    let weak_coverage = claims.is_empty()
+        || (unsupported_count as f64 / claims.len().max(1) as f64) > 0.3
+        || retrieval.is_empty();
+    if !weak_coverage {
+        return None;
+    }
+
+    Some(Detection {
+        failure_type: "HALLUCINATION_OVERCONFIDENT_INFERENCE",
+        confidence: (0.74 + (certainty_markers.len().min(6) as f64 * 0.03)).clamp(0.74, 0.92),
+        summary: "Final response uses high-certainty language despite weak evidence coverage."
+            .to_string(),
+        span_count: final_output.span_id.as_ref().map(|_| 1).unwrap_or(0),
+        affected_spans: final_output.span_id.clone().into_iter().collect(),
+        evidence: json!({
+            "final_output_artifact_id": final_output.artifact_id,
+            "certainty_markers": certainty_markers,
+            "claim_count": claims.len(),
+            "unsupported_claim_count": unsupported_count,
+            "retrieval_artifact_count": retrieval.len()
+        }),
+    })
+}
+
 fn payload_message(payload: &Value) -> String {
     [
         payload.get("message"),
@@ -505,6 +753,242 @@ fn payload_message(payload: &Value) -> String {
     .unwrap_or_default()
     .to_lowercase()
 }
+
+fn extract_final_output(spans: &[Span], artifacts: &[Artifact]) -> Option<FinalOutputSnapshot> {
+    let span_index = spans
+        .iter()
+        .enumerate()
+        .map(|(idx, span)| (span.id.clone(), idx))
+        .collect::<HashMap<_, _>>();
+    artifacts
+        .iter()
+        .filter(|artifact| artifact.kind == "llm.response")
+        .filter_map(|artifact| {
+            extract_text_from_payload(&artifact.payload).map(|text| {
+                let order = artifact
+                    .span_id
+                    .as_ref()
+                    .and_then(|id| span_index.get(id))
+                    .copied()
+                    .unwrap_or(0);
+                (order, artifact, text)
+            })
+        })
+        .max_by_key(|(order, _, _)| *order)
+        .map(|(_, artifact, text)| FinalOutputSnapshot {
+            text,
+            span_id: artifact.span_id.clone(),
+            artifact_id: artifact.id.clone(),
+        })
+}
+
+fn collect_retrieval_outputs(artifacts: &[Artifact]) -> Vec<RetrievalSnapshot> {
+    artifacts
+        .iter()
+        .filter(|artifact| is_retrieval_artifact(artifact))
+        .map(|artifact| {
+            let text = extract_text_from_payload(&artifact.payload).unwrap_or_default();
+            let doc_count = infer_doc_count(&artifact.payload);
+            RetrievalSnapshot {
+                artifact_id: artifact.id.clone(),
+                span_id: artifact.span_id.clone(),
+                text,
+                doc_count,
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+fn collect_support_outputs(artifacts: &[Artifact]) -> Vec<String> {
+    artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact.kind == "tool.output"
+                || artifact.kind == "file.content"
+                || artifact.kind == "command.stdout"
+                || artifact.kind == "command.stderr"
+                || artifact.kind == "validator.output"
+                || is_retrieval_artifact(artifact)
+        })
+        .filter_map(|artifact| extract_text_from_payload(&artifact.payload))
+        .collect::<Vec<_>>()
+}
+
+fn is_retrieval_artifact(artifact: &Artifact) -> bool {
+    let kind = artifact.kind.to_lowercase();
+    kind.contains("retriev")
+        || kind == "llm.context"
+        || artifact
+            .payload
+            .as_object()
+            .is_some_and(|obj| obj.contains_key("documents") || obj.contains_key("chunks"))
+}
+
+fn extract_text_from_payload(payload: &Value) -> Option<String> {
+    if let Some(text) = payload.as_str() {
+        let trimmed = text.trim();
+        if !trimmed.is_empty() {
+            return Some(trimmed.to_string());
+        }
+    }
+
+    if let Some(obj) = payload.as_object() {
+        for key in ["text", "content", "output", "response", "answer", "message"] {
+            if let Some(value) = obj.get(key).and_then(extract_text_from_payload) {
+                return Some(value);
+            }
+        }
+    }
+
+    if let Some(arr) = payload.as_array() {
+        let parts = arr
+            .iter()
+            .filter_map(extract_text_from_payload)
+            .collect::<Vec<_>>();
+        if !parts.is_empty() {
+            return Some(parts.join(" "));
+        }
+    }
+
+    None
+}
+
+fn infer_doc_count(payload: &Value) -> usize {
+    payload
+        .get("documents")
+        .and_then(Value::as_array)
+        .map(|docs| docs.len())
+        .or_else(|| {
+            payload
+                .get("chunks")
+                .and_then(Value::as_array)
+                .map(|chunks| chunks.len())
+        })
+        .or_else(|| {
+            payload
+                .get("results")
+                .and_then(Value::as_array)
+                .map(|results| results.len())
+        })
+        .unwrap_or(0)
+}
+
+fn extract_specific_claims(text: &str) -> Vec<String> {
+    let lower = text.to_lowercase();
+    let mut claims = Vec::<String>::new();
+
+    for token in lower.split_whitespace() {
+        let cleaned = token.trim_matches(|ch: char| {
+            !ch.is_ascii_alphanumeric() && ch != '/' && ch != '-' && ch != '.'
+        });
+        if cleaned.len() >= 4 && looks_specific_token(cleaned) {
+            claims.push(cleaned.to_string());
+        }
+    }
+    claims.sort();
+    claims.dedup();
+    claims
+}
+
+fn looks_specific_token(token: &str) -> bool {
+    let has_digit = token.chars().any(|ch| ch.is_ascii_digit());
+    let has_dash = token.contains('-') || token.contains('/');
+    let has_dot = token.contains('.');
+    let is_common_word = COMMON_TERMS.iter().any(|value| *value == token);
+    (has_digit || has_dash || has_dot) && !is_common_word
+}
+
+fn contains_positive_data_signal(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("\"count\":")
+        || lower.contains("count")
+            && lower
+                .split(|ch: char| !ch.is_ascii_digit())
+                .any(|segment| segment.parse::<i64>().is_ok_and(|value| value > 0))
+        || lower.contains("[{")
+        || lower.contains("rows")
+}
+
+fn extract_urls(text: &str) -> Vec<String> {
+    text.split_whitespace()
+        .filter_map(|token| {
+            let cleaned = token.trim_matches(|ch: char| {
+                !ch.is_ascii_alphanumeric()
+                    && ch != ':'
+                    && ch != '/'
+                    && ch != '.'
+                    && ch != '-'
+                    && ch != '?'
+                    && ch != '='
+                    && ch != '&'
+                    && ch != '#'
+            });
+            if cleaned.starts_with("http://") || cleaned.starts_with("https://") {
+                Some(cleaned.to_lowercase())
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>()
+}
+
+fn collect_all_urls_from_artifacts(artifacts: &[Artifact]) -> HashSet<String> {
+    let mut urls = HashSet::new();
+    for artifact in artifacts {
+        if let Some(text) = extract_text_from_payload(&artifact.payload) {
+            for url in extract_urls(&text) {
+                urls.insert(url);
+            }
+        }
+    }
+    urls
+}
+
+fn count_citation_markers(text: &str) -> usize {
+    let lower = text.to_lowercase();
+    let bracket_markers = text.matches('[').count().min(text.matches(']').count());
+    let source_markers = ["source:", "sources:", "citation", "according to", "ref:"]
+        .iter()
+        .filter(|needle| lower.contains(**needle))
+        .count();
+    bracket_markers + source_markers
+}
+
+fn is_detailed_factual_answer(text: &str) -> bool {
+    if text.len() < 180 {
+        return false;
+    }
+    let digits = text.chars().filter(|ch| ch.is_ascii_digit()).count();
+    let sentences = text.matches('.').count() + text.matches(';').count();
+    digits >= 3 || sentences >= 3
+}
+
+fn extract_certainty_markers(text: &str) -> Vec<String> {
+    let lower = text.to_lowercase();
+    CERTAINTY_TERMS
+        .iter()
+        .filter(|term| lower.contains(**term))
+        .map(|term| (*term).to_string())
+        .collect::<Vec<_>>()
+}
+
+const CERTAINTY_TERMS: &[&str] = &[
+    "definitely",
+    "certainly",
+    "without doubt",
+    "always",
+    "never",
+    "clearly",
+    "proves",
+    "confirmed",
+    "undeniably",
+];
+
+const COMMON_TERMS: &[&str] = &[
+    "this", "that", "with", "from", "have", "been", "were", "what", "when", "where", "which",
+    "will", "would", "there", "their", "them", "then", "than", "into", "over", "under", "about",
+    "also", "such", "many", "some", "your", "they", "because", "while", "should", "could",
+];
 
 fn payload_contains_timeout(payload: Option<&Value>) -> bool {
     let Some(payload) = payload else {
