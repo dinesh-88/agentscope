@@ -1,8 +1,5 @@
 use agentscope_common::errors::AgentScopeError;
-use agentscope_storage::{
-    weekly_reports::UpsertWeeklyReportInput,
-    Storage,
-};
+use agentscope_storage::{weekly_reports::UpsertWeeklyReportInput, Storage};
 use chrono::{Duration, NaiveDate, Utc};
 use serde_json::json;
 use sqlx::FromRow;
@@ -80,8 +77,14 @@ pub async fn run_for_window(
     let llm_client = LlmClient::from_env().ok();
 
     for project_id in project_ids {
-        generate_weekly_report(storage, llm_client.as_ref(), &project_id, week_start, week_end)
-            .await?;
+        generate_weekly_report(
+            storage,
+            llm_client.as_ref(),
+            &project_id,
+            week_start,
+            week_end,
+        )
+        .await?;
     }
 
     info!(%week_start, %week_end, "weekly report generation complete");

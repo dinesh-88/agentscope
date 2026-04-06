@@ -45,9 +45,39 @@ pub struct AuthenticatedUser {
     pub email: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub role: Role,
     pub memberships: Vec<MembershipRecord>,
     pub permissions: Vec<String>,
     pub is_admin: bool,
+    pub is_super_admin: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum Role {
+    User,
+    Admin,
+    SuperAdmin,
+}
+
+impl Role {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Admin => "admin",
+            Self::SuperAdmin => "super_admin",
+        }
+    }
+}
+
+impl From<&str> for Role {
+    fn from(value: &str) -> Self {
+        match value {
+            "super_admin" => Self::SuperAdmin,
+            "admin" => Self::Admin,
+            _ => Self::User,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -476,8 +506,8 @@ pub async fn require_jwt(
     next: Next,
 ) -> Result<Response, ApiError> {
     let path = request.uri().path().to_string();
-    let is_stream_request = path == "/v1/runs/stream"
-        || path.starts_with("/v1/runs/") && path.ends_with("/stream");
+    let is_stream_request =
+        path == "/v1/runs/stream" || path.starts_with("/v1/runs/") && path.ends_with("/stream");
 
     let auth_header_token = request
         .headers()
@@ -520,19 +550,20 @@ pub async fn require_jwt(
         );
     }
 
-    let session = state
-        .storage
-        .get_session(&token)
-        .await?
-        .ok_or_else(|| {
-            if is_stream_request {
-                warn!(path = %path, "stream auth rejected: invalid session token");
-            }
-            ApiError::Unauthorized("invalid session".to_string())
-        })?;
+    let session = state.storage.get_session(&token).await?.ok_or_else(|| {
+        if is_stream_request {
+            warn!(path = %path, "stream auth rejected: invalid session token");
+        }
+        ApiError::Unauthorized("invalid session".to_string())
+    })?;
     let user = build_authenticated_user(&state, &session.user_id).await?;
     if is_stream_request {
         info!(path = %path, user_id = %user.id, "stream auth succeeded");
+    }
+    if is_super_admin_only_path(&path) && !user.is_super_admin {
+        return Err(ApiError::Forbidden(
+            "super_admin role required for this endpoint".to_string(),
+        ));
     }
     request.extensions_mut().insert(user);
 
@@ -560,15 +591,28 @@ async fn build_authenticated_user(
         .iter()
         .any(|permission| permission == Permission::UserManage.as_str());
 
+    let role = Role::from(user.role.as_str());
+    let is_super_admin = role == Role::SuperAdmin;
     Ok(AuthenticatedUser {
         id: user.id,
         email: user.email,
         display_name: user.display_name,
         avatar_url: user.avatar_url,
+        role,
         memberships,
         permissions,
         is_admin,
+        is_super_admin,
     })
+}
+
+fn is_super_admin_only_path(path: &str) -> bool {
+    path.starts_with("/admin")
+        || path.starts_with("/telemetry")
+        || path.starts_with("/internal")
+        || path.starts_with("/api/admin")
+        || path.starts_with("/api/telemetry")
+        || path.starts_with("/api/internal")
 }
 
 async fn create_user_session(

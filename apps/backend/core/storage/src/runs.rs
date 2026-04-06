@@ -469,7 +469,11 @@ impl Storage {
             builder.push_bind(project_id).push("::uuid");
         }
 
-        if let Some(trace_id) = filters.trace_id.as_deref().filter(|value| !value.is_empty()) {
+        if let Some(trace_id) = filters
+            .trace_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
             builder.push(" AND runs.metadata ->> 'trace_id' = ");
             builder.push_bind(trace_id);
         }

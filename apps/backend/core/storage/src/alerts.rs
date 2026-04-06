@@ -270,7 +270,9 @@ impl Storage {
         Ok(events)
     }
 
-    pub async fn list_projects_for_intelligence_alerts(&self) -> Result<Vec<String>, AgentScopeError> {
+    pub async fn list_projects_for_intelligence_alerts(
+        &self,
+    ) -> Result<Vec<String>, AgentScopeError> {
         sqlx::query_scalar::<_, String>(
             r#"
             SELECT DISTINCT project_id::text
@@ -421,15 +423,11 @@ impl Storage {
         project_id: &str,
     ) -> Result<usize, AgentScopeError> {
         let mut created = 0usize;
-        created += self
-            .detect_new_issue_alerts_for_project(project_id)
-            .await?;
+        created += self.detect_new_issue_alerts_for_project(project_id).await?;
         created += self
             .detect_regression_alerts_for_project(project_id)
             .await?;
-        created += self
-            .detect_cost_spike_alert_for_project(project_id)
-            .await?;
+        created += self.detect_cost_spike_alert_for_project(project_id).await?;
         created += self
             .detect_weekly_report_alert_for_project(project_id)
             .await?;
@@ -615,8 +613,11 @@ impl Storage {
             return Ok(0);
         }
 
-        let baseline_cost =
-            baseline_points.iter().map(|point| point.cost_usd).sum::<f64>() / baseline_points.len() as f64;
+        let baseline_cost = baseline_points
+            .iter()
+            .map(|point| point.cost_usd)
+            .sum::<f64>()
+            / baseline_points.len() as f64;
         if baseline_cost < COST_SPIKE_MIN_BASELINE_USD || current.run_count < COST_SPIKE_MIN_RUNS {
             return Ok(0);
         }

@@ -62,7 +62,9 @@ pub async fn backfill(storage: &Storage, limit: i64) -> Result<usize, AgentScope
     .fetch_all(&storage.pool)
     .await
     .map_err(|error| {
-        AgentScopeError::Storage(format!("failed to load artifact/span rows for cost backfill: {error}"))
+        AgentScopeError::Storage(format!(
+            "failed to load artifact/span rows for cost backfill: {error}"
+        ))
     })?;
 
     if rows.is_empty() {
@@ -106,21 +108,35 @@ pub async fn backfill(storage: &Storage, limit: i64) -> Result<usize, AgentScope
             .or(row.output_tokens);
 
         usage.total_tokens = extract_i64(&row.payload, &["total_tokens"])
-            .or_else(|| row.payload.get("usage").and_then(|usage| extract_i64(usage, &["total_tokens"])))
             .or_else(|| {
-                Some(usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0))
+                row.payload
+                    .get("usage")
+                    .and_then(|usage| extract_i64(usage, &["total_tokens"]))
             })
+            .or_else(|| Some(usage.input_tokens.unwrap_or(0) + usage.output_tokens.unwrap_or(0)))
             .or(row.total_tokens);
 
         usage.explicit_cost = extract_f64(
             &row.payload,
-            &["cost", "estimated_cost", "total_cost", "cost_usd", "total_cost_usd"],
+            &[
+                "cost",
+                "estimated_cost",
+                "total_cost",
+                "cost_usd",
+                "total_cost_usd",
+            ],
         )
         .or_else(|| {
             row.payload.get("usage").and_then(|usage| {
                 extract_f64(
                     usage,
-                    &["cost", "estimated_cost", "total_cost", "cost_usd", "total_cost_usd"],
+                    &[
+                        "cost",
+                        "estimated_cost",
+                        "total_cost",
+                        "cost_usd",
+                        "total_cost_usd",
+                    ],
                 )
             })
         })
@@ -160,7 +176,10 @@ pub async fn backfill(storage: &Storage, limit: i64) -> Result<usize, AgentScope
         .execute(&storage.pool)
         .await
         .map_err(|error| {
-            AgentScopeError::Storage(format!("failed to update span {} during cost backfill: {error}", row.span_id))
+            AgentScopeError::Storage(format!(
+                "failed to update span {} during cost backfill: {error}",
+                row.span_id
+            ))
         })?;
 
         if update.rows_affected() > 0 {

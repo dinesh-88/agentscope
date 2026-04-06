@@ -456,7 +456,10 @@ impl Storage {
         })?;
 
         let Some(latest_date) = latest_date else {
-            info!(project_id, "auto-fix detection skipped: no issue_rankings data");
+            info!(
+                project_id,
+                "auto-fix detection skipped: no issue_rankings data"
+            );
             return Ok(0);
         };
 
@@ -515,7 +518,8 @@ impl Storage {
             return Ok(0);
         }
 
-        let stability_window_start = latest_date - chrono::Duration::days((AUTO_FIX_STABILITY_POINTS - 1) as i64);
+        let stability_window_start =
+            latest_date - chrono::Duration::days((AUTO_FIX_STABILITY_POINTS - 1) as i64);
         let recent_total_runs = sqlx::query_scalar::<_, i64>(
             r#"
             SELECT COALESCE(SUM(run_count), 0)::bigint
@@ -618,8 +622,8 @@ impl Storage {
                 continue;
             }
 
-            let confidence = ((baseline_frequency - current_frequency) / baseline_frequency)
-                .clamp(0.0, 1.0);
+            let confidence =
+                ((baseline_frequency - current_frequency) / baseline_frequency).clamp(0.0, 1.0);
 
             let insert_result = sqlx::query(
                 r#"
@@ -730,7 +734,10 @@ impl Storage {
         })?;
 
         let Some(latest_date) = latest_date else {
-            info!(project_id, "regression detection skipped: no issue rankings");
+            info!(
+                project_id,
+                "regression detection skipped: no issue rankings"
+            );
             return Ok(0);
         };
 
@@ -860,8 +867,13 @@ impl Storage {
                 .iter()
                 .all(|point| point.frequency_score > threshold);
             let monotonic_non_decreasing = sorted_points.windows(2).all(|pair| {
-                pair.first().map(|value| value.frequency_score).unwrap_or(0.0)
-                    >= pair.get(1).map(|value| value.frequency_score).unwrap_or(0.0)
+                pair.first()
+                    .map(|value| value.frequency_score)
+                    .unwrap_or(0.0)
+                    >= pair
+                        .get(1)
+                        .map(|value| value.frequency_score)
+                        .unwrap_or(0.0)
             });
 
             if !(current_frequency > threshold

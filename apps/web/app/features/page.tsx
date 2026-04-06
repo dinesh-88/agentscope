@@ -43,7 +43,7 @@ export default function FeaturesPage() {
   return (
     <MarketingShell>
       <main className="px-6 py-16">
-        <div className="mx-auto w-full max-w-5xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <header className="max-w-3xl">
             <h1 className="text-4xl font-bold tracking-tight md:text-5xl">Features</h1>
             <p className="mt-3 text-lg text-gray-400">

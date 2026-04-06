@@ -334,11 +334,38 @@ export type MeResponse = {
     email: string;
     display_name: string | null;
     avatar_url: string | null;
+    role: string;
     memberships: Membership[];
     permissions: string[];
     is_admin: boolean;
+    is_super_admin: boolean;
   };
   onboarding: OnboardingState;
+};
+
+export type AdminTelemetryResponse = {
+  total_events: number;
+  active_projects: number;
+  events_today: number;
+  events_last_7_days: number;
+  error_rate: number;
+  daily_active_projects: Array<{
+    day: string;
+    active_projects: number;
+  }>;
+  sdk_usage: Array<{
+    sdk: string;
+    events: number;
+  }>;
+  version_adoption: Array<{
+    sdk_version: string;
+    events: number;
+  }>;
+  events_per_day: Array<{
+    day: string;
+    events: number;
+    error_rate: number;
+  }>;
 };
 
 export type ProjectApiKeyResponse = {
@@ -822,9 +849,11 @@ export async function getCurrentUser(): Promise<MeResponse> {
           email: "",
           display_name: null,
           avatar_url: null,
+          role: "user",
           memberships: [],
           permissions: [],
           is_admin: false,
+          is_super_admin: false,
         },
         onboarding: {
           has_organization: false,
@@ -852,6 +881,10 @@ export async function getProjectUsage(projectId: string): Promise<ProjectUsagePo
     }
     throw error;
   }
+}
+
+export async function getAdminTelemetry(): Promise<AdminTelemetryResponse> {
+  return request<AdminTelemetryResponse>("/api/admin/telemetry");
 }
 
 export async function getProjectStorageSettings(projectId: string): Promise<ProjectStorageSettings> {

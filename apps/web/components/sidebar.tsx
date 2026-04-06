@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, CreditCard, LayoutDashboard, Menu, Moon, PlaySquare, Settings, Sun, Users, X } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, CreditCard, LayoutDashboard, Menu, Moon, PlaySquare, Settings, ShieldCheck, Sun, Users, X } from "lucide-react";
 
 import { UI_SESSION_COOKIE_NAME, getCurrentUser, logout } from "@/lib/api";
 
@@ -21,6 +21,7 @@ const navItems = [
   { href: "/billing", label: "Billing", icon: CreditCard },
   { href: "/settings/team", label: "Team", icon: Users },
   { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/admin/telemetry", label: "Admin Telemetry", icon: ShieldCheck },
 ];
 
 export function Sidebar({ activePath = "/dashboard", theme = "light", onToggleTheme }: SidebarProps) {
@@ -31,6 +32,7 @@ export function Sidebar({ activePath = "/dashboard", theme = "light", onToggleTh
     return window.localStorage.getItem("agentscope-sidebar-collapsed") === "true";
   });
   const [permissions, setPermissions] = useState<string[] | null>(null);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
   const currentPath = pathname ?? activePath;
 
@@ -40,11 +42,13 @@ export function Sidebar({ activePath = "/dashboard", theme = "light", onToggleTh
       .then((me) => {
         if (!cancelled) {
           setPermissions(me.user.permissions);
+          setIsSuperAdmin(me.user.is_super_admin);
         }
       })
       .catch(() => {
         if (!cancelled) {
           setPermissions([]);
+          setIsSuperAdmin(false);
         }
       });
     return () => {
@@ -57,8 +61,9 @@ export function Sidebar({ activePath = "/dashboard", theme = "light", onToggleTh
   }, [desktopCollapsed]);
 
   const visibleItems = navItems.filter((item) => {
-    if (!permissions) return item.href !== "/settings" && item.href !== "/settings/team";
+    if (!permissions) return item.href !== "/settings" && item.href !== "/settings/team" && item.href !== "/admin/telemetry";
     if (item.href === "/settings" || item.href === "/settings/team") return permissions.includes("project:manage");
+    if (item.href === "/admin/telemetry") return isSuperAdmin;
     return true;
   });
 

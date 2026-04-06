@@ -37,11 +37,15 @@ packages/python-sdk/build/
 *.whl
 *.tar.gz
 
+# SDK build outputs
+packages/*-sdk/dist/
+packages/*-sdk/dist-*/
+
 # Misc
 tmp/
 node_modules/
 .next/
 
 apps/web/figma
-packages/ts-sdk/dist/
+packages/ts-sdk/dist/*
 packages/ts-sdk/*.tgz

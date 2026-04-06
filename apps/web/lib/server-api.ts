@@ -2,6 +2,7 @@ import axios from "axios";
 import { cookies } from "next/headers";
 
 import {
+  type AdminTelemetryResponse,
   API_BASE_URL,
   UI_SESSION_COOKIE_NAME,
   type ActiveAlert,
@@ -178,4 +179,8 @@ export async function getCurrentUser(): Promise<MeResponse | null> {
     }
     throw error;
   }
+}
+
+export async function getAdminTelemetry(): Promise<AdminTelemetryResponse> {
+  return request<AdminTelemetryResponse>("/api/admin/telemetry");
 }

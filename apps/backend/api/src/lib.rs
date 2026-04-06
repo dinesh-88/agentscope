@@ -22,6 +22,7 @@ use agentscope_storage::{
     retention::{ProjectStorageSettings, RetentionApplyResult},
     runs::RunSearchFilters,
     search::ArtifactSearchFilters,
+    telemetry::{AdminTelemetryMetrics, SdkTelemetryEvent},
     weekly_reports::WeeklyReportRecord,
     Storage,
 };
@@ -70,6 +71,18 @@ pub struct IngestPayload {
     pub run: Run,
     pub spans: Vec<Span>,
     pub artifacts: Vec<Artifact>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct TelemetryIngestPayload {
+    pub project_id: String,
+    pub event: String,
+    pub sdk: String,
+    pub sdk_version: String,
+    pub runtime: String,
+    pub env: String,
+    pub timestamp: DateTime<Utc>,
+    pub error_type: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -164,6 +177,44 @@ struct WeeklyRegressionRow {
     issue_key: String,
     detected_at: DateTime<Utc>,
     regression_severity: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct AdminTelemetryResponse {
+    total_events: i64,
+    active_projects: i64,
+    events_today: i64,
+    events_last_7_days: i64,
+    error_rate: f64,
+    daily_active_projects: Vec<DailyActiveProjectsPoint>,
+    sdk_usage: Vec<SdkUsagePoint>,
+    version_adoption: Vec<VersionAdoptionPoint>,
+    events_per_day: Vec<EventsPerDayPoint>,
+}
+
+#[derive(Debug, Serialize)]
+struct DailyActiveProjectsPoint {
+    day: String,
+    active_projects: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct SdkUsagePoint {
+    sdk: String,
+    events: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct VersionAdoptionPoint {
+    sdk_version: String,
+    events: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct EventsPerDayPoint {
+    day: String,
+    events: i64,
+    error_rate: f64,
 }
 
 pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
@@ -295,6 +346,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
     Router::new()
         .route("/openapi.json", get(swagger::openapi_json))
         .route("/swagger", get(swagger::swagger_ui))
+        .route("/v1/telemetry", post(ingest_telemetry))
         .route("/v1/auth/login", post(auth::login))
         .route("/v1/auth/register", post(auth::register))
         .route("/v1/auth/logout", post(auth::logout))
@@ -324,8 +376,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         )
         .route(
             "/api/projects/:project_id/issues/:issue_key/impact",
-            get(get_issue_impact)
-                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+            get(get_issue_impact).route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
         )
         .route(
             "/api/projects/:project_id/regressions",
@@ -345,6 +396,11 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route(
             "/api/projects/:id/alerts",
             get(get_project_alert_events)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
+        .route(
+            "/api/admin/telemetry",
+            get(get_admin_telemetry)
                 .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
         )
         .nest("/v1", sdk_routes.merge(ui_routes))
@@ -421,6 +477,85 @@ async fn ingest(
     limits::increment_usage(&state, &payload.run.project_id, payload.run.total_tokens).await?;
 
     Ok(StatusCode::OK)
+}
+
+async fn ingest_telemetry(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<TelemetryIngestPayload>,
+) -> Result<impl IntoResponse, ApiError> {
+    validate_telemetry_payload(&payload)?;
+
+    let telemetry = SdkTelemetryEvent {
+        project_id: payload.project_id,
+        event: payload.event,
+        sdk: payload.sdk,
+        sdk_version: payload.sdk_version,
+        runtime: payload.runtime,
+        env: payload.env,
+        timestamp: payload.timestamp,
+        error_type: payload.error_type,
+    };
+
+    state.storage.insert_telemetry_event(&telemetry).await?;
+    state.storage.prune_telemetry_events(30).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_admin_telemetry(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<AdminTelemetryResponse>, ApiError> {
+    ensure_super_admin(&user)?;
+    let metrics = state.storage.get_admin_telemetry_metrics().await?;
+    Ok(Json(admin_telemetry_response(metrics)))
+}
+
+fn admin_telemetry_response(metrics: AdminTelemetryMetrics) -> AdminTelemetryResponse {
+    let daily_active_projects = metrics
+        .timeline
+        .iter()
+        .map(|point| DailyActiveProjectsPoint {
+            day: point.day.to_string(),
+            active_projects: point.active_projects,
+        })
+        .collect::<Vec<_>>();
+    let sdk_usage = metrics
+        .sdk_breakdown
+        .into_iter()
+        .map(|point| SdkUsagePoint {
+            sdk: point.sdk,
+            events: point.events,
+        })
+        .collect::<Vec<_>>();
+    let version_adoption = metrics
+        .version_breakdown
+        .into_iter()
+        .map(|point| VersionAdoptionPoint {
+            sdk_version: point.sdk_version,
+            events: point.events,
+        })
+        .collect::<Vec<_>>();
+    let events_per_day = metrics
+        .timeline
+        .into_iter()
+        .map(|point| EventsPerDayPoint {
+            day: point.day.to_string(),
+            events: point.events,
+            error_rate: point.error_rate,
+        })
+        .collect::<Vec<_>>();
+
+    AdminTelemetryResponse {
+        total_events: metrics.overview.total_events,
+        active_projects: metrics.overview.active_projects,
+        events_today: metrics.overview.events_today,
+        events_last_7_days: metrics.overview.events_last_7_days,
+        error_rate: metrics.overview.error_rate,
+        daily_active_projects,
+        sdk_usage,
+        version_adoption,
+        events_per_day,
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -527,6 +662,51 @@ fn validate_payload(payload: &IngestPayload) -> Result<(), ApiError> {
                 ));
             }
         }
+    }
+
+    Ok(())
+}
+
+fn validate_telemetry_payload(payload: &TelemetryIngestPayload) -> Result<(), ApiError> {
+    if payload.project_id.trim().is_empty() {
+        return Err(ApiError::Validation("project_id is required".to_string()));
+    }
+    if payload.project_id.len() > 256 {
+        return Err(ApiError::Validation("project_id is too long".to_string()));
+    }
+    if !matches!(payload.event.as_str(), "sdk_init" | "run_start" | "run_end") {
+        return Err(ApiError::Validation(
+            "event must be one of sdk_init, run_start, run_end".to_string(),
+        ));
+    }
+    if !matches!(payload.sdk.as_str(), "python" | "ts") {
+        return Err(ApiError::Validation(
+            "sdk must be one of python or ts".to_string(),
+        ));
+    }
+    if !matches!(payload.env.as_str(), "dev" | "prod") {
+        return Err(ApiError::Validation(
+            "env must be one of dev or prod".to_string(),
+        ));
+    }
+    if payload.sdk_version.trim().is_empty() || payload.sdk_version.len() > 128 {
+        return Err(ApiError::Validation(
+            "sdk_version is required and must be <= 128 chars".to_string(),
+        ));
+    }
+    if payload.runtime.trim().is_empty() || payload.runtime.len() > 256 {
+        return Err(ApiError::Validation(
+            "runtime is required and must be <= 256 chars".to_string(),
+        ));
+    }
+    if payload
+        .error_type
+        .as_deref()
+        .is_some_and(|value| value.len() > 256)
+    {
+        return Err(ApiError::Validation(
+            "error_type must be <= 256 chars".to_string(),
+        ));
     }
 
     Ok(())
@@ -708,19 +888,20 @@ fn build_llm_usage_index(artifacts: &[Artifact]) -> HashMap<String, LlmUsageSnap
         }
 
         if entry.input_tokens.is_none() {
-            entry.input_tokens = extract_i64(payload, &["input_tokens", "prompt_tokens"]).or_else(|| {
-                payload
-                    .get("usage")
-                    .and_then(|usage| extract_i64(usage, &["input_tokens", "prompt_tokens"]))
-            });
+            entry.input_tokens =
+                extract_i64(payload, &["input_tokens", "prompt_tokens"]).or_else(|| {
+                    payload
+                        .get("usage")
+                        .and_then(|usage| extract_i64(usage, &["input_tokens", "prompt_tokens"]))
+                });
         }
 
         if entry.output_tokens.is_none() {
-            entry.output_tokens =
-                extract_i64(payload, &["output_tokens", "completion_tokens"]).or_else(|| {
-                    payload
-                        .get("usage")
-                        .and_then(|usage| extract_i64(usage, &["output_tokens", "completion_tokens"]))
+            entry.output_tokens = extract_i64(payload, &["output_tokens", "completion_tokens"])
+                .or_else(|| {
+                    payload.get("usage").and_then(|usage| {
+                        extract_i64(usage, &["output_tokens", "completion_tokens"])
+                    })
                 });
         }
 
@@ -735,13 +916,25 @@ fn build_llm_usage_index(artifacts: &[Artifact]) -> HashMap<String, LlmUsageSnap
         if entry.explicit_cost.is_none() {
             entry.explicit_cost = extract_f64(
                 payload,
-                &["cost", "estimated_cost", "total_cost", "cost_usd", "total_cost_usd"],
+                &[
+                    "cost",
+                    "estimated_cost",
+                    "total_cost",
+                    "cost_usd",
+                    "total_cost_usd",
+                ],
             )
             .or_else(|| {
                 payload.get("usage").and_then(|usage| {
                     extract_f64(
                         usage,
-                        &["cost", "estimated_cost", "total_cost", "cost_usd", "total_cost_usd"],
+                        &[
+                            "cost",
+                            "estimated_cost",
+                            "total_cost",
+                            "cost_usd",
+                            "total_cost_usd",
+                        ],
                     )
                 })
             })
@@ -749,7 +942,13 @@ fn build_llm_usage_index(artifacts: &[Artifact]) -> HashMap<String, LlmUsageSnap
                 payload.get("response").and_then(|response| {
                     extract_f64(
                         response,
-                        &["cost", "estimated_cost", "total_cost", "cost_usd", "total_cost_usd"],
+                        &[
+                            "cost",
+                            "estimated_cost",
+                            "total_cost",
+                            "cost_usd",
+                            "total_cost_usd",
+                        ],
                     )
                     .or_else(|| {
                         response.get("usage").and_then(|usage| {
@@ -1906,7 +2105,8 @@ async fn trigger_project_weekly_report(
     ensure_project_access(&state, &project_id, &user.id).await?;
     ensure_project_manage_permission(&user)?;
 
-    let (week_start, week_end) = resolve_week_window(payload.week_start.as_deref(), payload.week_end.as_deref())?;
+    let (week_start, week_end) =
+        resolve_week_window(payload.week_start.as_deref(), payload.week_end.as_deref())?;
     state.storage.aggregate_project_usage_daily().await?;
     generate_weekly_report_for_project(&state.storage, &project_id, week_start, week_end).await?;
     let report = state.storage.get_latest_weekly_report(&project_id).await?;
@@ -1919,9 +2119,8 @@ fn resolve_week_window(
 ) -> Result<(NaiveDate, NaiveDate), ApiError> {
     match (week_start, week_end) {
         (Some(start), Some(end)) => {
-            let parsed_start = NaiveDate::parse_from_str(start, "%Y-%m-%d").map_err(|_| {
-                ApiError::Validation("week_start must be YYYY-MM-DD".to_string())
-            })?;
+            let parsed_start = NaiveDate::parse_from_str(start, "%Y-%m-%d")
+                .map_err(|_| ApiError::Validation("week_start must be YYYY-MM-DD".to_string()))?;
             let parsed_end = NaiveDate::parse_from_str(end, "%Y-%m-%d")
                 .map_err(|_| ApiError::Validation("week_end must be YYYY-MM-DD".to_string()))?;
             if parsed_end < parsed_start {
@@ -2117,18 +2316,20 @@ async fn generate_weekly_report_for_project(
     });
 
     storage
-        .upsert_weekly_report(agentscope_storage::weekly_reports::UpsertWeeklyReportInput {
-            project_id: project_id.to_string(),
-            week_start,
-            week_end,
-            total_runs: usage.total_runs.min(i32::MAX as i64) as i32,
-            failure_rate_before,
-            failure_rate_after,
-            cost_before: costs.cost_before,
-            cost_after: costs.cost_after,
-            improvement_summary,
-            report_json,
-        })
+        .upsert_weekly_report(
+            agentscope_storage::weekly_reports::UpsertWeeklyReportInput {
+                project_id: project_id.to_string(),
+                week_start,
+                week_end,
+                total_runs: usage.total_runs.min(i32::MAX as i64) as i32,
+                failure_rate_before,
+                failure_rate_after,
+                cost_before: costs.cost_before,
+                cost_after: costs.cost_after,
+                improvement_summary,
+                report_json,
+            },
+        )
         .await?;
 
     Ok(())
@@ -2205,7 +2406,9 @@ async fn get_project_alert_events(
     Extension(user): Extension<AuthenticatedUser>,
 ) -> Result<Json<Vec<agentscope_storage::alerts::ProjectAlertEvent>>, ApiError> {
     ensure_project_access(&state, &id, &user.id).await?;
-    Ok(Json(state.storage.list_project_alert_events(&id, 100).await?))
+    Ok(Json(
+        state.storage.list_project_alert_events(&id, 100).await?,
+    ))
 }
 
 async fn get_project_failure_clusters(
@@ -2812,6 +3015,13 @@ fn ensure_project_manage_permission(user: &AuthenticatedUser) -> Result<(), ApiE
     ))
 }
 
+fn ensure_super_admin(user: &AuthenticatedUser) -> Result<(), ApiError> {
+    if user.is_super_admin {
+        return Ok(());
+    }
+    Err(ApiError::Forbidden("super_admin role required".to_string()))
+}
+
 async fn apply_project_storage_policies(
     state: &Arc<AppState>,
     payload: &mut IngestPayload,
@@ -2880,13 +3090,21 @@ fn redact_sensitive_json(value: &mut Value) {
 
 fn redact_sensitive_text(input: &str) -> String {
     let mut output = input.to_string();
-    output = regex_email().replace_all(&output, "[REDACTED_EMAIL]").into_owned();
-    output = regex_phone().replace_all(&output, "[REDACTED_PHONE]").into_owned();
-    output = regex_ssn().replace_all(&output, "[REDACTED_SSN]").into_owned();
+    output = regex_email()
+        .replace_all(&output, "[REDACTED_EMAIL]")
+        .into_owned();
+    output = regex_phone()
+        .replace_all(&output, "[REDACTED_PHONE]")
+        .into_owned();
+    output = regex_ssn()
+        .replace_all(&output, "[REDACTED_SSN]")
+        .into_owned();
     output = regex_credit_card()
         .replace_all(&output, "[REDACTED_CARD]")
         .into_owned();
-    output = regex_jwt().replace_all(&output, "[REDACTED_JWT]").into_owned();
+    output = regex_jwt()
+        .replace_all(&output, "[REDACTED_JWT]")
+        .into_owned();
     output = regex_openai_key()
         .replace_all(&output, "[REDACTED_API_KEY]")
         .into_owned();
@@ -2934,7 +3152,9 @@ fn regex_jwt() -> &'static Regex {
 
 fn regex_openai_key() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"\bsk-[A-Za-z0-9]{20,}\b").expect("openai key regex must compile"))
+    RE.get_or_init(|| {
+        Regex::new(r"\bsk-[A-Za-z0-9]{20,}\b").expect("openai key regex must compile")
+    })
 }
 
 fn regex_aws_access_key() -> &'static Regex {
@@ -2944,7 +3164,9 @@ fn regex_aws_access_key() -> &'static Regex {
 
 fn regex_bearer_token() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
-    RE.get_or_init(|| Regex::new(r"(?i)\bBearer\s+[A-Za-z0-9\._\-]+\b").expect("bearer regex must compile"))
+    RE.get_or_init(|| {
+        Regex::new(r"(?i)\bBearer\s+[A-Za-z0-9\._\-]+\b").expect("bearer regex must compile")
+    })
 }
 
 async fn ensure_org_member_access(

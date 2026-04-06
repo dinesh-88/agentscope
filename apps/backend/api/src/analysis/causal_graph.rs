@@ -157,7 +157,9 @@ pub fn find_root_causes(
             }
 
             let contribution = influence * edge.weight * parent_signal;
-            *node_scores.entry(parent_node.span_id.clone()).or_insert(0.0) += contribution;
+            *node_scores
+                .entry(parent_node.span_id.clone())
+                .or_insert(0.0) += contribution;
             *source_to_failure_scores
                 .entry((parent_node.span_id.clone(), failure_span.clone()))
                 .or_insert(0.0) += contribution;
@@ -168,7 +170,11 @@ pub fn find_root_causes(
             if next_influence > previous_best {
                 best_influence.insert(key.clone(), next_influence);
                 next_hop.insert(key, current.clone());
-                queue.push_back((parent_node.span_id.clone(), failure_span.clone(), next_influence));
+                queue.push_back((
+                    parent_node.span_id.clone(),
+                    failure_span.clone(),
+                    next_influence,
+                ));
             }
         }
     }
@@ -222,7 +228,11 @@ pub fn find_root_causes(
         chain.push(next.clone());
         cursor = next.clone();
     }
-    if chain.last().map(|node| node != &best_failure).unwrap_or(true) {
+    if chain
+        .last()
+        .map(|node| node != &best_failure)
+        .unwrap_or(true)
+    {
         chain.push(best_failure.clone());
     }
 

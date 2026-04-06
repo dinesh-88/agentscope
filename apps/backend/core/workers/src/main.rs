@@ -1,8 +1,8 @@
 mod alert_monitor;
 mod cost_backfill;
 mod finalize_run;
-mod issue_fix_detector;
 mod intelligence_alerts;
+mod issue_fix_detector;
 mod issue_regression_detector;
 mod llm_client;
 mod pipeline;
@@ -45,14 +45,10 @@ async fn main() {
     let evaluate_alerts = std::env::var("EVALUATE_ALERTS").ok().as_deref() == Some("true");
     let run_issue_pipeline_once =
         std::env::var("RUN_ISSUE_PIPELINE").ok().as_deref() == Some("true");
-    let run_cost_backfill_once = std::env::var("BACKFILL_LLM_COSTS")
-        .ok()
-        .as_deref()
-        == Some("true");
-    let run_weekly_reports_once = std::env::var("RUN_WEEKLY_REPORTS")
-        .ok()
-        .as_deref()
-        == Some("true");
+    let run_cost_backfill_once =
+        std::env::var("BACKFILL_LLM_COSTS").ok().as_deref() == Some("true");
+    let run_weekly_reports_once =
+        std::env::var("RUN_WEEKLY_REPORTS").ok().as_deref() == Some("true");
     let detect_issue_fixes = std::env::var("DETECT_ISSUE_FIXES")
         .ok()
         .as_deref()
@@ -82,11 +78,12 @@ async fn main() {
         .ok()
         .and_then(|value| value.parse::<u64>().ok())
         .filter(|value| *value > 0);
-    let issue_fix_detection_interval_seconds = std::env::var("ISSUE_FIX_DETECTION_INTERVAL_SECONDS")
-        .ok()
-        .and_then(|value| value.parse::<u64>().ok())
-        .filter(|value| *value > 0)
-        .unwrap_or(900);
+    let issue_fix_detection_interval_seconds =
+        std::env::var("ISSUE_FIX_DETECTION_INTERVAL_SECONDS")
+            .ok()
+            .and_then(|value| value.parse::<u64>().ok())
+            .filter(|value| *value > 0)
+            .unwrap_or(900);
     let issue_regression_detection_interval_seconds =
         std::env::var("ISSUE_REGRESSION_DETECTION_INTERVAL_SECONDS")
             .ok()
@@ -202,9 +199,9 @@ async fn main() {
                 weekly_report_generator::run_for_completed_week(&storage_clone)
                     .await
                     .expect("failed to generate weekly reports after recurring usage aggregation");
-                intelligence_alerts::evaluate(&storage_clone)
-                    .await
-                    .expect("failed to evaluate intelligence alerts after recurring usage aggregation");
+                intelligence_alerts::evaluate(&storage_clone).await.expect(
+                    "failed to evaluate intelligence alerts after recurring usage aggregation",
+                );
             }
         });
     }
@@ -246,9 +243,9 @@ async fn main() {
                 weekly_report_generator::run_for_completed_week(&storage_clone)
                     .await
                     .expect("failed to generate weekly reports after recurring issue pipeline");
-                intelligence_alerts::evaluate(&storage_clone)
-                    .await
-                    .expect("failed to evaluate intelligence alerts after recurring issue pipeline");
+                intelligence_alerts::evaluate(&storage_clone).await.expect(
+                    "failed to evaluate intelligence alerts after recurring issue pipeline",
+                );
             }
         });
     }
@@ -273,7 +270,8 @@ async fn main() {
     if detect_issue_fixes {
         let storage_clone = storage.clone();
         tokio::spawn(async move {
-            let mut ticker = time::interval(Duration::from_secs(issue_fix_detection_interval_seconds));
+            let mut ticker =
+                time::interval(Duration::from_secs(issue_fix_detection_interval_seconds));
             ticker.tick().await;
             loop {
                 ticker.tick().await;
@@ -287,8 +285,9 @@ async fn main() {
     if detect_issue_regressions {
         let storage_clone = storage.clone();
         tokio::spawn(async move {
-            let mut ticker =
-                time::interval(Duration::from_secs(issue_regression_detection_interval_seconds));
+            let mut ticker = time::interval(Duration::from_secs(
+                issue_regression_detection_interval_seconds,
+            ));
             ticker.tick().await;
             loop {
                 ticker.tick().await;

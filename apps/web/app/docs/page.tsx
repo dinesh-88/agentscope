@@ -6,7 +6,7 @@ export default async function DocsPage() {
   return (
     <MarketingShell>
       <main className="px-6 py-16">
-        <div className="mx-auto w-full max-w-4xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h1 className="text-4xl font-bold">Docs</h1>
           <p className="mt-3 text-gray-400">Quickstart to send your first trace.</p>
 

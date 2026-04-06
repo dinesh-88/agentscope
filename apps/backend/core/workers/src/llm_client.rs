@@ -331,7 +331,9 @@ impl LlmClient {
             let payload = response
                 .json::<ChatCompletionsResponse>()
                 .await
-                .map_err(|e| AgentScopeError::Storage(format!("invalid weekly summary JSON: {e}")))?;
+                .map_err(|e| {
+                    AgentScopeError::Storage(format!("invalid weekly summary JSON: {e}"))
+                })?;
 
             let content = payload
                 .choices

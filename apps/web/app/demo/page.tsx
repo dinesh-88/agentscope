@@ -8,7 +8,7 @@ export default async function DemoPage() {
   return (
     <MarketingShell>
       <main className="px-6 py-16">
-        <div className="mx-auto w-full max-w-5xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <div className="mb-8">
             <h1 className="text-4xl font-bold tracking-tight md:text-5xl">Run the demo in 60 seconds</h1>
             <p className="mt-3 max-w-3xl text-lg text-gray-400">

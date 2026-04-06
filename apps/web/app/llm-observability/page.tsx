@@ -16,7 +16,7 @@ export default function LLMObservabilityPage() {
   return (
     <MarketingShell>
       <main className="px-6 py-16">
-        <article className="mx-auto w-full max-w-4xl">
+        <article className="mx-auto w-full max-w-[1368px]">
           <h1 className="text-4xl font-bold tracking-tight md:text-5xl">LLM Observability Explained</h1>
 
           <section className="mt-8 space-y-4 text-gray-300">

@@ -4,7 +4,7 @@ export default async function TermsPage() {
   return (
     <MarketingShell>
       <main className="px-6 py-16">
-        <div className="mx-auto w-full max-w-4xl">
+        <div className="mx-auto w-full max-w-[1368px]">
           <h1 className="text-4xl font-bold">Terms of Service</h1>
 
           <section className="mt-8 space-y-4 text-sm text-gray-300">

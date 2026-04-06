@@ -14,6 +14,7 @@ pub mod runs;
 pub mod search;
 pub mod spans;
 pub mod team;
+pub mod telemetry;
 pub mod usage;
 pub mod weekly_reports;
 

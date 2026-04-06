@@ -7,7 +7,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use http_body_util::BodyExt;
 use serde_json::json;
 use sqlx::PgPool;
@@ -267,6 +267,68 @@ async fn ingest_and_query_runs(pool: PgPool) {
     let root_cause: serde_json::Value = serde_json::from_slice(&root_cause_body).unwrap();
     assert_eq!(root_cause["root_cause_type"], "TOOL_FAILURE");
     assert_eq!(root_cause["evidence"]["span_id"], "demo");
+}
+
+#[sqlx::test(migrations = "../storage/migrations")]
+async fn ingest_sdk_telemetry_and_prune_old_events(pool: PgPool) {
+    let storage = Storage { pool: pool.clone() };
+    let router = app(storage, jwt_settings());
+
+    sqlx::query(
+        r#"
+        INSERT INTO telemetry_events (project_id, event, sdk, sdk_version, runtime, env, "timestamp", error_type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        "#,
+    )
+    .bind("legacy_project")
+    .bind("sdk_init")
+    .bind("python")
+    .bind("0.0.1")
+    .bind("python/3.11.0")
+    .bind("dev")
+    .bind(Utc::now() - Duration::days(31))
+    .bind(None::<String>)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let request = Request::builder()
+        .method("POST")
+        .uri("/v1/telemetry")
+        .header("content-type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&json!({
+                "project_id": "anon_project_hash",
+                "event": "run_end",
+                "sdk": "ts",
+                "sdk_version": "0.1.5",
+                "runtime": "node/v22.0.0",
+                "env": "dev",
+                "timestamp": Utc::now().to_rfc3339(),
+                "error_type": "TimeoutError"
+            }))
+            .unwrap(),
+        ))
+        .unwrap();
+
+    let response = router.oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let old_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM telemetry_events WHERE project_id = 'legacy_project'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(old_count, 0);
+
+    let inserted_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM telemetry_events WHERE project_id = 'anon_project_hash' AND event = 'run_end'",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(inserted_count, 1);
 }
 
 #[sqlx::test(migrations = "../storage/migrations")]
@@ -835,24 +897,27 @@ async fn ingest_redacts_sensitive_values_but_preserves_payload_structure(pool: P
         .unwrap();
     assert_eq!(ingest_response.status(), StatusCode::OK);
 
-    let prompt_payload: serde_json::Value =
-        sqlx::query_scalar("SELECT payload FROM artifacts WHERE run_id = $1::uuid AND kind = 'llm.prompt' LIMIT 1")
-            .bind(&run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    let log_payload: serde_json::Value =
-        sqlx::query_scalar("SELECT payload FROM artifacts WHERE run_id = $1::uuid AND kind = 'log' LIMIT 1")
-            .bind(&run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
-    let tool_payload: serde_json::Value =
-        sqlx::query_scalar("SELECT payload FROM artifacts WHERE run_id = $1::uuid AND kind = 'tool.output' LIMIT 1")
-            .bind(&run_id)
-            .fetch_one(&pool)
-            .await
-            .unwrap();
+    let prompt_payload: serde_json::Value = sqlx::query_scalar(
+        "SELECT payload FROM artifacts WHERE run_id = $1::uuid AND kind = 'llm.prompt' LIMIT 1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let log_payload: serde_json::Value = sqlx::query_scalar(
+        "SELECT payload FROM artifacts WHERE run_id = $1::uuid AND kind = 'log' LIMIT 1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let tool_payload: serde_json::Value = sqlx::query_scalar(
+        "SELECT payload FROM artifacts WHERE run_id = $1::uuid AND kind = 'tool.output' LIMIT 1",
+    )
+    .bind(&run_id)
+    .fetch_one(&pool)
+    .await
+    .unwrap();
 
     assert!(prompt_payload["messages"][0]["content"]
         .as_str()

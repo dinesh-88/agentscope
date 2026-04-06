@@ -17,6 +17,7 @@ pub struct AuthUser {
     pub email: String,
     pub display_name: Option<String>,
     pub avatar_url: Option<String>,
+    pub role: String,
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -97,6 +98,7 @@ impl Storage {
                    users.email,
                    COALESCE(users.name, users.display_name) AS display_name,
                    users.avatar_url,
+                   users.role,
                    user_passwords.password_hash AS modern_password_hash,
                    users.password_hash AS legacy_password_hash
             FROM users
@@ -161,6 +163,7 @@ impl Storage {
             email: record.get("email"),
             display_name: record.get("display_name"),
             avatar_url: record.get("avatar_url"),
+            role: record.get("role"),
         }))
     }
 
@@ -170,7 +173,8 @@ impl Storage {
             SELECT id::text AS id,
                    email,
                    COALESCE(name, display_name) AS display_name,
-                   avatar_url
+                   avatar_url,
+                   role
             FROM users
             WHERE id = $1::uuid
             "#,
@@ -194,7 +198,8 @@ impl Storage {
             SELECT id::text AS id,
                    email,
                    COALESCE(name, display_name) AS display_name,
-                   avatar_url
+                   avatar_url,
+                   role
             FROM users
             WHERE email = $1
             "#,
@@ -226,7 +231,8 @@ impl Storage {
             RETURNING id::text AS id,
                       email,
                       COALESCE(name, display_name) AS display_name,
-                      avatar_url
+                      avatar_url,
+                      role
             "#,
         )
         .bind(email)
