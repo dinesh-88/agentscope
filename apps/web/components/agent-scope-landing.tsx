@@ -8,29 +8,10 @@ type AgentScopeLandingProps = {
   isAuthenticated?: boolean;
 };
 
-const features = [
-  {
-    title: "Full Agent Trace",
-    description: "See every step, input, and output.",
-  },
-  {
-    title: "Root Cause Analysis",
-    description: "Understand why failures happen.",
-  },
-  {
-    title: "Multi-Agent Visibility",
-    description: "Track interactions between agents.",
-  },
-  {
-    title: "LLM Observability",
-    description: "Monitor prompts, responses, and drift.",
-  },
-];
-
 const useCases = [
   "Debug AI agents in production",
-  "Analyze LLM failures",
   "Monitor multi-agent workflows",
+  "Analyze LLM failures",
   "Optimize prompt performance",
 ];
 
@@ -85,134 +66,263 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </nav>
 
       <main className="flex-1">
-      <section className="px-6 pb-14 pt-20">
-        <div className="mx-auto w-full max-w-[1368px] text-center">
-          <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
-            Know exactly why your AI agent failed
-          </h1>
-          <p className="mx-auto mb-8 max-w-3xl text-xl text-gray-400">
-            Debug, trace, and optimize multi-agent workflows with real-time LLM observability.
-          </p>
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link
-              href={isAuthenticated ? "/runs" : "/signup"}
-              className="flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
-            >
-              Debug Your First Agent
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-            <Link
-              href="/demo"
-              className="rounded-lg border border-[#7C9EFF]/35 bg-[#7C9EFF]/12 px-6 py-3 font-medium text-[#DEE6FF] transition-colors hover:bg-[#7C9EFF]/24"
-            >
-              View Demo Trace
-            </Link>
+        <section className="px-6 pb-14 pt-20">
+          <div className="mx-auto w-full max-w-[1368px] text-center">
+            <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
+              Know exactly why your AI agent failed
+            </h1>
+            <p className="mx-auto mb-8 max-w-4xl text-xl text-gray-400">
+              AgentScope is an AI agent observability platform that helps you trace, debug, and optimize multi-agent workflows in real
+              time.
+            </p>
+            <div className="mb-6 flex flex-wrap items-center justify-center gap-4">
+              <Link
+                href={isAuthenticated ? "/runs" : "/signup"}
+                className="flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
+              >
+                Debug Your First Agent
+                <ArrowRight className="h-4 w-4" />
+              </Link>
+              <Link
+                href="/demo"
+                className="rounded-lg border border-[#7C9EFF]/35 bg-[#7C9EFF]/12 px-6 py-3 font-medium text-[#DEE6FF] transition-colors hover:bg-[#7C9EFF]/24"
+              >
+                View Live Trace
+              </Link>
+            </div>
+            <p className="text-sm text-gray-400">Works with OpenAI, LangChain, and custom multi-agent systems.</p>
           </div>
-        </div>
-      </section>
+        </section>
 
-      <section id="problem" className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
-          <h2 className="mb-2 text-3xl font-bold">Why AI Agents Fail</h2>
-          <p className="mb-6 text-gray-400">AI agents fail in production for reasons that logs don&apos;t explain:</p>
-          <ul className="mb-6 space-y-2 text-gray-200">
-            <li>Prompt misalignment</li>
-            <li>Tool execution failures</li>
-            <li>Context drift across steps</li>
-            <li>Multi-agent coordination issues</li>
-          </ul>
-          <p className="text-gray-300">Logs show what happened. AgentScope shows why it happened.</p>
-        </div>
-      </section>
+        <section className="px-6 py-8">
+          <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-5 text-center text-sm font-medium text-gray-200">
+            Used by developers building production AI agents
+          </div>
+        </section>
 
-      <section className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[1368px]">
-          <h2 className="mb-3 text-3xl font-bold">Observe - Trace - Debug - Fix</h2>
-          <ol className="grid gap-4 md:grid-cols-2">
-            <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">1. Capture every agent step</li>
-            <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">2. Trace decisions across workflows</li>
-            <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">3. Detect failure points</li>
-            <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">4. Get root cause insights</li>
-          </ol>
-        </div>
-      </section>
+        <section id="problem" className="px-6 py-16">
+          <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
+            <h2 className="mb-4 text-3xl font-bold">AI Agents Fail - And Logs Don&apos;t Tell You Why</h2>
+            <p className="mb-6 text-gray-300">In production, AI agents break in ways that are hard to debug:</p>
+            <ul className="mb-6 grid gap-3 text-gray-200 md:grid-cols-2">
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Prompts behave unpredictably</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Tools fail silently</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Context drifts across steps</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Multi-agent workflows become opaque</li>
+            </ul>
+            <p className="text-gray-400">Logs show events. They don&apos;t explain decisions.</p>
+          </div>
+        </section>
 
-      <section id="features" className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[1368px]">
-          <h2 className="mb-8 text-3xl font-bold">Features</h2>
-          <div className="grid gap-4 md:grid-cols-2">
-            {features.map((feature) => (
-              <div key={feature.title} className="rounded-xl border border-white/10 bg-white/[0.02] p-6">
-                <h3 className="mb-2 text-xl font-semibold">{feature.title}</h3>
-                <p className="text-gray-400">{feature.description}</p>
+        <section className="px-6 py-16">
+          <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
+            <h2 className="mb-3 text-3xl font-bold">From Logs -&gt; Full Observability</h2>
+            <p className="mb-6 text-gray-300">AgentScope gives you complete visibility into your AI system:</p>
+            <ul className="grid gap-3 text-gray-200 md:grid-cols-2">
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Trace every step of every agent</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Inspect prompts, outputs, and tool calls</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Detect where things go wrong</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Understand why failures happen</li>
+            </ul>
+          </div>
+        </section>
+
+        <section className="px-6 py-16">
+          <div className="mx-auto w-full max-w-[1368px]">
+            <h2 className="mb-3 text-3xl font-bold">Observe -&gt; Trace -&gt; Debug -&gt; Fix</h2>
+            <ol className="grid gap-4 md:grid-cols-2">
+              <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">1. Capture every agent interaction</li>
+              <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">2. Visualize full execution traces</li>
+              <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">3. Identify failure points instantly</li>
+              <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">4. Optimize prompts and workflows</li>
+            </ol>
+          </div>
+        </section>
+
+        <section className="px-6 py-16">
+          <div className="mx-auto w-full max-w-[1368px] space-y-6">
+            <div className="rounded-3xl border border-[#1D2B4D] bg-[#0A0F1D] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-10">
+              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-3xl font-bold">See What Your Agent Actually Did</h2>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-gray-300">
+                  <span className="rounded-md border border-[#31456F] bg-[#0D1730] px-2 py-1">Timeline</span>
+                  <span className="rounded-md border border-[#31456F] bg-[#0D1730] px-2 py-1">Step Details</span>
+                  <span className="rounded-md border border-[#31456F] bg-[#0D1730] px-2 py-1">47.3s total</span>
+                </div>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+              <p className="mb-5 text-gray-300">Track the exact execution path, timing, and model decisions for every run.</p>
+              <div className="mb-6 overflow-hidden rounded-2xl border border-[#233458] bg-[#040A18]">
+                <div className="grid min-h-[360px] grid-cols-1 md:grid-cols-[1fr_320px]">
+                  <div className="relative border-b border-[#162642] md:border-b-0 md:border-r">
+                    <div className="absolute inset-0 bg-[linear-gradient(rgba(65,99,161,0.15)_1px,transparent_1px),linear-gradient(90deg,rgba(65,99,161,0.15)_1px,transparent_1px)] bg-[size:46px_46px]" />
+                    <div className="relative p-4">
+                      <div className="mb-4 text-xs uppercase tracking-wide text-gray-400">Execution Timeline</div>
+                      <div className="space-y-3">
+                        <div className="h-9 rounded-md bg-[#081633] p-1">
+                          <div className="h-full w-[28%] rounded bg-[#3B82F6]/90 px-2 py-1 text-xs text-white">llm_call - 6936.6ms</div>
+                        </div>
+                        <div className="h-9 rounded-md bg-[#081633] p-1">
+                          <div className="ml-[35%] h-full w-[30%] rounded bg-[#3B82F6]/90 px-2 py-1 text-xs text-white">llm_call - 6503.1ms</div>
+                        </div>
+                        <div className="h-9 rounded-md bg-[#081633] p-1">
+                          <div className="ml-[52%] h-full w-[24%] rounded bg-[#60A5FA]/90 px-2 py-1 text-xs text-white">llm_call - 4133.7ms</div>
+                        </div>
+                        <div className="h-9 rounded-md bg-[#081633] p-1">
+                          <div className="ml-[66%] h-full w-[26%] rounded bg-[#3B82F6]/90 px-2 py-1 text-xs text-white">llm_call - 6899.7ms</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
 
-      <section id="comparison" className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[1368px]">
-          <h2 className="mb-6 text-3xl font-bold">Traditional Logs vs AgentScope</h2>
-          <div className="overflow-hidden rounded-2xl border border-white/10">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="bg-white/[0.03]">
-                  <th className="px-5 py-4 text-sm font-semibold text-gray-200">Traditional Logs</th>
-                  <th className="px-5 py-4 text-sm font-semibold text-gray-200">AgentScope</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr className="border-t border-white/10">
-                  <td className="px-5 py-4 text-gray-400">Shows events</td>
-                  <td className="px-5 py-4 text-gray-200">Explains failures</td>
-                </tr>
-                <tr className="border-t border-white/10">
-                  <td className="px-5 py-4 text-gray-400">Hard to debug</td>
-                  <td className="px-5 py-4 text-gray-200">Root cause insights</td>
-                </tr>
-                <tr className="border-t border-white/10">
-                  <td className="px-5 py-4 text-gray-400">Fragmented</td>
-                  <td className="px-5 py-4 text-gray-200">Unified trace</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </section>
+                  <div className="bg-[#030916] p-4">
+                    <div className="mb-3 text-xs uppercase tracking-wide text-gray-400">Step Details</div>
+                    <div className="mb-4 rounded-lg border border-[#1A2A4B] bg-[#071025] p-3">
+                      <div className="mb-2 text-sm font-semibold text-white">llm_call</div>
+                      <div className="space-y-1 text-xs text-gray-300">
+                        <div className="flex justify-between"><span>Status</span><span>success (system)</span></div>
+                        <div className="flex justify-between"><span>Duration</span><span>4134 ms</span></div>
+                        <div className="flex justify-between"><span>Tokens</span><span>463</span></div>
+                        <div className="flex justify-between"><span>Cost</span><span>$0.0002</span></div>
+                      </div>
+                    </div>
+                    <div className="space-y-2 text-xs">
+                      <div className="rounded-md border border-[#1A2A4B] bg-[#071025] p-2 text-gray-300">PROMPT: structured view</div>
+                      <div className="rounded-md border border-[#1A2A4B] bg-[#071025] p-2 text-gray-300">RAW JSON payload</div>
+                      <div className="rounded-md border border-[#1A2A4B] bg-[#071025] p-2 text-gray-300">RESPONSE preview</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <ul className="grid gap-3 text-gray-200 md:grid-cols-3">
+                <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Step-by-step execution timeline</li>
+                <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Prompt + response inspection</li>
+                <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Tool usage tracking</li>
+              </ul>
+            </div>
 
-      <section className="px-6 py-16">
-        <div className="mx-auto w-full max-w-[1368px]">
-          <h2 className="mb-5 text-3xl font-bold">Use Cases</h2>
-          <ul className="grid gap-3 md:grid-cols-2">
-            {useCases.map((item) => (
-              <li key={item} className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-gray-200">
-                {item}
-              </li>
-            ))}
-          </ul>
-        </div>
-      </section>
-
-      <section className="px-6 pb-24 pt-10">
-        <div className="mx-auto w-full max-w-[1368px] rounded-3xl border border-white/10 bg-white/[0.02] px-8 py-14 text-center">
-          <h2 className="mb-4 text-4xl font-bold md:text-5xl">Start debugging your AI agents today.</h2>
-          <div className="flex flex-wrap items-center justify-center gap-4">
-            <Link
-              href={isAuthenticated ? "/runs" : "/signup"}
-              className="rounded-lg bg-[#7C9EFF] px-7 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
-            >
-              Debug Your First Agent
-            </Link>
-            <Link
-              href="/demo"
-              className="rounded-lg border border-white/20 px-7 py-3 font-medium transition-colors hover:bg-white/5"
-            >
-              View Demo Trace
-            </Link>
+            <div className="rounded-3xl border border-[#1D2B4D] bg-[#0A0F1D] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-10">
+              <h2 className="mb-2 text-3xl font-bold">Find the Root Cause Faster</h2>
+              <p className="mb-5 text-gray-300">Pinpoint why runs degrade with ranked insights and concrete fix guidance.</p>
+              <div className="mb-6 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-[#22345A] bg-[#0B1328] p-5">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Performance Slow Span</h3>
+                    <span className="rounded-md border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-200">MEDIUM</span>
+                  </div>
+                  <div className="space-y-2 text-sm text-gray-300">
+                    <p>Latency is elevated (avg 6525 ms, p95 8154 ms).</p>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Cause</p>
+                    <p>Critical LLM spans are bottlenecking overall run completion time.</p>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Fix</p>
+                    <p>Profile slow spans and reduce model/tool work on critical paths.</p>
+                  </div>
+                </div>
+                <div className="rounded-2xl border border-[#22345A] bg-[#0B1328] p-5">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-lg font-semibold">Missing Instructions</h3>
+                    <span className="rounded-md border border-amber-500/40 bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-200">MEDIUM</span>
+                  </div>
+                  <div className="space-y-2 text-sm text-gray-300">
+                    <p>No instruction files or runtime instruction overrides were captured.</p>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Cause</p>
+                    <p>Instruction context is missing from telemetry and execution snapshots.</p>
+                    <p className="text-xs uppercase tracking-wide text-gray-400">Fix</p>
+                    <p>Load instruction files and include explicit runtime system prompts.</p>
+                  </div>
+                </div>
+              </div>
+              <ul className="grid gap-3 text-gray-200 md:grid-cols-3">
+                <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Failure detection</li>
+                <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Drift analysis</li>
+                <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Suggested fixes</li>
+              </ul>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+
+        <section id="comparison" className="px-6 py-16">
+          <div className="mx-auto w-full max-w-[1368px]">
+            <h2 className="mb-6 text-3xl font-bold">Why Logs Are Not Enough</h2>
+            <div className="overflow-hidden rounded-2xl border border-white/10">
+              <table className="w-full border-collapse text-left">
+                <thead>
+                  <tr className="bg-white/[0.03]">
+                    <th className="px-5 py-4 text-sm font-semibold text-gray-200">Traditional Logs</th>
+                    <th className="px-5 py-4 text-sm font-semibold text-gray-200">AgentScope</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr className="border-t border-white/10">
+                    <td className="px-5 py-4 text-gray-400">Raw outputs</td>
+                    <td className="px-5 py-4 text-gray-200">Structured traces</td>
+                  </tr>
+                  <tr className="border-t border-white/10">
+                    <td className="px-5 py-4 text-gray-400">Hard to follow</td>
+                    <td className="px-5 py-4 text-gray-200">Visual workflows</td>
+                  </tr>
+                  <tr className="border-t border-white/10">
+                    <td className="px-5 py-4 text-gray-400">No root cause</td>
+                    <td className="px-5 py-4 text-gray-200">Failure insights</td>
+                  </tr>
+                  <tr className="border-t border-white/10">
+                    <td className="px-5 py-4 text-gray-400">Fragmented</td>
+                    <td className="px-5 py-4 text-gray-200">Unified system view</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section className="px-6 py-16">
+          <div className="mx-auto w-full max-w-[1368px]">
+            <h2 className="mb-5 text-3xl font-bold">Built for Real AI Systems</h2>
+            <ul className="grid gap-3 md:grid-cols-2">
+              {useCases.map((item) => (
+                <li key={item} className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-gray-200">
+                  {item}
+                </li>
+              ))}
+            </ul>
+          </div>
+        </section>
+
+        <section className="px-6 py-16">
+          <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
+            <h2 className="mb-3 text-3xl font-bold">AI Agent Debugging &amp; LLM Observability</h2>
+            <p className="mb-5 text-gray-300">AgentScope helps teams solve:</p>
+            <ul className="mb-5 grid gap-3 text-gray-200 md:grid-cols-2">
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">AI agent debugging</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">LLM observability</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Multi-agent workflow monitoring</li>
+              <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">AI system failure analysis</li>
+            </ul>
+            <p className="text-gray-400">
+              If your AI agent is failing and you don&apos;t know why - AgentScope helps you find the answer.
+            </p>
+          </div>
+        </section>
+
+        <section className="px-6 pb-24 pt-10">
+          <div className="mx-auto w-full max-w-[1368px] rounded-3xl border border-white/10 bg-white/[0.02] px-8 py-14 text-center">
+            <h2 className="mb-3 text-4xl font-bold md:text-5xl">Stop Guessing. Start Debugging.</h2>
+            <p className="mb-6 text-lg text-gray-300">Understand your AI agents at every step.</p>
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <Link
+                href={isAuthenticated ? "/runs" : "/signup"}
+                className="rounded-lg bg-[#7C9EFF] px-7 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
+              >
+                Debug Your First Agent
+              </Link>
+              <Link
+                href="/demo"
+                className="rounded-lg border border-white/20 px-7 py-3 font-medium transition-colors hover:bg-white/5"
+              >
+                View Live Demo
+              </Link>
+            </div>
+          </div>
+        </section>
       </main>
 
       <footer className="border-t border-white/5 px-6 py-12">
@@ -223,7 +333,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                 <Image src="/logo.svg" alt="AgentScope logo" width={32} height={32} className="h-8 w-8 rounded-lg" />
                 <span className="font-semibold">AgentScope</span>
               </div>
-              <p className="text-sm text-gray-400">Debug and optimize your AI agents with confidence.</p>
+              <p className="text-sm text-gray-400">AgentScope - Understand why your AI agents fail.</p>
             </div>
 
             <div>
