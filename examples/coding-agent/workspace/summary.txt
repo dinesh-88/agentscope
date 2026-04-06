@@ -1,8 +1,0 @@
-Todo:
-- inspect repository
-- add tracing
-
-Completed:
-- traced file reads
-- traced file writes
-- traced shell commands

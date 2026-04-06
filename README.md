@@ -21,10 +21,6 @@ agentscope/
 │  └─ web/
 ├─ packages/
 │  └─ python-sdk/
-├─ examples/
-│  ├─ demo-agent/
-│  ├─ rag-agent/
-│  └─ tool-agent/
 ├─ docker/
 ├─ docs/
 │  ├─ architecture.md
@@ -63,15 +59,7 @@ API will be available at `http://localhost:8080` and Postgres at `localhost:5432
 
 ## Demo Harness
 
-```bash
-make demo
-```
-
-Or run directly:
-
-```bash
-./examples/demo-agent/run_demo.sh
-```
+Examples and demo harness scripts are maintained in a separate demo repository.
 
 ## Endpoints
 
