@@ -19,10 +19,10 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
   return (
     <div className="flex min-h-screen flex-col bg-[#0B0F17] text-white">
       <nav className="sticky top-0 z-50 border-b border-white/5 bg-[#0B0F17]/80 backdrop-blur-lg">
-        <div className="mx-auto flex w-full max-w-[1368px] items-center justify-between px-6 py-4">
+        <div className="mx-auto flex w-full max-w-[1368px] items-center justify-between gap-3 px-4 py-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2">
             <Image src="/logo.svg" alt="AgentScope logo" width={32} height={32} className="h-8 w-8 rounded-lg" />
-            <span className="text-lg font-semibold">AgentScope</span>
+            <span className="text-base font-semibold sm:text-lg">AgentScope</span>
           </Link>
 
           <div className="ml-auto flex items-center gap-4">
@@ -44,20 +44,21 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             {isAuthenticated ? (
               <Link
                 href="/dashboard"
-                className="rounded-lg bg-[#7C9EFF] px-4 py-2 text-sm font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
+                className="rounded-lg bg-[#7C9EFF] px-3 py-2 text-xs font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC] sm:px-4 sm:text-sm"
               >
                 Go to Dashboard
               </Link>
             ) : (
               <div className="flex items-center gap-3">
-                <Link href="/login" className="text-sm text-gray-400 transition-colors hover:text-white">
+                <Link href="/login" className="text-xs text-gray-400 transition-colors hover:text-white sm:text-sm">
                   Sign In
                 </Link>
                 <Link
                   href="/signup"
-                  className="rounded-lg bg-[#7C9EFF] px-4 py-2 text-sm font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
+                  className="rounded-lg bg-[#7C9EFF] px-3 py-2 text-xs font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC] sm:px-4 sm:text-sm"
                 >
-                  Start Free and Send First Trace
+                  <span className="sm:hidden">Start Free</span>
+                  <span className="hidden sm:inline">Start Free and Send First Trace</span>
                 </Link>
               </div>
             )}
@@ -66,26 +67,26 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
       </nav>
 
       <main className="flex-1">
-        <section className="px-6 pb-14 pt-20">
+        <section className="px-4 pb-12 pt-16 sm:px-6 sm:pb-14 sm:pt-20">
           <div className="mx-auto w-full max-w-[1368px] text-center">
-            <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-5xl font-bold text-transparent md:text-7xl">
+            <h1 className="mb-6 bg-gradient-to-br from-white via-white to-gray-400 bg-clip-text text-4xl font-bold text-transparent sm:text-5xl md:text-7xl">
               Know exactly why your AI agent failed
             </h1>
-            <p className="mx-auto mb-8 max-w-4xl text-xl text-gray-400">
+            <p className="mx-auto mb-8 max-w-4xl text-base text-gray-400 sm:text-xl">
               AgentScope is an AI agent observability platform that helps you trace, debug, and optimize multi-agent workflows in real
               time.
             </p>
-            <div className="mb-6 flex flex-wrap items-center justify-center gap-4">
+            <div className="mb-6 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
               <Link
                 href={isAuthenticated ? "/runs" : "/signup"}
-                className="flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
+                className="flex items-center justify-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
               >
                 Debug Your First Agent
                 <ArrowRight className="h-4 w-4" />
               </Link>
               <Link
                 href="/demo"
-                className="rounded-lg border border-[#7C9EFF]/35 bg-[#7C9EFF]/12 px-6 py-3 font-medium text-[#DEE6FF] transition-colors hover:bg-[#7C9EFF]/24"
+                className="rounded-lg border border-[#7C9EFF]/35 bg-[#7C9EFF]/12 px-6 py-3 text-center font-medium text-[#DEE6FF] transition-colors hover:bg-[#7C9EFF]/24"
               >
                 View Live Trace
               </Link>
@@ -94,15 +95,15 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
         </section>
 
-        <section className="px-6 py-8">
+        <section className="px-4 py-8 sm:px-6">
           <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] px-6 py-5 text-center text-sm font-medium text-gray-200">
             Used by developers building production AI agents
           </div>
         </section>
 
-        <section id="problem" className="px-6 py-16">
+        <section id="problem" className="px-4 py-12 sm:px-6 md:py-16">
           <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
-            <h2 className="mb-4 text-3xl font-bold">AI Agents Fail - And Logs Don&apos;t Tell You Why</h2>
+            <h2 className="mb-4 text-2xl font-bold md:text-3xl">AI Agents Fail - And Logs Don&apos;t Tell You Why</h2>
             <p className="mb-6 text-gray-300">In production, AI agents break in ways that are hard to debug:</p>
             <ul className="mb-6 grid gap-3 text-gray-200 md:grid-cols-2">
               <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Prompts behave unpredictably</li>
@@ -114,9 +115,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
         </section>
 
-        <section className="px-6 py-16">
+        <section className="px-4 py-12 sm:px-6 md:py-16">
           <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
-            <h2 className="mb-3 text-3xl font-bold">From Logs -&gt; Full Observability</h2>
+            <h2 className="mb-3 text-2xl font-bold md:text-3xl">From Logs -&gt; Full Observability</h2>
             <p className="mb-6 text-gray-300">AgentScope gives you complete visibility into your AI system:</p>
             <ul className="grid gap-3 text-gray-200 md:grid-cols-2">
               <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">Trace every step of every agent</li>
@@ -127,9 +128,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
         </section>
 
-        <section className="px-6 py-16">
+        <section className="px-4 py-12 sm:px-6 md:py-16">
           <div className="mx-auto w-full max-w-[1368px]">
-            <h2 className="mb-3 text-3xl font-bold">Observe -&gt; Trace -&gt; Debug -&gt; Fix</h2>
+            <h2 className="mb-3 text-2xl font-bold md:text-3xl">Observe -&gt; Trace -&gt; Debug -&gt; Fix</h2>
             <ol className="grid gap-4 md:grid-cols-2">
               <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">1. Capture every agent interaction</li>
               <li className="rounded-xl border border-white/10 bg-white/[0.02] p-5">2. Visualize full execution traces</li>
@@ -139,11 +140,11 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
         </section>
 
-        <section className="px-6 py-16">
+        <section className="px-4 py-12 sm:px-6 md:py-16">
           <div className="mx-auto w-full max-w-[1368px] space-y-6">
             <div className="rounded-3xl border border-[#1D2B4D] bg-[#0A0F1D] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-10">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <h2 className="text-3xl font-bold">See What Your Agent Actually Did</h2>
+                <h2 className="text-2xl font-bold md:text-3xl">See What Your Agent Actually Did</h2>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-gray-300">
                   <span className="rounded-md border border-[#31456F] bg-[#0D1730] px-2 py-1">Timeline</span>
                   <span className="rounded-md border border-[#31456F] bg-[#0D1730] px-2 py-1">Step Details</span>
@@ -179,10 +180,10 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                     <div className="mb-4 rounded-lg border border-[#1A2A4B] bg-[#071025] p-3">
                       <div className="mb-2 text-sm font-semibold text-white">llm_call</div>
                       <div className="space-y-1 text-xs text-gray-300">
-                        <div className="flex justify-between"><span>Status</span><span>success (system)</span></div>
-                        <div className="flex justify-between"><span>Duration</span><span>4134 ms</span></div>
-                        <div className="flex justify-between"><span>Tokens</span><span>463</span></div>
-                        <div className="flex justify-between"><span>Cost</span><span>$0.0002</span></div>
+                        <div className="flex items-start justify-between gap-2"><span>Status</span><span className="text-right">success (system)</span></div>
+                        <div className="flex items-start justify-between gap-2"><span>Duration</span><span className="text-right">4134 ms</span></div>
+                        <div className="flex items-start justify-between gap-2"><span>Tokens</span><span className="text-right">463</span></div>
+                        <div className="flex items-start justify-between gap-2"><span>Cost</span><span className="text-right">$0.0002</span></div>
                       </div>
                     </div>
                     <div className="space-y-2 text-xs">
@@ -201,7 +202,7 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             </div>
 
             <div className="rounded-3xl border border-[#1D2B4D] bg-[#0A0F1D] p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] md:p-10">
-              <h2 className="mb-2 text-3xl font-bold">Find the Root Cause Faster</h2>
+              <h2 className="mb-2 text-2xl font-bold md:text-3xl">Find the Root Cause Faster</h2>
               <p className="mb-5 text-gray-300">Pinpoint why runs degrade with ranked insights and concrete fix guidance.</p>
               <div className="mb-6 grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border border-[#22345A] bg-[#0B1328] p-5">
@@ -240,11 +241,11 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
         </section>
 
-        <section id="comparison" className="px-6 py-16">
+        <section id="comparison" className="px-4 py-12 sm:px-6 md:py-16">
           <div className="mx-auto w-full max-w-[1368px]">
-            <h2 className="mb-6 text-3xl font-bold">Why Logs Are Not Enough</h2>
-            <div className="overflow-hidden rounded-2xl border border-white/10">
-              <table className="w-full border-collapse text-left">
+            <h2 className="mb-6 text-2xl font-bold md:text-3xl">Why Logs Are Not Enough</h2>
+            <div className="overflow-x-auto rounded-2xl border border-white/10">
+              <table className="w-full min-w-[520px] border-collapse text-left">
                 <thead>
                   <tr className="bg-white/[0.03]">
                     <th className="px-5 py-4 text-sm font-semibold text-gray-200">Traditional Logs</th>
@@ -274,9 +275,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
         </section>
 
-        <section className="px-6 py-16">
+        <section className="px-4 py-12 sm:px-6 md:py-16">
           <div className="mx-auto w-full max-w-[1368px]">
-            <h2 className="mb-5 text-3xl font-bold">Built for Real AI Systems</h2>
+            <h2 className="mb-5 text-2xl font-bold md:text-3xl">Built for Real AI Systems</h2>
             <ul className="grid gap-3 md:grid-cols-2">
               {useCases.map((item) => (
                 <li key={item} className="rounded-xl border border-white/10 bg-white/[0.02] p-4 text-gray-200">
@@ -287,9 +288,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
         </section>
 
-        <section className="px-6 py-16">
+        <section className="px-4 py-12 sm:px-6 md:py-16">
           <div className="mx-auto w-full max-w-[1368px] rounded-2xl border border-white/10 bg-white/[0.02] p-8 md:p-10">
-            <h2 className="mb-3 text-3xl font-bold">AI Agent Debugging &amp; LLM Observability</h2>
+            <h2 className="mb-3 text-2xl font-bold md:text-3xl">AI Agent Debugging &amp; LLM Observability</h2>
             <p className="mb-5 text-gray-300">AgentScope helps teams solve:</p>
             <ul className="mb-5 grid gap-3 text-gray-200 md:grid-cols-2">
               <li className="rounded-lg border border-white/10 bg-white/[0.02] p-3">AI agent debugging</li>
@@ -303,20 +304,20 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
           </div>
         </section>
 
-        <section className="px-6 pb-24 pt-10">
-          <div className="mx-auto w-full max-w-[1368px] rounded-3xl border border-white/10 bg-white/[0.02] px-8 py-14 text-center">
-            <h2 className="mb-3 text-4xl font-bold md:text-5xl">Stop Guessing. Start Debugging.</h2>
-            <p className="mb-6 text-lg text-gray-300">Understand your AI agents at every step.</p>
-            <div className="flex flex-wrap items-center justify-center gap-4">
+        <section className="px-4 pb-20 pt-10 sm:px-6 sm:pb-24">
+          <div className="mx-auto w-full max-w-[1368px] rounded-3xl border border-white/10 bg-white/[0.02] px-6 py-12 text-center sm:px-8 sm:py-14">
+            <h2 className="mb-3 text-3xl font-bold md:text-5xl">Stop Guessing. Start Debugging.</h2>
+            <p className="mb-6 text-base text-gray-300 sm:text-lg">Understand your AI agents at every step.</p>
+            <div className="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
               <Link
                 href={isAuthenticated ? "/runs" : "/signup"}
-                className="rounded-lg bg-[#7C9EFF] px-7 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
+                className="rounded-lg bg-[#7C9EFF] px-7 py-3 text-center font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
               >
                 Debug Your First Agent
               </Link>
               <Link
                 href="/demo"
-                className="rounded-lg border border-white/20 px-7 py-3 font-medium transition-colors hover:bg-white/5"
+                className="rounded-lg border border-white/20 px-7 py-3 text-center font-medium transition-colors hover:bg-white/5"
               >
                 View Live Demo
               </Link>
