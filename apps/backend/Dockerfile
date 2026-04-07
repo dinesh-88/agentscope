@@ -11,7 +11,6 @@ COPY Cargo.toml Cargo.lock ./
 COPY apps/backend/core ./apps/backend/core
 COPY apps/backend ./apps/backend
 COPY apps/llm-proxy ./apps/llm-proxy
-COPY examples ./examples
 
 RUN cargo build --release -p agentscope-api
 
@@ -23,7 +22,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /app/target/release/agentscope-api /usr/local/bin/agentscope-api
-COPY --from=builder /app/examples /app/examples
 
 ENV SERVER_PORT=8080
 EXPOSE 8080
