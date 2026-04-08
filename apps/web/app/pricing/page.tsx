@@ -28,6 +28,9 @@ export default async function PricingPage() {
           <div className="mt-8">
             <Link
               href="/signup"
+              data-cta-track="true"
+              data-cta-location="pricing"
+              data-cta-text="Start Free and Send First Trace"
               className="inline-flex rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
             >
               Start Free and Send First Trace

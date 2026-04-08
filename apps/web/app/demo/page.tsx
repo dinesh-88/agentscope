@@ -38,6 +38,9 @@ python main.py`}</code>
             <Link
               href="/runs"
               data-testid="run-demo-button"
+              data-cta-track="true"
+              data-cta-location="demo"
+              data-cta-text="Run Demo"
               className="inline-flex items-center gap-2 rounded-lg border border-emerald-400/40 bg-emerald-500/20 px-6 py-3 font-medium text-emerald-100 transition-colors hover:bg-emerald-500/30"
             >
               Run Demo
@@ -45,6 +48,9 @@ python main.py`}</code>
             </Link>
             <Link
               href="/signup"
+              data-cta-track="true"
+              data-cta-location="demo"
+              data-cta-text="Start Free and Observe Your Agent"
               className="inline-flex items-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
             >
               Start Free and Observe Your Agent

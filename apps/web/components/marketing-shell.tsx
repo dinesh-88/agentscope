@@ -40,6 +40,9 @@ export async function MarketingShell({ children }: MarketingShellProps) {
             {isAuthenticated ? (
               <Link
                 href="/dashboard"
+                data-cta-track="true"
+                data-cta-location="nav"
+                data-cta-text="Go to Dashboard"
                 className="rounded-lg bg-[#7C9EFF] px-4 py-2 text-sm font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
               >
                 Go to Dashboard
@@ -51,6 +54,9 @@ export async function MarketingShell({ children }: MarketingShellProps) {
                 </Link>
                 <Link
                   href="/signup"
+                  data-cta-track="true"
+                  data-cta-location="nav"
+                  data-cta-text="Start Free and Send First Trace"
                   className="rounded-lg bg-[#7C9EFF] px-4 py-2 text-sm font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
                 >
                   Start Free and Send First Trace

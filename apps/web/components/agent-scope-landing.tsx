@@ -44,6 +44,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             {isAuthenticated ? (
               <Link
                 href="/dashboard"
+                data-cta-track="true"
+                data-cta-location="nav"
+                data-cta-text="Go to Dashboard"
                 className="rounded-lg bg-[#7C9EFF] px-3 py-2 text-xs font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC] sm:px-4 sm:text-sm"
               >
                 Go to Dashboard
@@ -55,6 +58,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                 </Link>
                 <Link
                   href="/signup"
+                  data-cta-track="true"
+                  data-cta-location="nav"
+                  data-cta-text="Start Free and Send First Trace"
                   className="rounded-lg bg-[#7C9EFF] px-3 py-2 text-xs font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC] sm:px-4 sm:text-sm"
                 >
                   <span className="sm:hidden">Start Free</span>
@@ -79,6 +85,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             <div className="mb-6 flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
               <Link
                 href={isAuthenticated ? "/runs" : "/signup"}
+                data-cta-track="true"
+                data-cta-location="hero"
+                data-cta-text="Debug Your First Agent"
                 className="flex items-center justify-center gap-2 rounded-lg bg-[#7C9EFF] px-6 py-3 font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
               >
                 Debug Your First Agent
@@ -86,6 +95,9 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
               </Link>
               <Link
                 href="/demo"
+                data-cta-track="true"
+                data-cta-location="hero"
+                data-cta-text="View Live Trace"
                 className="rounded-lg border border-[#7C9EFF]/35 bg-[#7C9EFF]/12 px-6 py-3 text-center font-medium text-[#DEE6FF] transition-colors hover:bg-[#7C9EFF]/24"
               >
                 View Live Trace
@@ -312,12 +324,18 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
             <div className="flex flex-col items-stretch justify-center gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:gap-4">
               <Link
                 href={isAuthenticated ? "/runs" : "/signup"}
+                data-cta-track="true"
+                data-cta-location="footer"
+                data-cta-text="Debug Your First Agent"
                 className="rounded-lg bg-[#7C9EFF] px-7 py-3 text-center font-medium text-[#0B0F14] transition-colors hover:bg-[#A5B4FC]"
               >
                 Debug Your First Agent
               </Link>
               <Link
                 href="/demo"
+                data-cta-track="true"
+                data-cta-location="footer"
+                data-cta-text="View Live Demo"
                 className="rounded-lg border border-white/20 px-7 py-3 text-center font-medium transition-colors hover:bg-white/5"
               >
                 View Live Demo
