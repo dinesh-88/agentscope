@@ -232,9 +232,10 @@ export function AgentScopeLanding({ isAuthenticated = false }: AgentScopeLanding
                   </div>
                 </div>
               </div>
-              <ul className="grid gap-3 text-gray-200 md:grid-cols-3">
+              <ul className="grid gap-3 text-gray-200 md:grid-cols-4">
                 <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Failure detection</li>
                 <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Drift analysis</li>
+                <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Hallucination + schema optimization</li>
                 <li className="rounded-full border border-[#29406A] bg-[#0C152B] px-4 py-2 text-sm">Suggested fixes</li>
               </ul>
             </div>

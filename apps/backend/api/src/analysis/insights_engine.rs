@@ -8,6 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
+use crate::analysis::detectors::{compute_schema_run_stats, SchemaRunStats};
+
 const RECENT_RUN_LIMIT: i64 = 100;
 const PROMPT_TOO_LARGE_THRESHOLD: i64 = 100_000;
 const EXPENSIVE_RUN_THRESHOLD: f64 = 0.08;
@@ -98,10 +100,15 @@ async fn generate_project_insights(
     }
 
     let mut run_summaries = Vec::with_capacity(runs.len());
+    let mut schema_summaries = Vec::<SchemaRunStats>::new();
 
     for run in runs {
         let spans = storage.get_spans(&run.id).await?;
+        let artifacts = storage.get_artifacts(&run.id).await?;
         let root_causes = storage.get_run_root_causes(&run.id).await?;
+        if let Some(schema_stats) = compute_schema_run_stats(&artifacts) {
+            schema_summaries.push(schema_stats);
+        }
         run_summaries.push(RunSummary::from_run(run, spans, root_causes));
     }
 
@@ -456,6 +463,185 @@ async fn generate_project_insights(
             },
             run_count,
         ));
+    }
+
+    if !schema_summaries.is_empty() {
+        let schema_run_count = schema_summaries.len() as i32;
+        let average_usage_ratio = schema_summaries
+            .iter()
+            .map(|stats| stats.field_usage_ratio)
+            .sum::<f64>()
+            / schema_summaries.len() as f64;
+        let average_schema_size = schema_summaries
+            .iter()
+            .map(|stats| stats.average_schema_size)
+            .sum::<f64>()
+            / schema_summaries.len() as f64;
+        let average_nesting_depth = schema_summaries
+            .iter()
+            .map(|stats| stats.average_nesting_depth)
+            .sum::<f64>()
+            / schema_summaries.len() as f64;
+
+        let mut unused_field_counts = HashMap::<String, usize>::new();
+        let mut error_field_counts = HashMap::<String, usize>::new();
+        let mut unique_signatures = HashSet::<String>::new();
+        let mut drift_runs = 0_i32;
+        let mut total_token_footprint = 0_usize;
+
+        for stats in &schema_summaries {
+            for field in &stats.unused_fields {
+                *unused_field_counts.entry(field.clone()).or_insert(0) += 1;
+            }
+            for (field, count) in &stats.field_error_counts {
+                *error_field_counts.entry(field.clone()).or_insert(0) += *count;
+            }
+            for signature in &stats.schema_signatures {
+                unique_signatures.insert(signature.clone());
+            }
+            if stats.schema_signatures.len() > 1 {
+                drift_runs += 1;
+            }
+            total_token_footprint += stats.estimated_token_footprint;
+        }
+
+        let mut top_unused_fields = unused_field_counts.into_iter().collect::<Vec<_>>();
+        top_unused_fields
+            .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+        top_unused_fields.truncate(10);
+
+        let mut top_error_fields = error_field_counts.into_iter().collect::<Vec<_>>();
+        top_error_fields
+            .sort_by(|left, right| right.1.cmp(&left.1).then_with(|| left.0.cmp(&right.0)));
+        top_error_fields.truncate(10);
+
+        if average_usage_ratio < 0.75 {
+            let impact = if average_usage_ratio < 0.55 {
+                "high"
+            } else {
+                "medium"
+            };
+            insights.push(build_project_insight(
+                project_id,
+                InsightDraft {
+                    category: "prompt_issues",
+                    insight_type: "SCHEMA_UNUSED_FIELDS",
+                    title: "Schema has low field utilization",
+                    description: format!(
+                        "Average schema field usage ratio is {:.1}% across {schema_run_count} schema-enabled runs.",
+                        average_usage_ratio * 100.0
+                    ),
+                    impact,
+                    suggestion:
+                        "Remove unused fields and keep schema output focused on values consumed downstream."
+                            .to_string(),
+                    confidence: (0.7 + (0.75 - average_usage_ratio).max(0.0) * 0.35).clamp(0.7, 0.95),
+                    highlighted: impact == "high",
+                    metrics: json!({
+                        "field_usage_ratio": average_usage_ratio,
+                        "schema_run_count": schema_run_count,
+                        "top_unused_fields": top_unused_fields
+                    }),
+                },
+                schema_run_count,
+            ));
+        }
+
+        if !top_error_fields.is_empty() {
+            let total_field_errors: usize = top_error_fields.iter().map(|(_, count)| *count).sum();
+            if total_field_errors >= schema_run_count.max(1) as usize {
+                let impact = if total_field_errors >= (schema_run_count as usize * 2) {
+                    "high"
+                } else {
+                    "medium"
+                };
+                insights.push(build_project_insight(
+                    project_id,
+                    InsightDraft {
+                        category: "failure_patterns",
+                        insight_type: "SCHEMA_ERROR_PRONE_FIELDS",
+                        title: "Some schema fields frequently fail validation",
+                        description: format!(
+                            "Detected {total_field_errors} schema field-level validation issues across {schema_run_count} schema-enabled runs."
+                        ),
+                        impact,
+                        suggestion:
+                            "Enforce required fields, add field defaults, and validate before final output."
+                                .to_string(),
+                        confidence: (0.72 + (total_field_errors as f64 / (schema_run_count as f64 * 4.0))).clamp(0.72, 0.95),
+                        highlighted: impact == "high",
+                        metrics: json!({
+                            "schema_run_count": schema_run_count,
+                            "total_field_errors": total_field_errors,
+                            "top_error_fields": top_error_fields
+                        }),
+                    },
+                    schema_run_count,
+                ));
+            }
+        }
+
+        if average_schema_size >= 18.0 || average_nesting_depth >= 4.0 {
+            let impact = if average_schema_size >= 25.0 || average_nesting_depth >= 5.0 {
+                "high"
+            } else {
+                "medium"
+            };
+            insights.push(build_project_insight(
+                project_id,
+                InsightDraft {
+                    category: "prompt_issues",
+                    insight_type: "SCHEMA_COMPLEXITY",
+                    title: "Schema complexity is high",
+                    description: format!(
+                        "Average schema size is {:.1} fields with average nesting depth {:.1} in recent runs.",
+                        average_schema_size, average_nesting_depth
+                    ),
+                    impact,
+                    suggestion:
+                        "Flatten nested schema structures and reduce optional branches to improve stability."
+                            .to_string(),
+                    confidence: 0.8,
+                    highlighted: impact == "high",
+                    metrics: json!({
+                        "schema_run_count": schema_run_count,
+                        "average_schema_size": average_schema_size,
+                        "average_nesting_depth": average_nesting_depth,
+                        "total_estimated_token_footprint": total_token_footprint
+                    }),
+                },
+                schema_run_count,
+            ));
+        }
+
+        let drift_rate = drift_runs as f64 / schema_run_count as f64;
+        if drift_rate >= 0.25 || unique_signatures.len() > schema_run_count as usize {
+            let impact = if drift_rate >= 0.5 { "high" } else { "medium" };
+            insights.push(build_project_insight(
+                project_id,
+                InsightDraft {
+                    category: "failure_patterns",
+                    insight_type: "SCHEMA_DRIFT",
+                    title: "Schema structure drift detected",
+                    description: format!(
+                        "{drift_runs} of {schema_run_count} schema-enabled runs showed schema variation."
+                    ),
+                    impact,
+                    suggestion:
+                        "Pin schema versions and normalize all outputs to one canonical contract."
+                            .to_string(),
+                    confidence: (0.72 + drift_rate * 0.22).clamp(0.72, 0.95),
+                    highlighted: impact == "high",
+                    metrics: json!({
+                        "schema_run_count": schema_run_count,
+                        "drift_runs": drift_runs,
+                        "drift_rate": drift_rate,
+                        "unique_schema_signatures": unique_signatures.len()
+                    }),
+                },
+                schema_run_count,
+            ));
+        }
     }
 
     Ok(insights)

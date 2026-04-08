@@ -226,6 +226,10 @@ fn build_fixes(primary: &str, secondary: &[String]) -> Vec<String> {
 fn category_from_failure_type(failure_type: &str) -> &'static str {
     match failure_type {
         "SCHEMA_VALIDATION_ERROR" => "LLM_OUTPUT_FORMAT_ERROR",
+        "SCHEMA_UNUSED_FIELDS" => "SCHEMA_UNUSED_FIELDS",
+        "SCHEMA_ERROR_PRONE_FIELDS" => "SCHEMA_ERROR_PRONE_FIELDS",
+        "SCHEMA_COMPLEXITY" => "SCHEMA_COMPLEXITY",
+        "SCHEMA_DRIFT" => "SCHEMA_DRIFT",
         "TOOL_FAILURE" => "TOOL_EXECUTION_ERROR",
         "TOKEN_OVERFLOW" => "PROMPT_TOO_LARGE",
         "HALLUCINATION_UNSUPPORTED_CLAIM" => "HALLUCINATION_UNSUPPORTED_CLAIM",
@@ -255,6 +259,10 @@ fn normalize_failure_label(failure_type: &str) -> &'static str {
         "HALLUCINATION_INSUFFICIENT_RETRIEVAL" => "insufficient retrieval grounding",
         "HALLUCINATION_OVERCONFIDENT_INFERENCE" => "overconfident inference",
         "SCHEMA_VALIDATION_ERROR" => "invalid JSON",
+        "SCHEMA_UNUSED_FIELDS" => "unused schema fields",
+        "SCHEMA_ERROR_PRONE_FIELDS" => "error-prone schema fields",
+        "SCHEMA_COMPLEXITY" => "overly complex schema",
+        "SCHEMA_DRIFT" => "schema structure drift",
         "MISSING_OUTPUT_CONSTRAINT" => "missing output constraints",
         _ => "upstream signal",
     }
@@ -265,6 +273,22 @@ fn fix_templates(failure_type: &str) -> Vec<&'static str> {
         "SCHEMA_VALIDATION_ERROR" => vec![
             "Strengthen output schema instructions and include strict JSON examples.",
             "Validate and repair model output before passing it downstream.",
+        ],
+        "SCHEMA_UNUSED_FIELDS" => vec![
+            "Remove or deprecate schema fields that are never populated by outputs.",
+            "Keep only high-value fields to reduce optional noise and prompt overhead.",
+        ],
+        "SCHEMA_ERROR_PRONE_FIELDS" => vec![
+            "Mark consistently missing fields as required only when upstream data is guaranteed.",
+            "Add pre-return validation and field-level defaults for commonly invalid fields.",
+        ],
+        "SCHEMA_COMPLEXITY" => vec![
+            "Flatten deeply nested objects to a simpler schema shape.",
+            "Reduce schema size and optional branches to lower token footprint and parsing risk.",
+        ],
+        "SCHEMA_DRIFT" => vec![
+            "Pin schema versions and avoid changing response shape within the same workflow.",
+            "Normalize adapters so all steps emit one canonical schema.",
         ],
         "TOOL_FAILURE" => vec![
             "Validate tool arguments before execution.",

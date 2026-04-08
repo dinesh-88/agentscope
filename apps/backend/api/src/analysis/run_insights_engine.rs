@@ -523,6 +523,43 @@ fn structured_template_for_type(
                 "Validate before passing to next step".to_string(),
             ],
         )),
+        "SCHEMA_UNUSED_FIELDS" => Some((
+            "Schema has unused fields".to_string(),
+            "Multiple schema fields are never used by actual structured outputs.".to_string(),
+            "Schema noise increases prompt/token overhead and maintenance cost.".to_string(),
+            vec![
+                "Remove or deprecate unused fields".to_string(),
+                "Keep only high-signal output keys".to_string(),
+            ],
+        )),
+        "SCHEMA_ERROR_PRONE_FIELDS" => Some((
+            "Schema fields are error-prone".to_string(),
+            "Some fields are frequently missing or invalid during validation.".to_string(),
+            "Validation failures increase retries and downstream instability.".to_string(),
+            vec![
+                "Enforce required fields with defaults".to_string(),
+                "Add field-level validation before return".to_string(),
+            ],
+        )),
+        "SCHEMA_COMPLEXITY" => Some((
+            "Schema is overly complex".to_string(),
+            "Field count, nesting depth, or token footprint is higher than needed.".to_string(),
+            "Complex schemas are harder for models to follow consistently.".to_string(),
+            vec![
+                "Flatten nested structures".to_string(),
+                "Reduce optional branches".to_string(),
+            ],
+        )),
+        "SCHEMA_DRIFT" => Some((
+            "Schema drift detected".to_string(),
+            "Schema structure varies across spans instead of using one canonical shape."
+                .to_string(),
+            "Drift causes inconsistent outputs and brittle consumers.".to_string(),
+            vec![
+                "Pin schema version per workflow".to_string(),
+                "Normalize outputs to a canonical schema".to_string(),
+            ],
+        )),
         "TOOL_FAILURE" | "TOOL_EXECUTION_ERROR" => Some((
             "Tool execution failed".to_string(),
             "Tool returned an error or an invalid response payload.".to_string(),
@@ -593,6 +630,10 @@ fn cause_from_root_cause_type(root_cause_type: &str) -> &'static str {
         "LLM_OUTPUT_FORMAT_ERROR" | "SCHEMA_VALIDATION_ERROR" => {
             "invalid structured output from model"
         }
+        "SCHEMA_UNUSED_FIELDS" => "unused fields in structured output schema",
+        "SCHEMA_ERROR_PRONE_FIELDS" => "schema fields frequently missing or invalid",
+        "SCHEMA_COMPLEXITY" => "schema complexity causing unstable structured outputs",
+        "SCHEMA_DRIFT" => "schema structure drift across steps",
         "TOOL_EXECUTION_ERROR" | "TOOL_FAILURE" => "tool execution error",
         "TIMEOUT" => "timeout in LLM call",
         "API_FAILURE" | "API_ERROR" => "upstream API error",
@@ -611,6 +652,10 @@ fn cause_from_root_cause_type(root_cause_type: &str) -> &'static str {
 fn cause_from_detection_type(failure_type: &str) -> &'static str {
     match failure_type {
         "SCHEMA_VALIDATION_ERROR" => "invalid structured output from model",
+        "SCHEMA_UNUSED_FIELDS" => "unused fields in structured output schema",
+        "SCHEMA_ERROR_PRONE_FIELDS" => "schema fields frequently missing or invalid",
+        "SCHEMA_COMPLEXITY" => "schema complexity causing unstable structured outputs",
+        "SCHEMA_DRIFT" => "schema structure drift across steps",
         "TOOL_FAILURE" => "tool execution error",
         "TIMEOUT" => "timeout in LLM call",
         "API_ERROR" => "upstream API error",
@@ -734,6 +779,57 @@ pub fn generate_fix_suggestions(
                         confidence: 0.9,
                     },
                     3,
+                ));
+            }
+            "SCHEMA_UNUSED_FIELDS" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Prune unused schema fields".to_string(),
+                        description:
+                            "Remove fields not populated by outputs to reduce schema noise"
+                                .to_string(),
+                        action_type: "schema".to_string(),
+                        confidence: 0.82,
+                    },
+                    2,
+                ));
+            }
+            "SCHEMA_ERROR_PRONE_FIELDS" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Harden error-prone schema fields".to_string(),
+                        description:
+                            "Validate required fields and apply defaults before returning output"
+                                .to_string(),
+                        action_type: "validation".to_string(),
+                        confidence: 0.86,
+                    },
+                    3,
+                ));
+            }
+            "SCHEMA_COMPLEXITY" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Simplify schema structure".to_string(),
+                        description:
+                            "Flatten deep nesting and reduce optional branches in output schema"
+                                .to_string(),
+                        action_type: "schema".to_string(),
+                        confidence: 0.84,
+                    },
+                    2,
+                ));
+            }
+            "SCHEMA_DRIFT" => {
+                candidate = Some((
+                    FixSuggestion {
+                        title: "Pin and normalize schema version".to_string(),
+                        description: "Use a stable schema contract across steps and adapters"
+                            .to_string(),
+                        action_type: "schema".to_string(),
+                        confidence: 0.83,
+                    },
+                    2,
                 ));
             }
             "TOOL_FAILURE" => {
@@ -1266,6 +1362,18 @@ fn recommendation_for_failure(failure_type: &str) -> &'static str {
     match failure_type {
         "SCHEMA_VALIDATION_ERROR" => {
             "Enforce strict output schemas and validate model output before downstream use."
+        }
+        "SCHEMA_UNUSED_FIELDS" => {
+            "Remove persistently unused fields and keep schema focused on consumed outputs."
+        }
+        "SCHEMA_ERROR_PRONE_FIELDS" => {
+            "Enforce required fields and validate error-prone keys before returning output."
+        }
+        "SCHEMA_COMPLEXITY" => {
+            "Flatten nested schema structures and reduce optional branches."
+        }
+        "SCHEMA_DRIFT" => {
+            "Pin schema versions and normalize outputs to a single contract."
         }
         "TOOL_FAILURE" => "Validate tool arguments and add retries for transient failures.",
         "TIMEOUT" => "Set tighter execution budgets and add bounded retry logic.",

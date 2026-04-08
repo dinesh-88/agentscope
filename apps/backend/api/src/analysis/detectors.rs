@@ -22,6 +22,18 @@ pub fn detect_failure_types(spans: &[Span], artifacts: &[Artifact]) -> Vec<Detec
     if let Some(detection) = detect_schema_validation_error(artifacts) {
         detections.push(detection);
     }
+    if let Some(detection) = detect_schema_unused_fields(spans, artifacts) {
+        detections.push(detection);
+    }
+    if let Some(detection) = detect_schema_error_prone_fields(spans, artifacts) {
+        detections.push(detection);
+    }
+    if let Some(detection) = detect_schema_complexity(spans, artifacts) {
+        detections.push(detection);
+    }
+    if let Some(detection) = detect_schema_drift(spans, artifacts) {
+        detections.push(detection);
+    }
     if let Some(detection) = detect_tool_failure(spans, artifacts) {
         detections.push(detection);
     }
@@ -67,6 +79,22 @@ pub fn detect_failure_types(spans: &[Span], artifacts: &[Artifact]) -> Vec<Detec
 
     detections.sort_by(|left, right| right.confidence.total_cmp(&left.confidence));
     detections
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct SchemaRunStats {
+    pub schema_count: usize,
+    pub output_sample_count: usize,
+    pub total_schema_fields: usize,
+    pub average_schema_size: f64,
+    pub max_nesting_depth: usize,
+    pub average_nesting_depth: f64,
+    pub estimated_token_footprint: usize,
+    pub field_usage_ratio: f64,
+    pub unused_fields: Vec<String>,
+    pub field_usage_counts: HashMap<String, usize>,
+    pub field_error_counts: HashMap<String, usize>,
+    pub schema_signatures: Vec<String>,
 }
 
 fn detect_transition_cause(
@@ -357,6 +385,563 @@ fn detect_schema_validation_error(artifacts: &[Artifact]) -> Option<Detection> {
         evidence: artifact.payload.clone(),
     })
 }
+
+pub fn compute_schema_run_stats(artifacts: &[Artifact]) -> Option<SchemaRunStats> {
+    let schemas = collect_schema_snapshots(artifacts);
+    if schemas.is_empty() {
+        return None;
+    }
+
+    let outputs = collect_structured_outputs(artifacts);
+    let mut usage_counts = HashMap::<String, usize>::new();
+    let mut output_paths = Vec::<HashSet<String>>::new();
+    for output in &outputs {
+        let mut paths = HashSet::new();
+        flatten_output_field_paths(&output.value, "", &mut paths);
+        for path in &paths {
+            *usage_counts.entry(path.clone()).or_insert(0) += 1;
+        }
+        output_paths.push(paths);
+    }
+
+    let mut validation_error_counts = HashMap::<String, usize>::new();
+    for artifact in artifacts
+        .iter()
+        .filter(|artifact| is_validation_artifact(artifact))
+    {
+        let message = payload_message(&artifact.payload);
+        if message.is_empty() {
+            continue;
+        }
+        for field in extract_field_refs_from_validation_message(&message) {
+            *validation_error_counts.entry(field).or_insert(0) += 1;
+        }
+    }
+
+    if !output_paths.is_empty() {
+        for schema in &schemas {
+            for required in &schema.required_fields {
+                let missing_count = output_paths
+                    .iter()
+                    .filter(|paths| !paths.contains(required.as_str()))
+                    .count();
+                if missing_count > 0 {
+                    *validation_error_counts.entry(required.clone()).or_insert(0) += missing_count;
+                }
+            }
+        }
+    }
+
+    let mut all_schema_fields = schemas
+        .iter()
+        .flat_map(|schema| schema.field_paths.clone())
+        .collect::<Vec<_>>();
+    all_schema_fields.sort();
+    all_schema_fields.dedup();
+
+    let used_fields = all_schema_fields
+        .iter()
+        .filter(|field| usage_counts.contains_key(field.as_str()))
+        .count();
+    let field_usage_ratio = if all_schema_fields.is_empty() {
+        1.0
+    } else {
+        used_fields as f64 / all_schema_fields.len() as f64
+    };
+    let mut unused_fields = all_schema_fields
+        .iter()
+        .filter(|field| !usage_counts.contains_key(field.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    unused_fields.sort();
+    unused_fields.dedup();
+
+    let total_schema_fields = schemas
+        .iter()
+        .map(|schema| schema.field_paths.len())
+        .sum::<usize>();
+    let average_schema_size = if schemas.is_empty() {
+        0.0
+    } else {
+        total_schema_fields as f64 / schemas.len() as f64
+    };
+    let max_nesting_depth = schemas
+        .iter()
+        .map(|schema| schema.nesting_depth)
+        .max()
+        .unwrap_or(0);
+    let average_nesting_depth = if schemas.is_empty() {
+        0.0
+    } else {
+        schemas
+            .iter()
+            .map(|schema| schema.nesting_depth as f64)
+            .sum::<f64>()
+            / schemas.len() as f64
+    };
+    let estimated_token_footprint = schemas
+        .iter()
+        .map(|schema| schema.estimated_tokens)
+        .sum::<usize>();
+
+    let mut signatures = schemas
+        .iter()
+        .map(|schema| schema.signature.clone())
+        .collect::<Vec<_>>();
+    signatures.sort();
+    signatures.dedup();
+
+    Some(SchemaRunStats {
+        schema_count: schemas.len(),
+        output_sample_count: outputs.len(),
+        total_schema_fields,
+        average_schema_size,
+        max_nesting_depth,
+        average_nesting_depth,
+        estimated_token_footprint,
+        field_usage_ratio,
+        unused_fields,
+        field_usage_counts: usage_counts,
+        field_error_counts: validation_error_counts,
+        schema_signatures: signatures,
+    })
+}
+
+fn detect_schema_unused_fields(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
+    let stats = compute_schema_run_stats(artifacts)?;
+    if stats.total_schema_fields == 0 || stats.output_sample_count == 0 {
+        return None;
+    }
+    if stats.unused_fields.is_empty() {
+        return None;
+    }
+    let unused_ratio = stats.unused_fields.len() as f64 / stats.total_schema_fields as f64;
+    if stats.unused_fields.len() < 2 && unused_ratio < 0.25 {
+        return None;
+    }
+
+    let affected_spans = schema_related_span_ids(spans, artifacts);
+    let usage_stats = stats
+        .field_usage_counts
+        .iter()
+        .map(|(field, count)| (field.clone(), json!({ "count": count })))
+        .collect::<serde_json::Map<String, Value>>();
+
+    Some(Detection {
+        failure_type: "SCHEMA_UNUSED_FIELDS",
+        confidence: (0.7 + unused_ratio * 0.25).clamp(0.7, 0.94),
+        summary: "Schema defines fields that are consistently unused in structured outputs."
+            .to_string(),
+        span_count: affected_spans.len(),
+        affected_spans,
+        evidence: json!({
+            "unused_fields": stats.unused_fields,
+            "field_usage_ratio": stats.field_usage_ratio,
+            "usage_stats": usage_stats,
+            "output_samples": stats.output_sample_count
+        }),
+    })
+}
+
+fn detect_schema_error_prone_fields(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
+    let stats = compute_schema_run_stats(artifacts)?;
+    if stats.field_error_counts.is_empty() || stats.output_sample_count == 0 {
+        return None;
+    }
+
+    let mut problematic_fields = stats
+        .field_error_counts
+        .iter()
+        .filter_map(|(field, errors)| {
+            let attempts = stats.output_sample_count.max(1) as f64;
+            let error_rate = *errors as f64 / attempts;
+            if *errors >= 2 || error_rate >= 0.35 {
+                Some(json!({
+                    "field": field,
+                    "errors": errors,
+                    "error_rate": error_rate,
+                    "usage_count": stats.field_usage_counts.get(field).copied().unwrap_or(0)
+                }))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if problematic_fields.is_empty() {
+        return None;
+    }
+    problematic_fields.sort_by(|left, right| {
+        right
+            .get("errors")
+            .and_then(Value::as_i64)
+            .cmp(&left.get("errors").and_then(Value::as_i64))
+    });
+
+    let affected_spans = schema_related_span_ids(spans, artifacts);
+    Some(Detection {
+        failure_type: "SCHEMA_ERROR_PRONE_FIELDS",
+        confidence: 0.86,
+        summary: "Some schema fields are frequently missing or invalid across structured outputs."
+            .to_string(),
+        span_count: affected_spans.len(),
+        affected_spans,
+        evidence: json!({
+            "problematic_fields": problematic_fields,
+            "output_samples": stats.output_sample_count,
+            "field_error_counts": stats.field_error_counts
+        }),
+    })
+}
+
+fn detect_schema_complexity(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
+    let stats = compute_schema_run_stats(artifacts)?;
+    if stats.schema_count == 0 {
+        return None;
+    }
+
+    let is_complex = stats.average_schema_size >= 18.0
+        || stats.max_nesting_depth >= 4
+        || stats.estimated_token_footprint >= 400;
+    if !is_complex {
+        return None;
+    }
+
+    let complexity_score = ((stats.average_schema_size / 18.0)
+        + (stats.max_nesting_depth as f64 / 4.0)
+        + (stats.estimated_token_footprint as f64 / 400.0))
+        / 3.0;
+    let affected_spans = schema_related_span_ids(spans, artifacts);
+
+    Some(Detection {
+        failure_type: "SCHEMA_COMPLEXITY",
+        confidence: (0.7 + (complexity_score - 1.0).max(0.0) * 0.15).clamp(0.7, 0.93),
+        summary: "Structured output schema appears overly complex (size/depth/token footprint)."
+            .to_string(),
+        span_count: affected_spans.len(),
+        affected_spans,
+        evidence: json!({
+            "schema_count": stats.schema_count,
+            "average_schema_size": stats.average_schema_size,
+            "average_nesting_depth": stats.average_nesting_depth,
+            "max_nesting_depth": stats.max_nesting_depth,
+            "estimated_token_footprint": stats.estimated_token_footprint
+        }),
+    })
+}
+
+fn detect_schema_drift(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
+    let stats = compute_schema_run_stats(artifacts)?;
+    if stats.schema_signatures.len() <= 1 {
+        return None;
+    }
+    let drift_ratio = stats.schema_signatures.len() as f64 / stats.schema_count.max(1) as f64;
+    if stats.schema_signatures.len() < 2 || drift_ratio < 0.2 {
+        return None;
+    }
+
+    let affected_spans = schema_related_span_ids(spans, artifacts);
+    Some(Detection {
+        failure_type: "SCHEMA_DRIFT",
+        confidence: (0.75 + drift_ratio * 0.2).clamp(0.75, 0.94),
+        summary:
+            "Schema structure changes across spans, indicating drift in expected output format."
+                .to_string(),
+        span_count: affected_spans.len(),
+        affected_spans,
+        evidence: json!({
+            "schema_count": stats.schema_count,
+            "unique_signatures": stats.schema_signatures.len(),
+            "signatures": stats.schema_signatures,
+            "drift_ratio": drift_ratio
+        }),
+    })
+}
+
+#[derive(Debug, Clone)]
+struct SchemaSnapshot {
+    field_paths: Vec<String>,
+    required_fields: Vec<String>,
+    nesting_depth: usize,
+    estimated_tokens: usize,
+    signature: String,
+}
+
+#[derive(Debug, Clone)]
+struct StructuredOutputSnapshot {
+    value: Value,
+}
+
+fn collect_schema_snapshots(artifacts: &[Artifact]) -> Vec<SchemaSnapshot> {
+    let mut snapshots = Vec::new();
+    for artifact in artifacts {
+        let Some(schema_value) = extract_schema_payload(artifact) else {
+            continue;
+        };
+        let mut field_paths = Vec::new();
+        let mut required_fields = Vec::new();
+        extract_schema_fields(&schema_value, "", &mut field_paths, &mut required_fields);
+        if field_paths.is_empty() {
+            continue;
+        }
+        field_paths.sort();
+        field_paths.dedup();
+        required_fields.sort();
+        required_fields.dedup();
+        let nesting_depth = estimate_value_depth(&schema_value, 0);
+        let serialized = serde_json::to_string(&schema_value).unwrap_or_default();
+        let estimated_tokens = (serialized.len() / 4).max(1);
+        snapshots.push(SchemaSnapshot {
+            field_paths: field_paths.clone(),
+            required_fields,
+            nesting_depth,
+            estimated_tokens,
+            signature: field_paths.join("|"),
+        });
+    }
+    snapshots
+}
+
+fn collect_structured_outputs(artifacts: &[Artifact]) -> Vec<StructuredOutputSnapshot> {
+    artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact.kind == "llm.response"
+                || artifact.kind == "tool.output"
+                || artifact.kind == "validator.output"
+                || artifact.kind.contains("structured")
+        })
+        .filter_map(|artifact| parse_structured_output_payload(&artifact.payload))
+        .map(|value| StructuredOutputSnapshot { value })
+        .collect::<Vec<_>>()
+}
+
+fn extract_schema_payload(artifact: &Artifact) -> Option<Value> {
+    let kind = artifact.kind.to_ascii_lowercase();
+    let payload = &artifact.payload;
+    if kind.contains("schema") || kind.contains("validator") {
+        if let Some(obj) = payload.as_object() {
+            for key in [
+                "schema",
+                "json_schema",
+                "output_schema",
+                "tool_schema",
+                "parameters",
+            ] {
+                if let Some(value) = obj.get(key) {
+                    return Some(value.clone());
+                }
+            }
+        }
+        if payload.is_object() {
+            return Some(payload.clone());
+        }
+    }
+
+    payload
+        .as_object()
+        .and_then(|obj| obj.get("response_format"))
+        .and_then(|value| value.get("json_schema"))
+        .cloned()
+}
+
+fn parse_structured_output_payload(payload: &Value) -> Option<Value> {
+    match payload {
+        Value::Object(_) | Value::Array(_) => Some(payload.clone()),
+        Value::String(text) => {
+            let trimmed = text.trim();
+            if !(trimmed.starts_with('{') || trimmed.starts_with('[')) {
+                return None;
+            }
+            serde_json::from_str::<Value>(trimmed).ok()
+        }
+        _ => None,
+    }
+}
+
+fn extract_schema_fields(
+    value: &Value,
+    base_path: &str,
+    field_paths: &mut Vec<String>,
+    required_fields: &mut Vec<String>,
+) {
+    let Some(obj) = value.as_object() else {
+        return;
+    };
+
+    if let Some(properties) = obj.get("properties").and_then(Value::as_object) {
+        let required_local = obj
+            .get("required")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(Value::as_str)
+                    .map(ToString::to_string)
+                    .collect::<HashSet<_>>()
+            })
+            .unwrap_or_default();
+
+        for (key, child) in properties {
+            let path = append_path(base_path, key);
+            field_paths.push(path.clone());
+            if required_local.contains(key) {
+                required_fields.push(path.clone());
+            }
+            extract_schema_fields(child, &path, field_paths, required_fields);
+        }
+    }
+
+    if let Some(items) = obj.get("items") {
+        let item_path = append_path(base_path, "[]");
+        extract_schema_fields(items, &item_path, field_paths, required_fields);
+    }
+
+    for key in ["allOf", "anyOf", "oneOf"] {
+        if let Some(variants) = obj.get(key).and_then(Value::as_array) {
+            for variant in variants {
+                extract_schema_fields(variant, base_path, field_paths, required_fields);
+            }
+        }
+    }
+}
+
+fn flatten_output_field_paths(value: &Value, base_path: &str, paths: &mut HashSet<String>) {
+    match value {
+        Value::Object(map) => {
+            for (key, child) in map {
+                let path = append_path(base_path, key);
+                paths.insert(path.clone());
+                flatten_output_field_paths(child, &path, paths);
+            }
+        }
+        Value::Array(items) => {
+            if items.is_empty() {
+                return;
+            }
+            let path = append_path(base_path, "[]");
+            paths.insert(path.clone());
+            for item in items.iter().take(5) {
+                flatten_output_field_paths(item, &path, paths);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn append_path(base: &str, key: &str) -> String {
+    if base.is_empty() {
+        key.to_string()
+    } else if key == "[]" {
+        format!("{base}[]")
+    } else {
+        format!("{base}.{key}")
+    }
+}
+
+fn estimate_value_depth(value: &Value, depth: usize) -> usize {
+    match value {
+        Value::Object(map) => map
+            .values()
+            .map(|child| estimate_value_depth(child, depth + 1))
+            .max()
+            .unwrap_or(depth),
+        Value::Array(items) => items
+            .iter()
+            .map(|item| estimate_value_depth(item, depth + 1))
+            .max()
+            .unwrap_or(depth),
+        _ => depth,
+    }
+}
+
+fn is_validation_artifact(artifact: &Artifact) -> bool {
+    let kind = artifact.kind.to_ascii_lowercase();
+    if kind.contains("validator") || kind.contains("schema") || kind.contains("validation") {
+        return true;
+    }
+    let message = payload_message(&artifact.payload);
+    message.contains("schema")
+        || message.contains("missing required")
+        || message.contains("expected")
+        || message.contains("invalid type")
+}
+
+fn extract_field_refs_from_validation_message(message: &str) -> Vec<String> {
+    let normalized = message.replace('`', " ").replace('"', " ");
+    let mut fields = normalized
+        .split_whitespace()
+        .filter_map(|token| {
+            let candidate = token.trim_matches(|ch: char| !ch.is_ascii_alphanumeric() && ch != '.');
+            if candidate.len() < 2 || candidate.chars().all(|ch| ch.is_ascii_digit()) {
+                return None;
+            }
+            if candidate.starts_with("http") || candidate.contains('/') {
+                return None;
+            }
+            if candidate.contains('.') || candidate.chars().all(|ch| ch.is_ascii_lowercase()) {
+                if VALIDATION_MESSAGE_STOPWORDS.contains(&candidate) {
+                    None
+                } else {
+                    Some(candidate.to_string())
+                }
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    fields.sort();
+    fields.dedup();
+    fields
+}
+
+fn schema_related_span_ids(spans: &[Span], artifacts: &[Artifact]) -> Vec<String> {
+    let llm_span_ids = spans
+        .iter()
+        .filter(|span| span.span_type == "llm" || span.span_type == "llm_call")
+        .map(|span| span.id.clone())
+        .collect::<HashSet<_>>();
+
+    let mut ids = artifacts
+        .iter()
+        .filter(|artifact| {
+            extract_schema_payload(artifact).is_some() || is_validation_artifact(artifact)
+        })
+        .filter_map(|artifact| artifact.span_id.clone())
+        .collect::<Vec<_>>();
+
+    ids.extend(
+        artifacts
+            .iter()
+            .filter(|artifact| artifact.kind == "llm.response")
+            .filter_map(|artifact| artifact.span_id.clone())
+            .filter(|id| llm_span_ids.contains(id)),
+    );
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+const VALIDATION_MESSAGE_STOPWORDS: &[&str] = &[
+    "schema",
+    "validation",
+    "missing",
+    "required",
+    "field",
+    "fields",
+    "expected",
+    "invalid",
+    "type",
+    "object",
+    "array",
+    "string",
+    "number",
+    "boolean",
+    "null",
+    "must",
+    "should",
+    "value",
+    "values",
+];
 
 fn detect_tool_failure(spans: &[Span], artifacts: &[Artifact]) -> Option<Detection> {
     let span = spans.iter().find(|span| {
