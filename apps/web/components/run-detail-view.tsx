@@ -4,6 +4,7 @@ import { Activity, ArrowLeft, FileText, GitBranch, Loader2, TrendingUp } from "l
 import Link from "next/link";
 import { useMemo, useState } from "react";
 
+import { GetHelpModal } from "@/components/get-help-modal";
 import { RunTimelineView } from "@/components/run-timeline-view";
 import { type Artifact, type Run, type RunInsight, type RunRootCause, type Span } from "@/lib/api";
 import { useRunDetailStore } from "@/lib/run-detail-store";
@@ -255,6 +256,16 @@ export function RunDetailView({
         </div>
 
         <p className={`mb-3 text-sm ${runStatusIsFailure ? "text-red-300" : "text-gray-300"}`}>{failureSummary}</p>
+
+        {runStatusIsFailure ? (
+          <div className="mb-3">
+            <GetHelpModal
+              runId={currentRun.id}
+              triggerLabel="Get Help Debugging"
+              triggerClassName="rounded-lg border border-blue-400/40 bg-blue-500/20 px-3 py-2 text-sm font-medium text-blue-100 transition-colors hover:bg-blue-500/30"
+            />
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-4 text-xs text-gray-400">
           <span>Duration: {formatDurationMs(runMs)}</span>

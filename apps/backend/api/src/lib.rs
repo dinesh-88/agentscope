@@ -12,12 +12,13 @@ use std::{
     collections::{HashMap, HashSet},
     env,
     hash::{Hash, Hasher},
-    sync::{Arc, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
 };
 
 use agentscope_common::errors::AgentScopeError;
 use agentscope_storage::{
     analysis::TrendRunFilters,
+    contact::{ContactRequestRecord, NewContactRequest},
     issue_rankings::{IssueImpact, IssueImpactComputation, ProjectIssueRegressionRow},
     retention::{ProjectStorageSettings, RetentionApplyResult},
     runs::RunSearchFilters,
@@ -33,7 +34,7 @@ use agentscope_trace::{
 use axum::{
     body::Bytes,
     extract::{Extension, Path, Query, State},
-    http::{header, Method, StatusCode},
+    http::{header, HeaderMap, Method, StatusCode},
     middleware::from_fn_with_state,
     response::IntoResponse,
     routing::{delete, get, post},
@@ -217,6 +218,32 @@ struct EventsPerDayPoint {
     error_rate: f64,
 }
 
+#[derive(Debug, Deserialize)]
+struct ContactRequestPayload {
+    email: String,
+    message: String,
+    run_id: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+struct ContactRequestResponse {
+    success: bool,
+}
+
+#[derive(Debug, Serialize)]
+struct AdminContactRequestsResponse {
+    requests: Vec<ContactRequestItem>,
+}
+
+#[derive(Debug, Serialize)]
+struct ContactRequestItem {
+    id: String,
+    email: String,
+    message: String,
+    run_id: Option<String>,
+    created_at: DateTime<Utc>,
+}
+
 pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
     let cors_allowed_origins = env::var("CORS_ALLOWED_ORIGINS")
         .ok()
@@ -358,6 +385,7 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
             "/v1/auth/oauth/:provider/callback",
             get(auth::oauth_callback),
         )
+        .route("/api/contact", post(create_contact_request))
         .route("/v1/stripe/webhook", post(stripe_webhook))
         .route(
             "/api/projects/:id/issues",
@@ -401,6 +429,11 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route(
             "/api/admin/telemetry",
             get(get_admin_telemetry)
+                .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
+        )
+        .route(
+            "/api/admin/contact-requests",
+            get(get_admin_contact_requests)
                 .route_layer(from_fn_with_state(state.clone(), auth::require_jwt)),
         )
         .nest("/v1", sdk_routes.merge(ui_routes))
@@ -499,6 +532,139 @@ async fn ingest_telemetry(
     state.storage.insert_telemetry_event(&telemetry).await?;
     state.storage.prune_telemetry_events(30).await?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+async fn create_contact_request(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(payload): Json<ContactRequestPayload>,
+) -> Result<Json<ContactRequestResponse>, ApiError> {
+    let normalized = normalize_contact_request(payload)?;
+    check_contact_rate_limit(&headers, &normalized.email)?;
+
+    state
+        .storage
+        .insert_contact_request(&NewContactRequest {
+            email: normalized.email,
+            message: normalized.message,
+            run_id: normalized.run_id,
+        })
+        .await?;
+
+    Ok(Json(ContactRequestResponse { success: true }))
+}
+
+async fn get_admin_contact_requests(
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<AdminContactRequestsResponse>, ApiError> {
+    ensure_super_admin(&user)?;
+    let requests = state.storage.list_contact_requests(200).await?;
+    Ok(Json(AdminContactRequestsResponse {
+        requests: requests
+            .into_iter()
+            .map(contact_request_to_item)
+            .collect::<Vec<_>>(),
+    }))
+}
+
+fn contact_request_to_item(record: ContactRequestRecord) -> ContactRequestItem {
+    ContactRequestItem {
+        id: record.id.to_string(),
+        email: record.email,
+        message: record.message,
+        run_id: record.run_id,
+        created_at: record.created_at,
+    }
+}
+
+struct NormalizedContactRequest {
+    email: String,
+    message: String,
+    run_id: Option<String>,
+}
+
+fn normalize_contact_request(
+    payload: ContactRequestPayload,
+) -> Result<NormalizedContactRequest, ApiError> {
+    let email = validate_and_normalize_email(&payload.email)?;
+    if email.len() > 320 {
+        return Err(ApiError::Validation("email is too long".to_string()));
+    }
+
+    let message = payload.message.trim().to_string();
+    if message.is_empty() {
+        return Err(ApiError::Validation("message is required".to_string()));
+    }
+    if message.len() > 4_000 {
+        return Err(ApiError::Validation("message is too long".to_string()));
+    }
+
+    let run_id = payload
+        .run_id
+        .and_then(|value| {
+            let trimmed = value.trim().to_string();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed)
+            }
+        })
+        .map(|value| value.chars().take(128).collect::<String>());
+
+    Ok(NormalizedContactRequest {
+        email,
+        message,
+        run_id,
+    })
+}
+
+fn check_contact_rate_limit(headers: &HeaderMap, email: &str) -> Result<(), ApiError> {
+    const WINDOW_SECS: i64 = 60;
+    const MAX_REQUESTS: usize = 5;
+
+    static CONTACT_RATE_LIMIT: OnceLock<Mutex<HashMap<String, Vec<i64>>>> = OnceLock::new();
+    let store = CONTACT_RATE_LIMIT.get_or_init(|| Mutex::new(HashMap::new()));
+
+    let key = format!(
+        "{}:{}",
+        contact_client_ip(headers).unwrap_or_else(|| "unknown".to_string()),
+        email
+    );
+    let now = Utc::now().timestamp();
+
+    let mut guard = store
+        .lock()
+        .map_err(|_| ApiError::Storage("failed to lock contact rate limiter".to_string()))?;
+    let bucket = guard.entry(key).or_default();
+    bucket.retain(|ts| now - *ts <= WINDOW_SECS);
+    if bucket.len() >= MAX_REQUESTS {
+        return Err(ApiError::TooManyRequests(
+            "too many contact requests, please try again shortly".to_string(),
+        ));
+    }
+    bucket.push(now);
+    Ok(())
+}
+
+fn contact_client_ip(headers: &HeaderMap) -> Option<String> {
+    let forwarded = headers
+        .get("x-forwarded-for")
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(',').next())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned);
+    if forwarded.is_some() {
+        return forwarded;
+    }
+
+    headers
+        .get("x-real-ip")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 async fn get_admin_telemetry(

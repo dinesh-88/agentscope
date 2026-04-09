@@ -610,6 +610,28 @@ export type InviteRecord = {
   accepted_at: string | null;
 };
 
+export type ContactRequestPayload = {
+  email: string;
+  message: string;
+  run_id?: string;
+};
+
+export type ContactRequestResponse = {
+  success: boolean;
+};
+
+export type ContactRequestItem = {
+  id: string;
+  email: string;
+  message: string;
+  run_id?: string | null;
+  created_at: string;
+};
+
+export type AdminContactRequestsResponse = {
+  requests: ContactRequestItem[];
+};
+
 async function request<T>(path: string): Promise<T> {
   const response = await api.get<T>(path);
   return response.data;
@@ -885,6 +907,16 @@ export async function getProjectUsage(projectId: string): Promise<ProjectUsagePo
 
 export async function getAdminTelemetry(): Promise<AdminTelemetryResponse> {
   return request<AdminTelemetryResponse>("/api/admin/telemetry");
+}
+
+export async function createContactRequest(
+  payload: ContactRequestPayload,
+): Promise<ContactRequestResponse> {
+  return postRequestWithBody<ContactRequestResponse>("/api/contact", payload);
+}
+
+export async function getAdminContactRequests(): Promise<AdminContactRequestsResponse> {
+  return request<AdminContactRequestsResponse>("/api/admin/contact-requests");
 }
 
 export async function getProjectStorageSettings(projectId: string): Promise<ProjectStorageSettings> {

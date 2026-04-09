@@ -3,6 +3,7 @@ pub mod analysis;
 pub mod artifacts;
 pub mod auth;
 pub mod billing;
+pub mod contact;
 pub mod insights;
 pub mod issue_rankings;
 pub mod limits;
