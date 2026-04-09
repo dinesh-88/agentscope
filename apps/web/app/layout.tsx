@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import Script from "next/script";
 
+import { resolveSiteUrl } from "@/lib/site-url";
+
 import "./globals.css";
 
 const GA_MEASUREMENT_ID = "G-SP1K4TV8NF";
@@ -14,7 +16,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+  metadataBase: new URL(resolveSiteUrl()),
   title: {
     default: "AgentScope",
     template: "%s | AgentScope",
