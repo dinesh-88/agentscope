@@ -22,7 +22,7 @@ impl Storage {
         project_id: &str,
         alerts: &[ActiveAlert],
     ) -> Result<(), AgentScopeError> {
-        let mut tx = self.pool.begin().await.map_err(|error| {
+        let mut tx = self.begin_tx().await.map_err(|error| {
             AgentScopeError::Storage(format!(
                 "failed to start active alerts transaction for project {project_id}: {error}"
             ))
@@ -129,7 +129,7 @@ impl Storage {
         project_id: &str,
         clusters: &[FailureCluster],
     ) -> Result<(), AgentScopeError> {
-        let mut tx = self.pool.begin().await.map_err(|error| {
+        let mut tx = self.begin_tx().await.map_err(|error| {
             AgentScopeError::Storage(format!(
                 "failed to start failure clusters transaction for project {project_id}: {error}"
             ))
@@ -328,7 +328,7 @@ impl Storage {
         project_id: &str,
         insights: &[ProjectInsight],
     ) -> Result<(), AgentScopeError> {
-        let mut tx = self.pool.begin().await.map_err(|error| {
+        let mut tx = self.begin_tx().await.map_err(|error| {
             AgentScopeError::Storage(format!(
                 "failed to start project insights transaction for project {project_id}: {error}"
             ))

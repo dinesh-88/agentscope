@@ -191,7 +191,7 @@ pub async fn upsert_issue_rankings(
         .ok_or_else(|| AgentScopeError::Validation("invalid target date".to_string()))?;
 
     let mut tx =
-        storage.pool.begin().await.map_err(|e| {
+        storage.begin_tx().await.map_err(|e| {
             AgentScopeError::Storage(format!("failed to begin ranking upsert tx: {e}"))
         })?;
 

@@ -150,7 +150,7 @@ impl Storage {
         user_id: &str,
         user_email: &str,
     ) -> Result<Option<InviteRecord>, AgentScopeError> {
-        let mut tx = self.pool.begin().await.map_err(|error| {
+        let mut tx = self.begin_tx().await.map_err(|error| {
             AgentScopeError::Storage(format!("failed to start invite acceptance tx: {error}"))
         })?;
 
@@ -264,7 +264,7 @@ impl Storage {
         organization_id: &str,
         user_id: &str,
     ) -> Result<bool, AgentScopeError> {
-        let mut tx = self.pool.begin().await.map_err(|error| {
+        let mut tx = self.begin_tx().await.map_err(|error| {
             AgentScopeError::Storage(format!("failed to start member removal tx: {error}"))
         })?;
 
@@ -350,7 +350,7 @@ impl Storage {
         let normalized_role = normalize_role_for_membership(role).ok_or_else(|| {
             AgentScopeError::Validation("role must be one of admin or member".to_string())
         })?;
-        let mut tx = self.pool.begin().await.map_err(|error| {
+        let mut tx = self.begin_tx().await.map_err(|error| {
             AgentScopeError::Storage(format!("failed to start member role update tx: {error}"))
         })?;
 

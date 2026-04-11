@@ -114,7 +114,7 @@ async fn insert_issue_insights_batch(
         .ok_or_else(|| AgentScopeError::Validation("invalid target date timestamp".to_string()))?;
 
     let mut tx =
-        storage.pool.begin().await.map_err(|e| {
+        storage.begin_tx().await.map_err(|e| {
             AgentScopeError::Storage(format!("failed to begin issue_insights tx: {e}"))
         })?;
 

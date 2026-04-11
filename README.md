@@ -34,10 +34,26 @@ agentscope/
 
 ```bash
 DATABASE_URL=postgres://postgres:postgres@localhost:5432/agentscope \
+DB_POOL_MAX_CONNECTIONS=10 \
+DB_POOL_MIN_CONNECTIONS=0 \
+DB_POOL_ACQUIRE_TIMEOUT_SECONDS=10 \
+DB_POOL_IDLE_TIMEOUT_SECONDS=300 \
+DB_POOL_MAX_LIFETIME_SECONDS=1800 \
+DB_CONNECT_RETRIES=5 \
+DB_CONNECT_RETRY_BASE_MILLIS=500 \
+DB_CONNECT_RETRY_MAX_MILLIS=5000 \
+DB_RUNTIME_RETRY_ATTEMPTS=6 \
+DB_RUNTIME_RETRY_BASE_MILLIS=200 \
+DB_RUNTIME_RETRY_MAX_MILLIS=2000 \
+DB_RUNTIME_RETRY_TIMEOUT_SECONDS=20 \
 SERVER_PORT=8080 \
 LOG_LEVEL=info \
 cargo run -p agentscope-api
 ```
+
+`DATABASE_URL` values that include `channel_binding=...` are supported; that parameter is ignored by SQLx and stripped before connecting.
+Startup DB connection includes retry with exponential backoff (`DB_CONNECT_*`).
+Runtime transaction start also retries transient connection-loss errors with exponential backoff and a hard timeout (`DB_RUNTIME_*`).
 
 ## Run Web
 

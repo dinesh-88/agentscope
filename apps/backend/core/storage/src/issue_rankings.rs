@@ -1082,7 +1082,7 @@ impl Storage {
         &self,
         target_date: NaiveDate,
     ) -> Result<(), AgentScopeError> {
-        let mut tx = self.pool.begin().await.map_err(|e| {
+        let mut tx = self.begin_tx().await.map_err(|e| {
             AgentScopeError::Storage(format!(
                 "failed to open transaction for issue rankings on {target_date}: {e}"
             ))

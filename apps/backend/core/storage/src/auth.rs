@@ -628,7 +628,7 @@ impl Storage {
             });
         }
 
-        let mut tx = self.pool.begin().await.map_err(|error| {
+        let mut tx = self.begin_tx().await.map_err(|error| {
             AgentScopeError::Storage(format!("failed to start onboarding transaction: {error}"))
         })?;
 

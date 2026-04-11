@@ -10,7 +10,7 @@ impl Storage {
         run_id: &str,
         insights: &[RunInsight],
     ) -> Result<(), AgentScopeError> {
-        let mut tx = self.pool.begin().await.map_err(|e| {
+        let mut tx = self.begin_tx().await.map_err(|e| {
             AgentScopeError::Storage(format!("failed to start insights transaction: {e}"))
         })?;
 
