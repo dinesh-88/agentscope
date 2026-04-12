@@ -46,6 +46,19 @@ function tryParseJsonString(value: string): { content: string; format: PromptSec
   }
 }
 
+function extractJsonSnippet(value: string): string | null {
+  const first = value.indexOf("{");
+  const last = value.lastIndexOf("}");
+  if (first === -1 || last === -1 || last <= first) return null;
+  const candidate = value.slice(first, last + 1);
+  try {
+    JSON.parse(candidate);
+    return candidate;
+  } catch {
+    return null;
+  }
+}
+
 function normalizeRaw(payload: unknown): { raw: string; rawFormat: PromptSectionFormat } {
   if (typeof payload === "string") {
     const trimmed = payload.trim();
@@ -118,12 +131,27 @@ function buildMessageSections(messages: unknown[]): PromptSection[] {
         formattedContent = parsed.content;
         format = parsed.format;
       }
+      let schemaSnippet: string | null = null;
+      if (typeof contentSource === "string") {
+        schemaSnippet = extractJsonSnippet(contentSource);
+        if (schemaSnippet && format === "text") {
+          formattedContent = contentSource.replace(schemaSnippet, "[schema omitted]");
+        }
+      }
       sections.push({
         id: `message-${index + 1}`,
         title: `${roleLabel(role)} Message ${index + 1}`,
         content: formattedContent,
         format,
       });
+      if (schemaSnippet) {
+        sections.push({
+          id: `message-${index + 1}-schema`,
+          title: `${roleLabel(role)} Schema ${index + 1}`,
+          content: JSON.stringify(JSON.parse(schemaSnippet), null, 2),
+          format: "json",
+        });
+      }
       return;
     }
 
