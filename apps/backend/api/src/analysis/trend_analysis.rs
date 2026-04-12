@@ -229,7 +229,12 @@ pub fn compute_prompt_metrics(spans: &[Span]) -> Vec<PromptMetric> {
     let mut buckets: HashMap<String, (usize, usize)> = HashMap::new();
 
     for span in spans {
-        let Some(prompt_hash) = span.prompt_hash.as_deref().filter(|hash| !hash.is_empty()) else {
+        let signature = span
+            .prompt_version_id
+            .as_deref()
+            .filter(|id| !id.is_empty())
+            .or_else(|| span.prompt_hash.as_deref().filter(|hash| !hash.is_empty()));
+        let Some(prompt_hash) = signature else {
             continue;
         };
 

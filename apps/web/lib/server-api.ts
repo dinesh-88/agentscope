@@ -10,6 +10,9 @@ import {
   type FailureCluster,
   type MeResponse,
   type ProjectInsight,
+  type Prompt,
+  type PromptVersion,
+  type PromptVersionMetrics,
   type Run,
   type RunAnalysis,
   type RunComparison,
@@ -179,6 +182,33 @@ export async function getCurrentUser(): Promise<MeResponse | null> {
     }
     throw error;
   }
+}
+
+export async function getPrompts(projectId?: string): Promise<Prompt[]> {
+  const suffix = projectId ? `?project_id=${encodeURIComponent(projectId)}` : "";
+  return requestOptional<Prompt[]>(`/v1/prompts${suffix}`, []);
+}
+
+export async function getPrompt(id: string): Promise<{ prompt: Prompt; metrics: PromptVersionMetrics[] } | null> {
+  return requestOptional<{ prompt: Prompt; metrics: PromptVersionMetrics[] } | null>(`/v1/prompts/${id}`, null);
+}
+
+export async function getPromptVersions(id: string): Promise<PromptVersion[]> {
+  return requestOptional<PromptVersion[]>(`/v1/prompts/${id}/versions`, []);
+}
+
+export async function comparePromptVersions(
+  id: string,
+  v1: number,
+  v2: number,
+): Promise<{
+  from_version: number;
+  to_version: number;
+  added_lines: string[];
+  removed_lines: string[];
+  changed_sections: string[];
+} | null> {
+  return requestOptional(`/v1/prompts/${id}/compare?v1=${v1}&v2=${v2}`, null);
 }
 
 export async function getAdminTelemetry(): Promise<AdminTelemetryResponse> {

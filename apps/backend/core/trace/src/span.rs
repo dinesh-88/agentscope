@@ -57,6 +57,10 @@ pub struct Span {
     #[serde(default)]
     pub prompt_template_id: Option<String>,
     #[serde(default)]
+    pub prompt_version_id: Option<String>,
+    #[serde(default)]
+    pub prompt_version: Option<i32>,
+    #[serde(default)]
     pub temperature: Option<f64>,
     #[serde(default)]
     pub top_p: Option<f64>,

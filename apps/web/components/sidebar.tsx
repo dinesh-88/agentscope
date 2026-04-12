@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { AlertCircle, ChevronLeft, ChevronRight, CreditCard, LayoutDashboard, Menu, Moon, PlaySquare, Settings, ShieldCheck, Sun, Users, X } from "lucide-react";
+import { AlertCircle, ChevronLeft, ChevronRight, CreditCard, FileText, LayoutDashboard, Menu, Moon, PlaySquare, Settings, ShieldCheck, Sun, Users, X } from "lucide-react";
 
 import { UI_SESSION_COOKIE_NAME, getCurrentUser, logout } from "@/lib/api";
 
@@ -16,6 +16,7 @@ type SidebarProps = {
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/runs", label: "Runs", icon: PlaySquare },
+  { href: "/prompts", label: "Prompts", icon: FileText },
   { href: "/agents", label: "Agents", icon: Users },
   { href: "/insights", label: "Insights", icon: AlertCircle },
   { href: "/billing", label: "Billing", icon: CreditCard },

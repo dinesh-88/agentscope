@@ -192,6 +192,12 @@ export function RunDetailView({
           .sort((a, b) => a - b)[Math.max(0, Math.ceil(orderedSpans.length * 0.95) - 1)]
       : 0;
   const spansById = useMemo(() => new Map(orderedSpans.map((span) => [span.id, span])), [orderedSpans]);
+  const latestPromptVersion = useMemo(() => {
+    const withVersion = orderedSpans
+      .filter((span) => typeof span.prompt_version === "number" && span.prompt_version_id)
+      .sort((a, b) => (b.prompt_version ?? 0) - (a.prompt_version ?? 0));
+    return withVersion[0] ?? null;
+  }, [orderedSpans]);
   const logEntries = useMemo(() => {
     const spanLogs = orderedSpans.map((span, index) => ({
       id: `span-${span.id}`,
@@ -281,6 +287,14 @@ export function RunDetailView({
           ) : null}
           {linkage.parentRunId ? <span>Parent Run: {linkage.parentRunId}</span> : null}
           {linkage.rootRunId ? <span>Root Run: {linkage.rootRunId}</span> : null}
+          {latestPromptVersion ? (
+            <span>
+              Prompt Version:{" "}
+              <Link href={`/prompts`} className="text-blue-300 hover:text-blue-200">
+                v{latestPromptVersion.prompt_version}
+              </Link>
+            </span>
+          ) : null}
         </div>
       </div>
 

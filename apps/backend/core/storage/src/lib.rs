@@ -8,6 +8,7 @@ pub mod insights;
 pub mod issue_rankings;
 pub mod limits;
 pub mod postgres;
+pub mod prompts;
 pub mod replays;
 pub mod retention;
 pub mod root_causes;

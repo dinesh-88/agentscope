@@ -1185,10 +1185,10 @@ pub fn build_prompt_size_insight(run_id: &str, spans: &[Span]) -> Option<RunInsi
 }
 
 pub fn build_prompt_regression_insight(run_id: &str, spans: &[Span]) -> Vec<RunInsight> {
-    let grouped = group_by_prompt_hash(spans);
+    let grouped = group_by_prompt_signature(spans);
     let mut insights = Vec::new();
 
-    for (prompt_hash, prompt_spans) in grouped {
+    for (signature, prompt_spans) in grouped {
         if prompt_spans.len() < PROMPT_REGRESSION_MIN_SAMPLES {
             continue;
         }
@@ -1206,7 +1206,7 @@ pub fn build_prompt_regression_insight(run_id: &str, spans: &[Span]) -> Vec<RunI
         }
 
         insights.push(RunInsight {
-            id: deterministic_insight_id(run_id, "PROMPT_REGRESSION", &prompt_hash),
+            id: deterministic_insight_id(run_id, "PROMPT_REGRESSION", &signature),
             run_id: run_id.to_string(),
             insight_type: "PROMPT_REGRESSION".to_string(),
             severity: if success_rate < 0.5 { "high" } else { "medium" }.to_string(),
@@ -1216,7 +1216,7 @@ pub fn build_prompt_regression_insight(run_id: &str, spans: &[Span]) -> Vec<RunI
         impact: String::new(),
         fix: Vec::new(),
             message: format!(
-                "Prompt hash `{prompt_hash}` shows regression (success {:.1}%, avg latency {:.0} ms).",
+                "Prompt `{signature}` shows regression (success {:.1}%, avg latency {:.0} ms).",
                 success_rate * 100.0,
                 avg_latency
             ),
@@ -1225,7 +1225,7 @@ pub fn build_prompt_regression_insight(run_id: &str, spans: &[Span]) -> Vec<RunI
                     .to_string(),
             created_at: Utc::now(),
             evidence: json!({
-                "prompt_hash": prompt_hash,
+                "prompt_signature": signature,
                 "sample_size": prompt_spans.len(),
                 "success_rate": success_rate,
                 "avg_latency_ms": avg_latency,
@@ -1283,14 +1283,15 @@ pub fn compute_success_rate(runs: &[Run]) -> f32 {
     success_count as f32 / runs.len() as f32
 }
 
-pub fn group_by_prompt_hash(spans: &[Span]) -> HashMap<String, Vec<Span>> {
+pub fn group_by_prompt_signature(spans: &[Span]) -> HashMap<String, Vec<Span>> {
     let mut grouped = HashMap::<String, Vec<Span>>::new();
-    for span in spans.iter().filter(|span| span.prompt_hash.is_some()) {
-        if let Some(prompt_hash) = &span.prompt_hash {
-            grouped
-                .entry(prompt_hash.clone())
-                .or_default()
-                .push(span.clone());
+    for span in spans {
+        let signature = span
+            .prompt_version_id
+            .clone()
+            .or_else(|| span.prompt_hash.clone());
+        if let Some(signature) = signature {
+            grouped.entry(signature).or_default().push(span.clone());
         }
     }
     grouped
