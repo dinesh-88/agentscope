@@ -45,6 +45,7 @@ impl Storage {
                 retryable,
                 prompt_hash,
                 prompt_template_id,
+                prompt_version_id,
                 temperature,
                 top_p,
                 max_tokens,
@@ -84,7 +85,7 @@ impl Storage {
                 $24,
                 $25,
                 $26,
-                $27,
+                $27::uuid,
                 $28,
                 $29,
                 $30,
@@ -93,16 +94,17 @@ impl Storage {
                 $33,
                 $34,
                 $35,
-                (
-                    CASE
-                        WHEN $36::jsonb = 'null'::jsonb THEN NULL
-                        ELSE $36::jsonb
-                    END
-                ),
+                $36,
                 (
                     CASE
                         WHEN $37::jsonb = 'null'::jsonb THEN NULL
                         ELSE $37::jsonb
+                    END
+                ),
+                (
+                    CASE
+                        WHEN $38::jsonb = 'null'::jsonb THEN NULL
+                        ELSE $38::jsonb
                     END
                 )
             )
@@ -132,6 +134,7 @@ impl Storage {
                 retryable = EXCLUDED.retryable,
                 prompt_hash = EXCLUDED.prompt_hash,
                 prompt_template_id = EXCLUDED.prompt_template_id,
+                prompt_version_id = EXCLUDED.prompt_version_id,
                 temperature = EXCLUDED.temperature,
                 top_p = EXCLUDED.top_p,
                 max_tokens = EXCLUDED.max_tokens,
@@ -171,6 +174,7 @@ impl Storage {
         .bind(span.retryable)
         .bind(&span.prompt_hash)
         .bind(&span.prompt_template_id)
+        .bind(&span.prompt_version_id)
         .bind(span.temperature)
         .bind(span.top_p)
         .bind(span.max_tokens)
@@ -219,6 +223,12 @@ impl Storage {
                    retryable,
                    prompt_hash,
                    prompt_template_id,
+                   prompt_version_id::text AS prompt_version_id,
+                   (
+                     SELECT pv.version
+                     FROM prompt_versions pv
+                     WHERE pv.id = spans.prompt_version_id
+                   ) AS prompt_version,
                    temperature,
                    top_p,
                    max_tokens,

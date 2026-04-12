@@ -63,6 +63,8 @@ export type Span = {
   retryable?: boolean | null;
   prompt_hash?: string | null;
   prompt_template_id?: string | null;
+  prompt_version_id?: string | null;
+  prompt_version?: number | null;
   temperature?: number | null;
   top_p?: number | null;
   max_tokens?: number | null;
@@ -93,6 +95,37 @@ export type Span = {
     cause_confidence: number;
     cause_reason?: string | null;
   } | null;
+};
+
+export type Prompt = {
+  id: string;
+  project_id: string;
+  name: string;
+  description?: string | null;
+  created_at: string;
+};
+
+export type PromptVersion = {
+  id: string;
+  prompt_id: string;
+  version: number;
+  content: string;
+  hash: string;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+};
+
+export type PromptVersionMetrics = {
+  prompt_version_id: string;
+  total_spans: number;
+  failures: number;
+  errors: number;
+  failure_rate: number;
+  error_rate: number;
+  avg_latency_ms: number;
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
 };
 
 export type Artifact = {

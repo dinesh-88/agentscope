@@ -20,6 +20,7 @@ use agentscope_storage::{
     analysis::TrendRunFilters,
     contact::{ContactRequestRecord, NewContactRequest},
     issue_rankings::{IssueImpact, IssueImpactComputation, ProjectIssueRegressionRow},
+    prompts::{Prompt, PromptVersion, PromptVersionMetrics},
     retention::{ProjectStorageSettings, RetentionApplyResult},
     runs::RunSearchFilters,
     search::ArtifactSearchFilters,
@@ -44,6 +45,7 @@ use chrono::{DateTime, Duration, NaiveDate, Utc};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
+use sha2::{Digest, Sha256};
 use sqlx::FromRow;
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
@@ -302,6 +304,11 @@ pub fn app(storage: Storage, jwt: JwtSettings) -> Router {
         .route("/runs/:id/insights", get(get_run_insights))
         .route("/runs/:id/root-cause", get(get_run_root_cause))
         .route("/runs/:id/compare/:other_id", get(compare_runs))
+        .route("/prompts", get(list_prompts))
+        .route("/prompts/:id", get(get_prompt))
+        .route("/prompts/:id/versions", get(list_prompt_versions))
+        .route("/prompts/:id/versions/:version", get(get_prompt_version))
+        .route("/prompts/:id/compare", get(compare_prompt_versions))
         .route("/projects/:id/insights", get(get_project_insights))
         .route("/projects/:id/issues", get(get_project_issues))
         .route("/projects/:id/billing", get(get_project_billing))
@@ -466,6 +473,7 @@ async fn ingest(
     normalize_spans(&mut payload.spans, &payload.artifacts);
     sync_run_metrics_from_spans(&mut payload.run, &payload.spans);
     normalize_span_context(&mut payload.spans, &payload.artifacts);
+    resolve_prompt_versions(&state.storage, &payload.run, &mut payload.spans).await?;
     limits::check_rate_limit(&state, &payload.run.project_id).await?;
     limits::check_subscription_run_quota(&state, &payload.run.project_id).await?;
     limits::check_token_quota(&state, &payload.run.project_id, payload.run.total_tokens).await?;
@@ -1316,6 +1324,77 @@ fn normalize_span_context(spans: &mut [Span], artifacts: &[Artifact]) {
     }
 }
 
+async fn resolve_prompt_versions(
+    storage: &Storage,
+    run: &Run,
+    spans: &mut [Span],
+) -> Result<(), ApiError> {
+    for span in spans {
+        let Some((prompt_name, prompt_content, metadata, description)) =
+            extract_prompt_version_payload(span)
+        else {
+            continue;
+        };
+        let hash = sha256_hex(&prompt_content);
+        let version = storage
+            .resolve_prompt_version(
+                &run.project_id,
+                &prompt_name,
+                description.as_deref(),
+                &prompt_content,
+                &hash,
+                Some(metadata),
+            )
+            .await?;
+        span.prompt_version_id = Some(version.id);
+        span.prompt_hash = Some(hash);
+    }
+    Ok(())
+}
+
+fn extract_prompt_version_payload(span: &Span) -> Option<(String, String, Value, Option<String>)> {
+    let context = span.instruction_context.as_ref()?.as_object()?;
+    let sources = context.get("sources").and_then(Value::as_array)?;
+    let selected_source = sources.iter().find(|source| {
+        source
+            .get("content")
+            .and_then(Value::as_str)
+            .is_some_and(|content| !content.trim().is_empty())
+    })?;
+    let content = selected_source.get("content")?.as_str()?.trim().to_string();
+    if content.is_empty() {
+        return None;
+    }
+    let name = selected_source
+        .get("path")
+        .and_then(Value::as_str)
+        .map(|path| path.trim().replace('/', ":"))
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| span.name.trim().to_string());
+    if name.is_empty() {
+        return None;
+    }
+    let metadata = json!({
+        "model": span.model,
+        "provider": span.provider,
+        "temperature": span.temperature,
+        "top_p": span.top_p,
+        "max_tokens": span.max_tokens
+    });
+    let description = selected_source
+        .get("name")
+        .and_then(Value::as_str)
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    Some((name, content, metadata, description))
+}
+
+fn sha256_hex(value: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(value.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
+
 fn extract_context_messages(prompt_payload: Option<&Value>) -> Vec<Value> {
     let Some(payload) = prompt_payload.and_then(Value::as_object) else {
         return Vec::new();
@@ -1941,6 +2020,38 @@ struct ProjectTrendsQuery {
     variant: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct PromptsQuery {
+    project_id: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PromptCompareQuery {
+    v1: i32,
+    v2: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct PromptDetailResponse {
+    prompt: Prompt,
+    metrics: Vec<PromptVersionMetrics>,
+}
+
+#[derive(Debug, Serialize)]
+struct PromptVersionDetailResponse {
+    version: PromptVersion,
+    metrics: Option<PromptVersionMetrics>,
+}
+
+#[derive(Debug, Serialize)]
+struct PromptDiffResponse {
+    from_version: i32,
+    to_version: i32,
+    added_lines: Vec<String>,
+    removed_lines: Vec<String>,
+    changed_sections: Vec<String>,
+}
+
 impl ListRunsQuery {
     fn into_storage_filters(self) -> Result<RunSearchFilters, ApiError> {
         Ok(RunSearchFilters {
@@ -2029,6 +2140,147 @@ async fn get_run(
     match run {
         Some(run) => Ok(Json(run)),
         None => Err(ApiError::NotFound(format!("run {id} not found"))),
+    }
+}
+
+async fn list_prompts(
+    State(state): State<Arc<AppState>>,
+    Query(query): Query<PromptsQuery>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<Prompt>>, ApiError> {
+    if let Some(project_id) = query.project_id.as_deref() {
+        ensure_project_access(&state, project_id, &user.id).await?;
+    }
+    let prompts = state
+        .storage
+        .list_prompts_for_user(&user.id, query.project_id.as_deref())
+        .await?;
+    Ok(Json(prompts))
+}
+
+async fn get_prompt(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<PromptDetailResponse>, ApiError> {
+    let prompt = state
+        .storage
+        .get_prompt(&id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("prompt {id} not found")))?;
+    ensure_project_access(&state, &prompt.project_id, &user.id).await?;
+    let metrics = state.storage.prompt_version_metrics(&id).await?;
+    Ok(Json(PromptDetailResponse { prompt, metrics }))
+}
+
+async fn list_prompt_versions(
+    Path(id): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<Vec<PromptVersion>>, ApiError> {
+    let prompt = state
+        .storage
+        .get_prompt(&id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("prompt {id} not found")))?;
+    ensure_project_access(&state, &prompt.project_id, &user.id).await?;
+    Ok(Json(state.storage.list_prompt_versions(&id).await?))
+}
+
+async fn get_prompt_version(
+    Path((id, version)): Path<(String, i32)>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<PromptVersionDetailResponse>, ApiError> {
+    let prompt = state
+        .storage
+        .get_prompt(&id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("prompt {id} not found")))?;
+    ensure_project_access(&state, &prompt.project_id, &user.id).await?;
+    let selected = state
+        .storage
+        .get_prompt_version(&id, version)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("prompt {id} version {version} not found")))?;
+    let metrics = state
+        .storage
+        .prompt_version_metrics(&id)
+        .await?
+        .into_iter()
+        .find(|metric| metric.prompt_version_id == selected.id);
+    Ok(Json(PromptVersionDetailResponse {
+        version: selected,
+        metrics,
+    }))
+}
+
+async fn compare_prompt_versions(
+    Path(id): Path<String>,
+    Query(query): Query<PromptCompareQuery>,
+    State(state): State<Arc<AppState>>,
+    Extension(user): Extension<AuthenticatedUser>,
+) -> Result<Json<PromptDiffResponse>, ApiError> {
+    let prompt = state
+        .storage
+        .get_prompt(&id)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("prompt {id} not found")))?;
+    ensure_project_access(&state, &prompt.project_id, &user.id).await?;
+    let left = state
+        .storage
+        .get_prompt_version(&id, query.v1)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("prompt {id} version {} not found", query.v1)))?;
+    let right = state
+        .storage
+        .get_prompt_version(&id, query.v2)
+        .await?
+        .ok_or_else(|| ApiError::NotFound(format!("prompt {id} version {} not found", query.v2)))?;
+    Ok(Json(compare_prompt_versions_text(
+        left.version,
+        &left.content,
+        right.version,
+        &right.content,
+    )))
+}
+
+fn compare_prompt_versions_text(
+    from_version: i32,
+    left: &str,
+    to_version: i32,
+    right: &str,
+) -> PromptDiffResponse {
+    let left_lines = left.lines().collect::<Vec<_>>();
+    let right_lines = right.lines().collect::<Vec<_>>();
+    let mut added = Vec::new();
+    let mut removed = Vec::new();
+    let max_len = left_lines.len().max(right_lines.len());
+    for idx in 0..max_len {
+        let l = left_lines.get(idx).copied().unwrap_or_default();
+        let r = right_lines.get(idx).copied().unwrap_or_default();
+        if l == r {
+            continue;
+        }
+        if !l.is_empty() {
+            removed.push(l.to_string());
+        }
+        if !r.is_empty() {
+            added.push(r.to_string());
+        }
+    }
+    let changed_sections = added
+        .iter()
+        .zip(removed.iter())
+        .map(|(a, r)| format!("- {r} -> + {a}"))
+        .take(200)
+        .collect::<Vec<_>>();
+    PromptDiffResponse {
+        from_version,
+        to_version,
+        added_lines: added,
+        removed_lines: removed,
+        changed_sections,
     }
 }
 

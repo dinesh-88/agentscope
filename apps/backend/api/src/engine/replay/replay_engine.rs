@@ -376,6 +376,8 @@ impl<'a> ReplayEngine<'a> {
                 retryable: span.retryable,
                 prompt_hash: span.prompt_hash,
                 prompt_template_id: span.prompt_template_id,
+                prompt_version_id: span.prompt_version_id,
+                prompt_version: span.prompt_version,
                 temperature: span.temperature,
                 top_p: span.top_p,
                 max_tokens: span.max_tokens,
