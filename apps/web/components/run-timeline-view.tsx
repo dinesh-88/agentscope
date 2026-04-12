@@ -368,20 +368,20 @@ export function RunTimelineView({ spans, artifacts }: RunTimelineViewProps) {
   const issueCount = activeLogs.filter((log) => log.level !== "info").length;
 
   return (
-    <div className="grid min-h-[620px] grid-cols-1 overflow-hidden rounded-lg border border-[#e8e6e1] bg-white text-[#0f0f0e] lg:grid-cols-[1fr_272px]">
-      <div className="flex min-w-0 flex-col border-b border-[#e8e6e1] lg:border-b-0 lg:border-r">
-        <div className="grid h-7 grid-cols-[192px_1fr] border-b border-[#d0cdc6] bg-[#fafaf9] text-[10px] uppercase tracking-[0.15em] text-[#b0ada6]">
-          <div className="flex items-center border-r border-[#e8e6e1] px-3">Span</div>
+    <div className="grid min-h-[620px] grid-cols-1 overflow-hidden rounded-lg border border-white/5 bg-[#0b0b14] text-white lg:grid-cols-[1fr_272px]">
+      <div className="flex min-w-0 flex-col border-b border-white/5 lg:border-b-0 lg:border-r lg:border-white/5">
+        <div className="grid h-7 grid-cols-[192px_1fr] border-b border-white/10 bg-[#10101b] text-[10px] uppercase tracking-[0.15em] text-gray-500">
+          <div className="flex items-center border-r border-white/10 px-3">Span</div>
           <div className="flex items-center px-3">Timeline · {formatTimelineTime(maxTime)}</div>
         </div>
 
-        <div className="grid h-5 grid-cols-[192px_1fr] border-b border-[#e8e6e1] bg-[#fafaf9] text-[9px] text-[#b0ada6]">
-          <div className="border-r border-[#e8e6e1]" />
+        <div className="grid h-5 grid-cols-[192px_1fr] border-b border-white/10 bg-[#10101b] text-[9px] text-gray-500">
+          <div className="border-r border-white/10" />
           <div className="relative">
             {tickMarks.map((mark) => (
               <div key={mark.left} className="absolute top-0 flex -translate-x-1/2 flex-col items-center" style={{ left: `${mark.left}%` }}>
-                <div className="h-1 w-px bg-[#d0cdc6]" />
-                <div className="mt-0.5 whitespace-nowrap text-[8px] text-[#b0ada6]">{mark.label}</div>
+                <div className="h-1 w-px bg-white/20" />
+                <div className="mt-0.5 whitespace-nowrap text-[8px] text-gray-500">{mark.label}</div>
               </div>
             ))}
           </div>
@@ -389,7 +389,7 @@ export function RunTimelineView({ spans, artifacts }: RunTimelineViewProps) {
 
         <div className="flex-1 overflow-y-auto">
           {steps.length === 0 ? (
-            <div className="p-6 text-sm text-[#7a7870]">No spans available.</div>
+            <div className="p-6 text-sm text-gray-400">No spans available.</div>
           ) : (
             steps.map((step) => (
               <TimelineRow
@@ -404,25 +404,25 @@ export function RunTimelineView({ spans, artifacts }: RunTimelineViewProps) {
         </div>
       </div>
 
-      <div className="flex flex-col bg-white">
-        <div className="border-b border-[#e8e6e1] px-4 py-3">
-          <div className="mb-1 flex items-center gap-2 text-[17px] font-semibold">
-            <span className="font-serif">{activeStep?.name ?? "Select a span"}</span>
+      <div className="flex flex-col bg-[#0b0b14]">
+        <div className="border-b border-white/10 px-4 py-3">
+          <div className="mb-1 flex items-center gap-2 text-[15px] font-semibold">
+            <span>{activeStep?.name ?? "Select a span"}</span>
             {activeStep ? <StatusBadge status={activeStep.status} /> : null}
           </div>
-          <div className="flex items-center gap-2 text-[9px] text-[#b0ada6]">
+          <div className="flex items-center gap-2 text-[10px] text-gray-500">
             <span>{activeStep?.stepKey ?? ""}</span>
             {activeStep ? <span>·</span> : null}
             <span>{activeStep ? stepCategory(activeStep) : ""}</span>
           </div>
         </div>
 
-        <div className="flex border-b border-[#e8e6e1] text-[9px] uppercase tracking-[0.15em] text-[#b0ada6]">
+        <div className="flex border-b border-white/10 text-[9px] uppercase tracking-[0.15em] text-gray-500">
           <button
             type="button"
             onClick={() => setActiveTab("info")}
-            className={`flex-1 border-r border-[#e8e6e1] py-2 transition ${
-              activeTab === "info" ? "bg-white text-[#0f0f0e]" : "bg-[#fafaf9] hover:text-[#3a3935]"
+            className={`flex-1 border-r border-white/10 py-2 transition ${
+              activeTab === "info" ? "bg-[#0b0b14] text-white" : "bg-[#10101b] hover:text-gray-300"
             }`}
           >
             Info
@@ -430,8 +430,8 @@ export function RunTimelineView({ spans, artifacts }: RunTimelineViewProps) {
           <button
             type="button"
             onClick={() => setActiveTab("prompt")}
-            className={`flex-1 border-r border-[#e8e6e1] py-2 transition ${
-              activeTab === "prompt" ? "bg-white text-[#0f0f0e]" : "bg-[#fafaf9] hover:text-[#3a3935]"
+            className={`flex-1 border-r border-white/10 py-2 transition ${
+              activeTab === "prompt" ? "bg-[#0b0b14] text-white" : "bg-[#10101b] hover:text-gray-300"
             }`}
           >
             Prompt
@@ -440,7 +440,7 @@ export function RunTimelineView({ spans, artifacts }: RunTimelineViewProps) {
             type="button"
             onClick={() => setActiveTab("issues")}
             className={`flex-1 py-2 transition ${
-              activeTab === "issues" ? "bg-white text-[#0f0f0e]" : "bg-[#fafaf9] hover:text-[#3a3935]"
+              activeTab === "issues" ? "bg-[#0b0b14] text-white" : "bg-[#10101b] hover:text-gray-300"
             }`}
           >
             Issues {issueCount > 0 ? `(${issueCount})` : ""}
@@ -481,16 +481,16 @@ function TimelineRow({
 
   const barClass =
     category === "agent"
-      ? "bg-[#0f0f0e] text-white"
+      ? "bg-white/15 text-white"
       : isSlow || step.status === "warning"
-        ? "bg-[#fef9c3] border border-[#fde047] text-[#3a3935]"
+        ? "bg-amber-500/30 border border-amber-400/40 text-amber-100"
         : step.status === "error"
-          ? "bg-[#fff5f5] border border-[#fecaca] text-[#7a7870]"
+          ? "bg-red-500/25 border border-red-400/40 text-red-100"
           : category === "tool"
-            ? "bg-[#ccfbf1] border border-[#99f6e4] text-[#3a3935]"
+            ? "bg-emerald-500/25 border border-emerald-400/40 text-emerald-100"
             : category === "retrieval"
-              ? "bg-[#ede9fe] border border-[#ddd6fe] text-[#3a3935]"
-              : "bg-[#dbeafe] border border-[#bfdbfe] text-[#3a3935]";
+              ? "bg-indigo-500/25 border border-indigo-400/40 text-indigo-100"
+              : "bg-blue-500/25 border border-blue-400/40 text-blue-100";
 
   return (
     <div
@@ -498,35 +498,35 @@ function TimelineRow({
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(event) => (event.key === "Enter" ? onClick() : null)}
-      className={`grid h-9 grid-cols-[192px_1fr] border-b border-[#e8e6e1] text-[10px] transition ${
-        isActive ? "bg-[#f5f4f1]" : "hover:bg-[#fafaf9]"
+      className={`grid h-9 grid-cols-[192px_1fr] border-b border-white/5 text-[10px] transition ${
+        isActive ? "bg-white/5" : "hover:bg-white/[0.03]"
       }`}
     >
-      <div className="flex items-center gap-2 border-r border-[#e8e6e1] px-3" style={{ paddingLeft: `${12 + indentPx}px` }}>
+      <div className="flex items-center gap-2 border-r border-white/5 px-3" style={{ paddingLeft: `${12 + indentPx}px` }}>
         <span
           className={`h-1.5 w-1.5 rounded-full ${
             category === "agent"
-              ? "bg-[#0f0f0e]"
+              ? "bg-white"
               : category === "tool"
-                ? "bg-[#0f766e]"
+                ? "bg-emerald-300"
                 : category === "retrieval"
-                  ? "bg-[#6d28d9]"
-                  : "bg-[#1e40af]"
+                  ? "bg-indigo-300"
+                  : "bg-blue-300"
           }`}
         />
-        <span className={`truncate ${isActive ? "font-medium text-[#0f0f0e]" : "text-[#7a7870]"}`}>{step.name}</span>
+        <span className={`truncate ${isActive ? "font-medium text-white" : "text-gray-400"}`}>{step.name}</span>
       </div>
       <div className="relative flex items-center">
-        <div className="absolute inset-y-0 left-1/4 w-px bg-[#e8e6e1]" />
-        <div className="absolute inset-y-0 left-1/2 w-px bg-[#e8e6e1]" />
-        <div className="absolute inset-y-0 left-3/4 w-px bg-[#e8e6e1]" />
+        <div className="absolute inset-y-0 left-1/4 w-px bg-white/10" />
+        <div className="absolute inset-y-0 left-1/2 w-px bg-white/10" />
+        <div className="absolute inset-y-0 left-3/4 w-px bg-white/10" />
         <div
           className={`absolute flex h-4 items-center gap-2 overflow-hidden rounded-sm px-2 text-[9px] ${barClass}`}
           style={{ left: `calc(${leftPercent}% + 6px)`, width: `calc(${Math.max(widthPercent, 0.5)}% - 12px)` }}
         >
           <span className="font-medium">{step.name}</span>
-          <span className={category === "agent" ? "text-white/60" : "text-[#b0ada6]"}>{formatDuration(duration)}</span>
-          {isSlow ? <span className="text-[#b45309]">↑</span> : null}
+          <span className="text-white/50">{formatDuration(duration)}</span>
+          {isSlow ? <span className="text-amber-200">↑</span> : null}
         </div>
       </div>
     </div>
@@ -536,22 +536,22 @@ function TimelineRow({
 function StatusBadge({ status }: { status: TimelineStepStatus }) {
   const className =
     status === "error"
-      ? "bg-[#fff5f5] border border-[#fecaca] text-[#c0392b]"
+      ? "bg-red-500/20 border border-red-400/30 text-red-200"
       : status === "warning"
-        ? "bg-[#fef9ec] border border-[#fde68a] text-[#b45309]"
-        : "bg-[#f0fdf4] border border-[#bbf7d0] text-[#166534]";
+        ? "bg-amber-500/20 border border-amber-400/30 text-amber-200"
+        : "bg-emerald-500/20 border border-emerald-400/30 text-emerald-200";
   const label = status === "error" ? "error" : status === "warning" ? "warning" : "ok";
   return <span className={`rounded-sm px-1.5 py-0.5 text-[8px] uppercase tracking-[0.12em] ${className}`}>{label}</span>;
 }
 
 function InfoPanel({ step, maxTime }: { step: TimelineStep | null; maxTime: number }) {
   if (!step) {
-    return <div className="p-4 text-sm text-[#7a7870]">Select a span to see details.</div>;
+    return <div className="p-4 text-sm text-gray-400">Select a span to see details.</div>;
   }
   const duration = step.end - step.start;
   return (
     <div className="p-4">
-      <div className="mb-3 border-b border-[#e8e6e1] pb-2 text-[8px] uppercase tracking-[0.15em] text-[#b0ada6]">Performance</div>
+      <div className="mb-3 border-b border-white/10 pb-2 text-[8px] uppercase tracking-[0.15em] text-gray-500">Performance</div>
       <div className="space-y-2 text-[10px]">
         <InfoField label="duration" value={formatDuration(duration)} highlight={duration >= 3000 ? "warn" : "ok"} />
         <InfoField label="status" value={step.status} highlight={step.status === "error" ? "err" : step.status === "warning" ? "warn" : "ok"} />
@@ -576,31 +576,31 @@ function InfoField({
   dim?: boolean;
 }) {
   const color =
-    highlight === "err" ? "text-[#c0392b]" : highlight === "warn" ? "text-[#b45309]" : highlight === "ok" ? "text-[#166534]" : "text-[#0f0f0e]";
+    highlight === "err" ? "text-red-200" : highlight === "warn" ? "text-amber-200" : highlight === "ok" ? "text-emerald-200" : "text-white";
   return (
-    <div className="flex items-baseline justify-between border-b border-[#e8e6e1] pb-1">
-      <span className="text-[#b0ada6]">{label}</span>
-      <span className={`text-right font-medium ${dim ? "text-[#b0ada6]" : color}`}>{value}</span>
+    <div className="flex items-baseline justify-between border-b border-white/10 pb-1">
+      <span className="text-gray-500">{label}</span>
+      <span className={`text-right font-medium ${dim ? "text-gray-500" : color}`}>{value}</span>
     </div>
   );
 }
 
 function PromptPanel({ step }: { step: TimelineStep | null }) {
   if (!step) {
-    return <div className="p-4 text-sm text-[#7a7870]">Select a span to see prompt details.</div>;
+    return <div className="p-4 text-sm text-gray-400">Select a span to see prompt details.</div>;
   }
 
   return (
     <div className="space-y-4 p-4">
       {step.promptPayload !== undefined ? (
-        <PromptPayloadPanel title="Prompt" payload={step.promptPayload} variant="light" />
+        <PromptPayloadPanel title="Prompt" payload={step.promptPayload} variant="dark" />
       ) : (
-        <div className="rounded border border-[#e8e6e1] bg-[#fafaf9] p-3 text-[9px] text-[#7a7870]">No prompt payload captured.</div>
+        <div className="rounded border border-white/10 bg-black/20 p-3 text-[9px] text-gray-400">No prompt payload captured.</div>
       )}
       {step.responsePayload !== undefined ? (
-        <PromptPayloadPanel title="Response" payload={step.responsePayload} variant="light" defaultStructuredOpen={false} />
+        <PromptPayloadPanel title="Response" payload={step.responsePayload} variant="dark" defaultStructuredOpen={false} />
       ) : (
-        <div className="rounded border border-[#e8e6e1] bg-[#fafaf9] p-3 text-[9px] text-[#7a7870]">No response payload captured.</div>
+        <div className="rounded border border-white/10 bg-black/20 p-3 text-[9px] text-gray-400">No response payload captured.</div>
       )}
     </div>
   );
@@ -608,24 +608,24 @@ function PromptPanel({ step }: { step: TimelineStep | null }) {
 
 function IssuesPanel({ logs }: { logs: TimelineLogEntry[] }) {
   if (logs.length === 0) {
-    return <div className="p-4 text-sm text-[#7a7870]">No issues detected.</div>;
+    return <div className="p-4 text-sm text-gray-400">No issues detected.</div>;
   }
 
   return (
-    <div className="divide-y divide-[#e8e6e1]">
+    <div className="divide-y divide-white/10">
       {logs.map((entry) => (
-        <div key={entry.id} className="p-4 transition hover:bg-[#fafaf9]">
+        <div key={entry.id} className="p-4 transition hover:bg-white/[0.03]">
           <div className="mb-1 flex items-center justify-between text-[9px]">
-            <div className="font-serif text-[13px] text-[#0f0f0e]">{entry.source}</div>
+            <div className="text-[13px] text-white">{entry.source}</div>
             <span
               className={`text-[8px] uppercase tracking-[0.1em] ${
-                entry.level === "error" ? "text-[#c0392b]" : entry.level === "warning" ? "text-[#b45309]" : "text-[#166534]"
+                entry.level === "error" ? "text-red-300" : entry.level === "warning" ? "text-amber-300" : "text-emerald-300"
               }`}
             >
               {entry.level}
             </span>
           </div>
-          <div className="text-[9px] leading-relaxed text-[#7a7870]">{entry.message}</div>
+          <div className="text-[9px] leading-relaxed text-gray-400">{entry.message}</div>
         </div>
       ))}
     </div>
