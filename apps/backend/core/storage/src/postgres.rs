@@ -115,7 +115,9 @@ impl Storage {
                     }
 
                     let remaining = runtime_retry_timeout.saturating_sub(elapsed);
-                    let delay = runtime_retry_settings.delay_for(attempts - 1).min(remaining);
+                    let delay = runtime_retry_settings
+                        .delay_for(attempts - 1)
+                        .min(remaining);
                     if delay.is_zero() {
                         return Err(AgentScopeError::Storage(format!(
                             "failed to start database transaction after {attempts} attempt(s) in {}ms: {error}",
@@ -156,7 +158,8 @@ impl RetrySettings {
     ) -> Self {
         let retries = env_u32(retries_var, default_retries);
         let base_delay_millis = env_u64(base_delay_var, default_base_delay_millis).max(1);
-        let max_delay_millis = env_u64(max_delay_var, default_max_delay_millis).max(base_delay_millis);
+        let max_delay_millis =
+            env_u64(max_delay_var, default_max_delay_millis).max(base_delay_millis);
         Self {
             retries,
             base_delay_millis,
@@ -194,11 +197,10 @@ fn sanitize_database_url(database_url: &str) -> String {
     let params: Vec<&str> = query
         .split('&')
         .filter(|segment| {
-            segment
-                .split_once('=')
-                .map_or(!segment.eq_ignore_ascii_case("channel_binding"), |(key, _)| {
-                    !key.eq_ignore_ascii_case("channel_binding")
-                })
+            segment.split_once('=').map_or(
+                !segment.eq_ignore_ascii_case("channel_binding"),
+                |(key, _)| !key.eq_ignore_ascii_case("channel_binding"),
+            )
         })
         .collect();
 
@@ -226,14 +228,7 @@ fn is_retryable_connection_error(error: &sqlx::Error) -> bool {
                 .unwrap_or_default();
             matches!(
                 code.as_str(),
-                "08000"
-                    | "08001"
-                    | "08003"
-                    | "08006"
-                    | "57P01"
-                    | "57P02"
-                    | "57P03"
-                    | "53300"
+                "08000" | "08001" | "08003" | "08006" | "57P01" | "57P02" | "57P03" | "53300"
             )
         }
         _ => {

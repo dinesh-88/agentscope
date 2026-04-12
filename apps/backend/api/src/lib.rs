@@ -480,6 +480,14 @@ async fn ingest(
     apply_project_storage_policies(&state, &mut payload).await?;
 
     state.storage.insert_run(&payload.run).await?;
+    state
+        .storage
+        .record_monthly_run_usage(
+            &payload.run.project_id,
+            &payload.run.id,
+            payload.run.started_at,
+        )
+        .await?;
 
     for span in &payload.spans {
         state.storage.insert_span(span).await?;

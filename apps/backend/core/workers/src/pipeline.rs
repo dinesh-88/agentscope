@@ -113,10 +113,10 @@ async fn insert_issue_insights_batch(
         .and_hms_opt(0, 0, 0)
         .ok_or_else(|| AgentScopeError::Validation("invalid target date timestamp".to_string()))?;
 
-    let mut tx =
-        storage.begin_tx().await.map_err(|e| {
-            AgentScopeError::Storage(format!("failed to begin issue_insights tx: {e}"))
-        })?;
+    let mut tx = storage
+        .begin_tx()
+        .await
+        .map_err(|e| AgentScopeError::Storage(format!("failed to begin issue_insights tx: {e}")))?;
 
     for chunk in rows.chunks(200) {
         // SQL query used:

@@ -306,11 +306,10 @@ impl Storage {
         let count = sqlx::query_scalar::<_, i64>(
             r#"
             SELECT COUNT(*)
-            FROM runs
+            FROM subscription_run_usage
             WHERE project_id = $1::uuid
-              AND deleted_at IS NULL
-              AND started_at >= $2
-              AND started_at < $3
+              AND usage_month >= ($2 AT TIME ZONE 'UTC')::date
+              AND usage_month < ($3 AT TIME ZONE 'UTC')::date
             "#,
         )
         .bind(project_id)
@@ -325,6 +324,41 @@ impl Storage {
         })?;
 
         Ok(count)
+    }
+
+    pub async fn record_monthly_run_usage(
+        &self,
+        project_id: &str,
+        run_id: &str,
+        started_at: DateTime<Utc>,
+    ) -> Result<(), AgentScopeError> {
+        sqlx::query(
+            r#"
+            INSERT INTO subscription_run_usage (
+                run_id,
+                project_id,
+                usage_month
+            )
+            VALUES (
+                $1::uuid,
+                $2::uuid,
+                DATE_TRUNC('month', $3 AT TIME ZONE 'UTC')::date
+            )
+            ON CONFLICT (run_id) DO NOTHING
+            "#,
+        )
+        .bind(run_id)
+        .bind(project_id)
+        .bind(started_at)
+        .execute(&self.pool)
+        .await
+        .map_err(|error| {
+            AgentScopeError::Storage(format!(
+                "failed to record monthly run usage for project {project_id} and run {run_id}: {error}"
+            ))
+        })?;
+
+        Ok(())
     }
 
     pub async fn get_billing_overview_for_project(
