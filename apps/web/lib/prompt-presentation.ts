@@ -99,6 +99,17 @@ function isSchemaLike(value: unknown): value is Record<string, unknown> {
   return keys.some((key) => key in value);
 }
 
+function stripMessageLikeFields(value: Record<string, unknown>): Record<string, unknown> | null {
+  const omit = new Set(["messages", "prompt", "tools", "system", "system_prompt", "instructions"]);
+  const entries = Object.entries(value).filter(([key, entryValue]) => {
+    if (omit.has(key)) return false;
+    if (entryValue === null || entryValue === undefined) return false;
+    return true;
+  });
+  if (entries.length === 0) return null;
+  return Object.fromEntries(entries);
+}
+
 function roleLabel(role: string) {
   const normalized = role.trim().toLowerCase();
   if (normalized === "system") return "System";
@@ -197,7 +208,8 @@ export function buildPromptPresentation(payload: unknown): PromptPresentation {
   const sections: PromptSection[] = [];
 
   const messages = payload.messages;
-  if (Array.isArray(messages)) {
+  const hasMessages = Array.isArray(messages);
+  if (hasMessages) {
     sections.push(...buildMessageSections(messages));
   }
 
@@ -254,12 +266,24 @@ export function buildPromptPresentation(payload: unknown): PromptPresentation {
   ]);
 
   if (inputCandidate !== undefined && inputCandidate !== null) {
-    sections.push({
-      id: "context-data",
-      title: "User Input / Context Data",
-      content: toDisplayText(inputCandidate),
-      format: typeof inputCandidate === "string" ? "text" : "json",
-    });
+    if (hasMessages && isRecord(inputCandidate) && "messages" in inputCandidate) {
+      const stripped = stripMessageLikeFields(inputCandidate);
+      if (stripped) {
+        sections.push({
+          id: "context-data",
+          title: "User Input / Context Data",
+          content: toDisplayText(stripped),
+          format: "json",
+        });
+      }
+    } else {
+      sections.push({
+        id: "context-data",
+        title: "User Input / Context Data",
+        content: toDisplayText(inputCandidate),
+        format: typeof inputCandidate === "string" ? "text" : "json",
+      });
+    }
   }
 
   const deduped = dedupeSections(sections);
