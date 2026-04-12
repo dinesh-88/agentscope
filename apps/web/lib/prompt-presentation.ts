@@ -31,6 +31,21 @@ function toDisplayText(value: unknown): string {
   return toJson(value);
 }
 
+function tryParseJsonString(value: string): { content: string; format: PromptSectionFormat } {
+  const trimmed = value.trim();
+  if (
+    !trimmed ||
+    !((trimmed.startsWith("{") && trimmed.endsWith("}")) || (trimmed.startsWith("[") && trimmed.endsWith("]")))
+  ) {
+    return { content: value, format: "text" };
+  }
+  try {
+    return { content: JSON.stringify(JSON.parse(trimmed), null, 2), format: "json" };
+  } catch {
+    return { content: value, format: "text" };
+  }
+}
+
 function normalizeRaw(payload: unknown): { raw: string; rawFormat: PromptSectionFormat } {
   if (typeof payload === "string") {
     const trimmed = payload.trim();
@@ -96,12 +111,17 @@ function buildMessageSections(messages: unknown[]): PromptSection[] {
     if (isRecord(message)) {
       const role = typeof message.role === "string" ? message.role : "message";
       const contentSource = message.content ?? message.text ?? message.message ?? message;
-      const format: PromptSectionFormat = typeof contentSource === "string" ? "text" : "json";
-
+      let formattedContent = toDisplayText(contentSource);
+      let format: PromptSectionFormat = typeof contentSource === "string" ? "text" : "json";
+      if (typeof contentSource === "string") {
+        const parsed = tryParseJsonString(contentSource);
+        formattedContent = parsed.content;
+        format = parsed.format;
+      }
       sections.push({
         id: `message-${index + 1}`,
         title: `${roleLabel(role)} Message ${index + 1}`,
-        content: format === "text" ? String(contentSource) : toJson(contentSource),
+        content: formattedContent,
         format,
       });
       return;
