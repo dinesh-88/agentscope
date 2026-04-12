@@ -368,7 +368,7 @@ export function RunTimelineView({ spans, artifacts }: RunTimelineViewProps) {
   const issueCount = activeLogs.filter((log) => log.level !== "info").length;
 
   return (
-    <div className="grid min-h-[620px] grid-cols-1 overflow-hidden rounded-lg border border-white/5 bg-[#0b0b14] text-white lg:grid-cols-[1fr_272px]">
+    <div className="grid min-h-[620px] grid-cols-1 overflow-hidden rounded-lg border border-white/5 bg-[#0b0b14] text-white lg:grid-cols-[1fr_1fr]">
       <div className="flex min-w-0 flex-col border-b border-white/5 lg:border-b-0 lg:border-r lg:border-white/5">
         <div className="grid h-7 grid-cols-[192px_1fr] border-b border-white/10 bg-[#10101b] text-[10px] uppercase tracking-[0.15em] text-gray-500">
           <div className="flex items-center border-r border-white/10 px-3">Span</div>
