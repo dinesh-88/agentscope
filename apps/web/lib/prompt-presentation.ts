@@ -253,6 +253,7 @@ export function buildPromptPresentation(payload: unknown): PromptPresentation {
   }
 
   const inputCandidate = pickByPaths(payload, [
+    ["user_input"],
     ["input"],
     ["payload"],
     ["request"],
