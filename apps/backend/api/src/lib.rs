@@ -193,6 +193,9 @@ struct AdminTelemetryResponse {
     sdk_usage: Vec<SdkUsagePoint>,
     version_adoption: Vec<VersionAdoptionPoint>,
     events_per_day: Vec<EventsPerDayPoint>,
+    ingest_overview: AdminIngestOverview,
+    source_breakdown: Vec<AdminSourceBreakdownPoint>,
+    pipeline_daily: Vec<AdminPipelineDailyPoint>,
 }
 
 #[derive(Debug, Serialize)]
@@ -218,6 +221,31 @@ struct EventsPerDayPoint {
     day: String,
     events: i64,
     error_rate: f64,
+}
+
+#[derive(Debug, Serialize)]
+struct AdminIngestOverview {
+    runs_today: i64,
+    runs_last_7_days: i64,
+    spans_last_7_days: i64,
+    artifacts_last_7_days: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct AdminSourceBreakdownPoint {
+    source: String,
+    sdk_events: i64,
+    ingested_runs: i64,
+    failed_runs: i64,
+}
+
+#[derive(Debug, Serialize)]
+struct AdminPipelineDailyPoint {
+    day: String,
+    sdk_events: i64,
+    ingested_runs: i64,
+    proxy_runs: i64,
+    proxy_errors: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -726,6 +754,27 @@ fn admin_telemetry_response(metrics: AdminTelemetryMetrics) -> AdminTelemetryRes
             error_rate: point.error_rate,
         })
         .collect::<Vec<_>>();
+    let source_breakdown = metrics
+        .source_breakdown
+        .into_iter()
+        .map(|point| AdminSourceBreakdownPoint {
+            source: point.source,
+            sdk_events: point.sdk_events,
+            ingested_runs: point.ingested_runs,
+            failed_runs: point.failed_runs,
+        })
+        .collect::<Vec<_>>();
+    let pipeline_daily = metrics
+        .pipeline_daily
+        .into_iter()
+        .map(|point| AdminPipelineDailyPoint {
+            day: point.day.to_string(),
+            sdk_events: point.sdk_events,
+            ingested_runs: point.ingested_runs,
+            proxy_runs: point.proxy_runs,
+            proxy_errors: point.proxy_errors,
+        })
+        .collect::<Vec<_>>();
 
     AdminTelemetryResponse {
         total_events: metrics.overview.total_events,
@@ -737,6 +786,14 @@ fn admin_telemetry_response(metrics: AdminTelemetryMetrics) -> AdminTelemetryRes
         sdk_usage,
         version_adoption,
         events_per_day,
+        ingest_overview: AdminIngestOverview {
+            runs_today: metrics.ingest_overview.runs_today,
+            runs_last_7_days: metrics.ingest_overview.runs_last_7_days,
+            spans_last_7_days: metrics.ingest_overview.spans_last_7_days,
+            artifacts_last_7_days: metrics.ingest_overview.artifacts_last_7_days,
+        },
+        source_breakdown,
+        pipeline_daily,
     }
 }
 

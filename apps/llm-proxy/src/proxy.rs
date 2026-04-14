@@ -49,6 +49,10 @@ async fn chat_completions(
     };
 
     let request_id = Uuid::new_v4().to_string();
+    let trace_id =
+        header_string(&headers, "x-agentscope-trace-id").unwrap_or_else(|| request_id.clone());
+    let parent_run_id = header_string(&headers, "x-agentscope-parent-run-id");
+    let root_run_id = header_string(&headers, "x-agentscope-root-run-id");
     let started_at = chrono::Utc::now();
     let start = Instant::now();
 
@@ -85,6 +89,9 @@ async fn chat_completions(
             state,
             request,
             request_id,
+            trace_id,
+            parent_run_id,
+            root_run_id,
             started_at,
             start,
             upstream_response,
@@ -95,6 +102,9 @@ async fn chat_completions(
             state,
             request,
             request_id,
+            trace_id,
+            parent_run_id,
+            root_run_id,
             started_at,
             start,
             upstream_response,
@@ -107,6 +117,9 @@ async fn buffered_response(
     state: Arc<AppState>,
     request: ChatCompletionRequest,
     request_id: String,
+    trace_id: String,
+    parent_run_id: Option<String>,
+    root_run_id: Option<String>,
     started_at: chrono::DateTime<chrono::Utc>,
     start: Instant,
     upstream_response: reqwest::Response,
@@ -126,10 +139,14 @@ async fn buffered_response(
                 state.telemetry_client.clone(),
                 TelemetryRecord {
                     request_id,
+                    trace_id,
+                    parent_run_id,
+                    root_run_id,
                     request,
                     latency_ms,
                     response_text,
                     usage,
+                    success: status.is_success(),
                     started_at,
                     ended_at,
                 },
@@ -152,6 +169,9 @@ async fn stream_response(
     state: Arc<AppState>,
     request: ChatCompletionRequest,
     request_id: String,
+    trace_id: String,
+    parent_run_id: Option<String>,
+    root_run_id: Option<String>,
     started_at: chrono::DateTime<chrono::Utc>,
     start: Instant,
     upstream_response: reqwest::Response,
@@ -162,6 +182,9 @@ async fn stream_response(
     let (tx, rx) = mpsc::channel(16);
     let telemetry_client = state.telemetry_client.clone();
     let request_for_task = request.clone();
+    let trace_id_for_task = trace_id.clone();
+    let parent_run_id_for_task = parent_run_id.clone();
+    let root_run_id_for_task = root_run_id.clone();
     let model = request.model.clone();
 
     tokio::spawn(async move {
@@ -192,10 +215,14 @@ async fn stream_response(
                         telemetry_client,
                         TelemetryRecord {
                             request_id,
+                            trace_id: trace_id_for_task,
+                            parent_run_id: parent_run_id_for_task,
+                            root_run_id: root_run_id_for_task,
                             request: request_for_task,
                             latency_ms,
                             response_text,
                             usage,
+                            success: status.is_success(),
                             started_at,
                             ended_at,
                         },
@@ -214,10 +241,14 @@ async fn stream_response(
             telemetry_client,
             TelemetryRecord {
                 request_id,
+                trace_id: trace_id_for_task,
+                parent_run_id: parent_run_id_for_task,
+                root_run_id: root_run_id_for_task,
                 request: request_for_task,
                 latency_ms,
                 response_text,
                 usage,
+                success: status.is_success(),
                 started_at,
                 ended_at,
             },
@@ -278,6 +309,15 @@ fn should_skip_request_header(name: &HeaderName) -> bool {
         name.as_str().to_ascii_lowercase().as_str(),
         "host" | "content-length" | "connection"
     )
+}
+
+fn header_string(headers: &HeaderMap, name: &'static str) -> Option<String> {
+    headers
+        .get(name)
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn should_skip_response_header(name: &HeaderName) -> bool {

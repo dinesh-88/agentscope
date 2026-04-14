@@ -13,24 +13,30 @@ use crate::models::{
 pub struct TelemetryClient {
     client: Client,
     ingest_base_url: String,
+    api_key: String,
 }
 
 #[derive(Clone)]
 pub struct TelemetryRecord {
     pub request_id: String,
+    pub trace_id: String,
+    pub parent_run_id: Option<String>,
+    pub root_run_id: Option<String>,
     pub request: ChatCompletionRequest,
     pub latency_ms: u128,
     pub response_text: Option<String>,
     pub usage: Usage,
+    pub success: bool,
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
 }
 
 impl TelemetryClient {
-    pub fn new(client: Client, ingest_base_url: String) -> Self {
+    pub fn new(client: Client, ingest_base_url: String, api_key: String) -> Self {
         Self {
             client,
             ingest_base_url,
+            api_key,
         }
     }
 
@@ -46,7 +52,14 @@ impl TelemetryClient {
         let payload = build_ingest_payload(record);
         let url = format!("{}/v1/ingest", self.ingest_base_url.trim_end_matches('/'));
 
-        match self.client.post(url).json(&payload).send().await {
+        match self
+            .client
+            .post(url)
+            .header("x-agentscope-api-key", &self.api_key)
+            .json(&payload)
+            .send()
+            .await
+        {
             Ok(response) if response.status().is_success() => {
                 info!(
                     request_id = %telemetry.request_id,
@@ -74,23 +87,43 @@ impl TelemetryClient {
 }
 
 fn build_ingest_payload(record: TelemetryRecord) -> IngestPayload {
-    let run_id = record.request_id.clone();
+    let TelemetryRecord {
+        request_id,
+        trace_id,
+        parent_run_id,
+        root_run_id,
+        request,
+        latency_ms,
+        response_text,
+        usage,
+        success,
+        started_at,
+        ended_at,
+    } = record;
+
+    let run_id = request_id.clone();
     let span_id = Uuid::new_v4().to_string();
+    let status = if success { "success" } else { "failed" }.to_string();
+    let model = request.model.clone();
+    let messages = request.messages.clone();
+    let temperature = request.temperature;
+    let tools = request.tools.clone();
+    let stream = request.stream;
     let artifact_payload = json!({
-        "request_id": record.request_id,
+        "request_id": request_id,
         "type": "llm_call",
         "provider": "openai",
-        "model": record.request.model,
-        "messages": record.request.messages,
-        "response": record.response_text,
+        "model": model,
+        "messages": messages,
+        "response": response_text,
         "usage": {
-            "input_tokens": record.usage.input_tokens,
-            "output_tokens": record.usage.output_tokens,
-            "total_tokens": record.usage.total_tokens,
+            "input_tokens": usage.input_tokens,
+            "output_tokens": usage.output_tokens,
+            "total_tokens": usage.total_tokens,
         },
-        "latency_ms": record.latency_ms,
-        "temperature": record.request.temperature,
-        "tools": record.request.tools,
+        "latency_ms": latency_ms,
+        "temperature": temperature,
+        "tools": tools,
     });
 
     IngestPayload {
@@ -99,9 +132,16 @@ fn build_ingest_payload(record: TelemetryRecord) -> IngestPayload {
             project_id: "llm-proxy".to_string(),
             workflow_name: "openai_chat_completions".to_string(),
             agent_name: "agentscope-llm-proxy".to_string(),
-            status: "success".to_string(),
-            started_at: record.started_at,
-            ended_at: Some(record.ended_at),
+            status: status.clone(),
+            started_at: started_at.clone(),
+            ended_at: Some(ended_at.clone()),
+            metadata: Some(json!({
+                "telemetry_source": "llm_proxy",
+                "trace_id": trace_id.clone(),
+                "parent_run_id": parent_run_id,
+                "root_run_id": root_run_id.unwrap_or(run_id.clone()),
+                "request_id": run_id.clone(),
+            })),
         },
         spans: vec![IngestSpan {
             id: span_id.clone(),
@@ -109,19 +149,22 @@ fn build_ingest_payload(record: TelemetryRecord) -> IngestPayload {
             parent_span_id: None,
             span_type: "llm_call".to_string(),
             name: "POST /v1/chat/completions".to_string(),
-            status: "success".to_string(),
-            started_at: record.started_at,
-            ended_at: Some(record.ended_at),
+            status,
+            started_at,
+            ended_at: Some(ended_at),
             provider: Some("openai".to_string()),
-            model: Some(record.request.model),
-            input_tokens: record.usage.input_tokens,
-            output_tokens: record.usage.output_tokens,
-            total_tokens: record.usage.total_tokens,
+            model: Some(request.model),
+            input_tokens: usage.input_tokens,
+            output_tokens: usage.output_tokens,
+            total_tokens: usage.total_tokens,
             estimated_cost: None,
             metadata: Some(json!({
-                "temperature": record.request.temperature,
-                "stream": record.request.stream,
-                "tools": record.request.tools,
+                "telemetry_source": "llm_proxy",
+                "trace_id": trace_id,
+                "request_id": run_id.clone(),
+                "temperature": temperature,
+                "stream": stream,
+                "tools": request.tools,
             })),
         }],
         artifacts: vec![IngestArtifact {

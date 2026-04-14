@@ -49,6 +49,7 @@ pub struct IngestRun {
     pub status: String,
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
+    pub metadata: Option<Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]

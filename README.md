@@ -73,6 +73,17 @@ docker compose -f docker-compose.yml up --build
 
 API will be available at `http://localhost:8080` and Postgres at `localhost:5432`.
 
+## Run LLM Proxy
+
+```bash
+OPENAI_API_KEY=... \
+AGENTSCOPE_API=http://localhost:8080 \
+AGENTSCOPE_API_KEY=... \
+cargo run -p agentscope-llm-proxy
+```
+
+LLM proxy telemetry is sent to `POST /v1/ingest` and requires `AGENTSCOPE_API_KEY`.
+
 ## Demo Harness
 
 Examples and demo harness scripts are maintained in a separate demo repository.

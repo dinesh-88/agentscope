@@ -399,6 +399,25 @@ export type AdminTelemetryResponse = {
     events: number;
     error_rate: number;
   }>;
+  ingest_overview: {
+    runs_today: number;
+    runs_last_7_days: number;
+    spans_last_7_days: number;
+    artifacts_last_7_days: number;
+  };
+  source_breakdown: Array<{
+    source: string;
+    sdk_events: number;
+    ingested_runs: number;
+    failed_runs: number;
+  }>;
+  pipeline_daily: Array<{
+    day: string;
+    sdk_events: number;
+    ingested_runs: number;
+    proxy_runs: number;
+    proxy_errors: number;
+  }>;
 };
 
 export type ProjectApiKeyResponse = {

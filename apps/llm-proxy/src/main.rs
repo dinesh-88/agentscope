@@ -19,6 +19,8 @@ async fn main() {
 
     let openai_api_key =
         env::var("OPENAI_API_KEY").expect("OPENAI_API_KEY must be set before starting the proxy");
+    let agentscope_api_key = env::var("AGENTSCOPE_API_KEY")
+        .expect("AGENTSCOPE_API_KEY must be set before starting the proxy");
     let agentscope_api =
         env::var("AGENTSCOPE_API").unwrap_or_else(|_| "http://localhost:8080".to_string());
 
@@ -28,7 +30,7 @@ async fn main() {
 
     let app = app(AppState {
         openai_client: http_client.clone(),
-        telemetry_client: TelemetryClient::new(http_client, agentscope_api),
+        telemetry_client: TelemetryClient::new(http_client, agentscope_api, agentscope_api_key),
         openai_api_key,
     });
 

@@ -102,3 +102,14 @@ The ingestion payload for `POST /v1/ingest`:
 - `span_id`
 - `error_type`
 - `message`
+
+## Telemetry Channels
+
+- `POST /v1/telemetry`: anonymous SDK usage events only (`sdk_init`, `run_start`, `run_end`).
+- `POST /v1/ingest`: operational run/span/artifact telemetry used for trace analysis.
+
+## Correlation
+
+- SDK usage telemetry uses an anonymized `project_id` hash.
+- Ingested runs/spans should carry `metadata.trace_id` for cross-run linkage.
+- Source attribution is captured via `metadata.telemetry_source` (for example `sdk_python`, `sdk_ts`, `llm_proxy`).

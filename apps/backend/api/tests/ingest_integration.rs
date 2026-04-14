@@ -332,6 +332,164 @@ async fn ingest_sdk_telemetry_and_prune_old_events(pool: PgPool) {
 }
 
 #[sqlx::test(migrations = "../storage/migrations")]
+async fn admin_telemetry_includes_ingest_pipeline_and_source_breakdown(pool: PgPool) {
+    let project_id = seed_project(&pool, "telemetry-org", "telemetry-project").await;
+    let org_id: String =
+        sqlx::query_scalar("SELECT organization_id::text FROM projects WHERE id = $1::uuid")
+            .bind(&project_id)
+            .fetch_one(&pool)
+            .await
+            .unwrap();
+    let user_id = seed_user_with_role(&pool, &org_id, "telemetry-admin@example.com", "admin").await;
+    sqlx::query("UPDATE users SET role = 'super_admin' WHERE id = $1::uuid")
+        .bind(&user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+    seed_project_api_key(&pool, &project_id, TEST_API_KEY).await;
+
+    let storage = Storage { pool: pool.clone() };
+    let router = app(storage, jwt_settings());
+    let token = login_token(&router, "telemetry-admin@example.com").await;
+
+    let sdk_event_response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/telemetry")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "project_id": "anon_project_hash_for_e2e",
+                        "event": "run_end",
+                        "sdk": "ts",
+                        "sdk_version": "0.1.6",
+                        "runtime": "node/v22.0.0",
+                        "env": "dev",
+                        "timestamp": Utc::now().to_rfc3339(),
+                        "error_type": null
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(sdk_event_response.status(), StatusCode::NO_CONTENT);
+
+    let run_id = uuid::Uuid::new_v4().to_string();
+    let span_id = uuid::Uuid::new_v4().to_string();
+    let trace_id = uuid::Uuid::new_v4().to_string();
+    let ingest_response = router
+        .clone()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/v1/ingest")
+                .header("content-type", "application/json")
+                .header("x-agentscope-api-key", TEST_API_KEY)
+                .body(Body::from(
+                    serde_json::to_vec(&json!({
+                        "run": {
+                            "id": run_id.clone(),
+                            "project_id": project_id,
+                            "workflow_name": "openai_chat_completions",
+                            "agent_name": "agentscope-llm-proxy",
+                            "status": "success",
+                            "started_at": Utc::now().to_rfc3339(),
+                            "ended_at": Utc::now().to_rfc3339(),
+                            "metadata": {
+                                "telemetry_source": "llm_proxy",
+                                "trace_id": trace_id,
+                                "root_run_id": run_id.clone()
+                            }
+                        },
+                        "spans": [{
+                            "id": span_id.clone(),
+                            "run_id": run_id.clone(),
+                            "parent_span_id": null,
+                            "span_type": "llm_call",
+                            "name": "POST /v1/chat/completions",
+                            "status": "success",
+                            "started_at": Utc::now().to_rfc3339(),
+                            "ended_at": Utc::now().to_rfc3339(),
+                            "provider": "openai",
+                            "model": "gpt-4o-mini",
+                            "metadata": {
+                                "telemetry_source": "llm_proxy",
+                                "trace_id": trace_id
+                            }
+                        }],
+                        "artifacts": [{
+                            "id": uuid::Uuid::new_v4().to_string(),
+                            "run_id": run_id.clone(),
+                            "span_id": span_id.clone(),
+                            "kind": "llm_payload",
+                            "payload": {
+                                "request_id": run_id.clone(),
+                                "messages": [{"role":"user","content":"hello"}],
+                                "response": "hi"
+                            }
+                        }]
+                    }))
+                    .unwrap(),
+                ))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(ingest_response.status(), StatusCode::OK);
+
+    let telemetry_response = router
+        .oneshot(with_bearer(
+            Request::builder()
+                .method("GET")
+                .uri("/api/admin/telemetry")
+                .body(Body::empty())
+                .unwrap(),
+            &token,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(telemetry_response.status(), StatusCode::OK);
+
+    let telemetry_body = telemetry_response
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes();
+    let telemetry: serde_json::Value = serde_json::from_slice(&telemetry_body).unwrap();
+
+    assert!(
+        telemetry["ingest_overview"]["runs_last_7_days"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
+    assert!(
+        telemetry["ingest_overview"]["spans_last_7_days"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
+    assert!(
+        telemetry["ingest_overview"]["artifacts_last_7_days"]
+            .as_i64()
+            .unwrap_or_default()
+            >= 1
+    );
+
+    let source_breakdown = telemetry["source_breakdown"].as_array().unwrap();
+    let llm_proxy_row = source_breakdown
+        .iter()
+        .find(|row| row["source"] == "llm_proxy")
+        .unwrap();
+    assert!(llm_proxy_row["ingested_runs"].as_i64().unwrap_or_default() >= 1);
+}
+
+#[sqlx::test(migrations = "../storage/migrations")]
 async fn search_runs_supports_status_model_agent_tokens_duration_and_time(pool: PgPool) {
     let project_id = seed_project(&pool, "search-org", "search-project").await;
     let org_id: String =
