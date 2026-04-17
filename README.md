@@ -19,8 +19,6 @@ agentscope/
 │  │  ├─ trace/
 │  │  └─ workers/
 │  └─ web/
-├─ packages/
-│  └─ python-sdk/
 ├─ docker/
 ├─ docs/
 │  ├─ architecture.md
@@ -29,6 +27,8 @@ agentscope/
 ├─ scripts/
 └─ README.md
 ```
+
+SDKs are maintained in a separate public repository.
 
 ## Run API
 
