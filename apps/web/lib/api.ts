@@ -33,6 +33,7 @@ export type Run = {
   tags?: string[] | null;
   experiment_id?: string | null;
   variant?: string | null;
+  model?: string | null;
   metadata?: Record<string, unknown> | null;
 };
 
