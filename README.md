@@ -4,7 +4,7 @@ Rust implementation of AgentScope telemetry ingestion and query engine.
 
 ## License
 
-This repository is proprietary and private. See [`LICENSE`](./LICENSE).
+MIT — see [`LICENSE`](./LICENSE).
 
 ## Repository Layout
 

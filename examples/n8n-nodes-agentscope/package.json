@@ -1,0 +1,43 @@
+{
+  "name": "n8n-nodes-agentscope",
+  "version": "0.1.0",
+  "description": "n8n community node for AgentScope ingest and telemetry endpoints",
+  "license": "MIT",
+  "homepage": "https://github.com/your-org/agentscope",
+  "keywords": [
+    "n8n-community-node-package",
+    "n8n",
+    "agentscope",
+    "telemetry"
+  ],
+  "author": "AgentScope",
+  "files": [
+    "dist"
+  ],
+  "main": "index.js",
+  "scripts": {
+    "build": "n8n-node-dev build",
+    "dev": "n8n-node-dev build --watch",
+    "lint": "eslint nodes credentials --ext .ts"
+  },
+  "devDependencies": {
+    "@types/node": "^20.16.11",
+    "eslint": "^8.57.1",
+    "n8n-core": "^1.86.0",
+    "n8n-node-dev": "^0.2.0",
+    "n8n-workflow": "^1.86.0",
+    "typescript": "^5.6.3"
+  },
+  "peerDependencies": {
+    "n8n-workflow": "*"
+  },
+  "n8n": {
+    "n8nNodesApiVersion": 1,
+    "credentials": [
+      "dist/credentials/AgentScopeApi.credentials.js"
+    ],
+    "nodes": [
+      "dist/nodes/AgentScope/AgentScope.node.js"
+    ]
+  }
+}

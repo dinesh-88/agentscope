@@ -1,4 +1,5 @@
 [workspace]
+license = "MIT"
 members = [
     "apps/llm-proxy",
     "apps/backend/api",
